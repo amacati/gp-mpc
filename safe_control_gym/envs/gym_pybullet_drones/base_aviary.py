@@ -300,9 +300,9 @@ class BaseAviary(BenchmarkEnv):
                 elif self.PHYSICS == Physics.RK4:
                     self._dynamics_rk4(clipped_action[i, :], i)
                 elif self.PHYSICS == Physics.DYN_SI_3D:
-                    self._dynamics_si_3d(clipped_action[i, :], i, disturbance_force)
+                    self._dynamics_si_3d(executable_action, i, disturbance_force)
                 elif self.PHYSICS == Physics.DYN_SI_3D_10:
-                    self._dynamics_si_3d_10(clipped_action[i, :], i, disturbance_force)
+                    self._dynamics_si_3d_10(executable_action, i, disturbance_force)
                 elif self.PHYSICS == Physics.PYB_GND:
                     self._physics(clipped_action[i, :], i)
                     self._ground_effect(clipped_action[i, :], i)
