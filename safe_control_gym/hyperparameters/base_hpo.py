@@ -96,7 +96,6 @@ class BaseHPO(ABC):
         self.check_hyperparmeter_config()
 
         assert len(hpo_config.objective) == len(hpo_config.direction), 'objective and direction must have the same length'
-        assert len(hpo_config.objective) == 1, 'Only single-objective optimization is supported'
 
     def append_hps_config(self):
         """
@@ -315,7 +314,8 @@ class BaseHPO(ABC):
         """
         sampled_hyperparams = params
 
-        returns, seeds, trajs_data_list, metrics_list = [], [], [], []
+        seeds, trajs_data_list, metrics_list = [], [], []
+        returns = { obj: [] for obj in self.hpo_config.objective }
         for i in range(self.hpo_config.repetitions):
 
             seed = np.random.randint(0, 10000)
@@ -394,7 +394,7 @@ class BaseHPO(ABC):
 
             # TODO: add n_episondes to the config
             try:
-                trajs_data, metrics = experiment.run_evaluation(n_episodes=self.n_episodes, n_steps=None, done_on_max_steps=False)
+                trajs_data, metrics = experiment.run_evaluation(n_episodes=self.n_episodes, n_steps=None, done_on_max_steps=True)
             except Exception as e:
                 self.agent.close()
                 # delete instances
@@ -411,11 +411,9 @@ class BaseHPO(ABC):
             # at the moment, only single-objective optimization is supported
             trajs_data_list.append(trajs_data)
             metrics_list.append(metrics)
-            obj_value = metrics[self.hpo_config.objective[0]]
-            penalty = metrics[self.hpo_config.penalty[0]]
-            res_obj = obj_value - self.hpo_config.penalty_coeff[0] * penalty
-            self.logger.info(f'f - penalty_coeff * penalty: {obj_value} - {self.hpo_config.penalty_coeff[0]} * {penalty} = {res_obj}')
-            returns.append(res_obj)
+            for obj in self.hpo_config.objective:
+                obj_value = metrics[obj]
+                returns[obj].append(obj_value)
             self.logger.info('Sampled objectives: {}'.format(returns))
 
             self.agent.close()
@@ -432,10 +430,13 @@ class BaseHPO(ABC):
         """
         Assign worse objective values (based on objective bound) to None returns.
         """
-        if self.hpo_config.direction[0] == 'maximize':
-            return self.objective_bounds[0][0]
-        else:
-            return self.objective_bounds[0][1]
+        returns = { obj: [] for obj in self.hpo_config.objective }
+        for obj in self.hpo_config.objective:
+            if self.hpo_config.direction[0] == 'maximize':
+                returns[obj].append(self.objective_bounds[0][0])
+            else:
+                returns[obj].append(self.objective_bounds[0][1])
+        return returns
 
     @abstractmethod
     def hyperparameter_optimization(self):
@@ -512,7 +513,7 @@ class BaseHPO(ABC):
                     label=f'Seed {seed_idx + 1}' if ep_idx % episodes_per_seed == 0 else None, color='blue', lw=2, alpha=alpha)
         ax.set_xlabel('$x$ [m]')
         ax.set_ylabel('$z$ [m]')
-        ax.set_title(f'State Paths w/ {self.hpo_config.eval_objective[0]}: {returns_mean:.4f} {tag}')
+        ax.set_title(f'State Paths w/ RMSE: {returns_mean:.4f} {tag}')
         ax.legend(loc='best', fontsize='small', ncol=2)
         plt.tight_layout()
         plt.savefig(os.path.join(output_dir, f'state_paths_{tag}.png'))
@@ -600,7 +601,7 @@ class BaseHPO(ABC):
                         color=base_color, lw=2, alpha=alpha)
             ax.set_xlabel('$x$ [m]')
             ax.set_ylabel('$z$ [m]')
-            ax.set_title(f'State Paths w/ {self.hpo_config.eval_objective[0]}: {returns_mean:.4f} ({tag})')
+            ax.set_title(f'State Paths w/ RMSE: {returns_mean:.4f} ({tag})')
             ax.legend(loc='best', fontsize='small', ncol=2)
 
         plt.tight_layout()

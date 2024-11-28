@@ -37,43 +37,36 @@ class HPOEval(BaseHPO):
     def hp_evaluation(self):
         '''Evaluate the handtuned/optimized hyperparameters and make the comparison.'''
         
-        # change evaluation metric
-        self.hpo_config.objective[0] = self.hpo_config.eval_objective[0]
         # evaluate handtuned hyperparameters
         handtuned_hps = self.config_to_param(self.hps_config)
         np.random.seed(self.hpo_config.seed)
-        handtuned_returns = self.evaluate(handtuned_hps)
+        self.evaluate(handtuned_hps)
         handtuned_trajs_data_list = self.trajs_data_list
         handtuned_metrics_list = self.metrics_list
-        self.plot_results(handtuned_trajs_data_list, handtuned_returns, handtuned_metrics_list, self.output_dir, '(handtuned hps)')
+        self.plot_results(handtuned_trajs_data_list, handtuned_metrics_list, self.output_dir, '(handtuned hps)')
 
         # evaluate vizier hyperparameters
         if 'vizier_hps' in self.hpo_config:
             vizier_hps = self.config_to_param(self.vizier_hps)
             np.random.seed(self.hpo_config.seed)
-            vizier_returns = self.evaluate(vizier_hps)
+            self.evaluate(vizier_hps)
             vizier_trajs_data_list = self.trajs_data_list
             vizier_metrics_list = self.metrics_list
-            self.plot_results(vizier_trajs_data_list, vizier_returns, vizier_metrics_list, self.output_dir, '(vizier hps)')
+            self.plot_results(vizier_trajs_data_list, vizier_metrics_list, self.output_dir, '(vizier hps)')
         
         # evaluate optuna hyperparameters
         if 'optuna_hps' in self.hpo_config:
             optuna_hps = self.config_to_param(self.optuna_hps)
             np.random.seed(self.hpo_config.seed)
-            optuna_returns = self.evaluate(optuna_hps)
+            self.evaluate(optuna_hps)
             optuna_trajs_data_list = self.trajs_data_list
             optuna_metrics_list = self.metrics_list
-            self.plot_results(optuna_trajs_data_list, optuna_returns, optuna_metrics_list, self.output_dir, '(optuna hps)')
+            self.plot_results(optuna_trajs_data_list, optuna_metrics_list, self.output_dir, '(optuna hps)')
 
         trajs_dict = {
             'handtuned hps': handtuned_trajs_data_list,
             'vizier hps': vizier_trajs_data_list if 'vizier_hps' in self.hpo_config else None,
             'optuna hps': optuna_trajs_data_list if 'optuna_hps' in self.hpo_config else None,
-        }
-        returns_dict = {
-            'handtuned hps': handtuned_returns,
-            'vizier hps': vizier_returns if 'vizier_hps' in self.hpo_config else None,
-            'optuna hps': optuna_returns if 'optuna_hps' in self.hpo_config else None,
         }
         metrics_dict = {
             'handtuned hps': handtuned_metrics_list,
@@ -86,7 +79,7 @@ class HPOEval(BaseHPO):
         returns_dict = {k: v for k, v in returns_dict.items() if v is not None}
         metrics_dict = {k: v for k, v in metrics_dict.items() if v is not None}
 
-        self.plot_results_grid(trajs_dict, returns_dict, metrics_dict, self.output_dir)
+        self.plot_results_grid(trajs_dict, metrics_dict, self.output_dir)
 
     def setup_problem(self):
         """
