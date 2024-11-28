@@ -108,10 +108,13 @@ class BaseExperiment:
         obs, info = self._evaluation_reset(ctrl_data=None, sf_data=None, seed=seed)
         ctrl_data = defaultdict(list)
         sf_data = defaultdict(list)
+        inference_time_data = []
 
         if n_episodes is not None:
             while trajs < n_episodes:
+                time_start = time()
                 action = self._select_action(obs=obs, info=info)
+                inference_time_data.append(time() - time_start)
                 # inner sim loop to accomodate different control frequencies
                 for _ in range(sim_steps):
                     steps += 1
@@ -128,7 +131,9 @@ class BaseExperiment:
                         break
         elif n_steps is not None:
             while steps < n_steps:
+                time_start = time()
                 action = self._select_action(obs=obs, info=info)
+                inference_time_data.append(time() - time_start)
                 # inner sim loop to accomodate different control frequencies
                 for _ in range(sim_steps):
                     steps += 1
@@ -151,6 +156,7 @@ class BaseExperiment:
 
         trajs_data = self.env.data
         trajs_data['controller_data'].append(munchify(dict(ctrl_data)))
+        trajs_data['inference_time_data'].append(inference_time_data)
         if self.safety_filter is not None:
             trajs_data['safety_filter_data'].append(munchify(dict(sf_data)))
         return munchify(trajs_data)
@@ -412,6 +418,7 @@ class MetricExtractor:
             'average_constraint_violation': np.asarray(self.get_episode_constraint_violation_steps()).mean(),
             'constraint_violation_std': np.asarray(self.get_episode_constraint_violation_steps()).std(),
             'constraint_violation': np.asarray(self.get_episode_constraint_violation_steps()) if len(self.get_episode_constraint_violation_steps()) > 1 else self.get_episode_constraint_violation_steps()[0],
+            'avarage_inference_time': np.asarray(self.get_episode_inference_time()).mean(),
             # others ???
         }
         return metrics
@@ -491,3 +498,6 @@ class MetricExtractor:
         '''
         return self.get_episode_data('constraint_violation',
                                      postprocess_func=sum)
+    
+    def get_episode_inference_time(self):
+        return self.get_episode_data('inference_time_data')
