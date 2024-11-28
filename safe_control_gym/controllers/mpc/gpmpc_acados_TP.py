@@ -511,7 +511,8 @@ class GPMPC_ACADOS_TP(GPMPC):
         acados_model = AcadosModel()
         acados_model.x = self.model.x_sym
         acados_model.u = self.model.u_sym
-        acados_model.name = model_name
+        current_time = datetime.now().strftime('%Y%m%d_%H%M%S')
+        acados_model.name = self.env.NAME + '_' + current_time
 
         A_lin = self.discrete_dfdx
         B_lin = self.discrete_dfdu
@@ -626,7 +627,7 @@ class GPMPC_ACADOS_TP(GPMPC):
         self.P_res_func = cs.Function('P_res_func', [theta, theta_dot, theta_cmd], [P_res])
 
     def setup_acados_optimizer(self, n_ind_points):
-        print('=================Setting up acados optimizer=================')
+        print('=================Setting up GPMPC acados optimizer=================')
         # before_optimizer_setup = time.time()
         nx, nu = self.model.nx, self.model.nu
         ny = nx + nu
@@ -735,7 +736,10 @@ class GPMPC_ACADOS_TP(GPMPC):
         # c code generation
         # NOTE: when using GP-MPC, a separated directory is needed;
         # otherwise, Acados solver can read the wrong c code
-        ocp.code_export_directory = self.output_dir + '/gpmpc_c_generated_code'
+        # get current time in yy-mm-dd-hh-mm-ss format
+        current_time = datetime.now().strftime('%Y%m%d_%H%M%S')
+        ocp.code_export_directory = self.output_dir + f'/gpmpc_c_generated_code_{current_time}'
+        # ocp.code_export_directory = self.output_dir + '/gpmpc_c_generated_code'
 
         self.ocp = ocp
         self.opti_dict = {'n_ind_points': n_ind_points}
@@ -861,6 +865,10 @@ class GPMPC_ACADOS_TP(GPMPC):
                         self.u_guess = np.zeros((nu, self.T))
             # set initial guess
             for idx in range(self.T + 1):
+                # if self.x_guess[:, idx].shape[0] != nx:
+                #     print(self.x_guess[:, idx].shape)
+                #     raise ValueError(f'x_guess[{idx}] has shape {self.x_guess[:, idx].shape}')
+                assert self.x_guess[:, idx].shape[0] == nx, f'x_guess[{idx}] has shape {self.x_guess[:, idx].shape}'
                 init_x = self.x_guess[:, idx]
                 self.acados_ocp_solver.set(idx, 'x', init_x)
             for idx in range(self.T):
@@ -907,6 +915,9 @@ class GPMPC_ACADOS_TP(GPMPC):
                 # set the parameter values
                 parameter_values = np.concatenate((dyn_value, tighten_value))
                 # self.acados_ocp_solver.set(idx, "p", dyn_value)
+                # check the shapes
+                assert self.ocp.model.p.shape[0] == parameter_values.shape[0], \
+                       f'parameter_values.shape: {parameter_values.shape}; model.p.shape: {self.ocp.model.p.shape}'
                 self.acados_ocp_solver.set(idx, 'p', parameter_values)
             # tighten terminal state constraints
             tighten_value = np.concatenate((state_constraint_set_prev[0][:, self.T], np.zeros((2 * nu,))))
@@ -1051,12 +1062,18 @@ class GPMPC_ACADOS_TP(GPMPC):
                 tighten_value = np.concatenate((state_constraint_set, input_constraint_set))
                 # set the parameter values
                 parameter_values = np.concatenate((dyn_value, tighten_value))
+                # manually check the shapes
+                assert self.ocp.model.p.shape[0] == parameter_values.shape[0], \
+                       f'parameter_values.shape: {parameter_values.shape}; model.p.shape: {self.ocp.model.p.shape}'
                 # self.acados_ocp_solver.set(idx, "p", dyn_value)
                 self.acados_ocp_solver.set(idx, 'p', parameter_values)
             # tighten terminal state constraints
             tighten_value = np.concatenate((state_constraint_set_prev[0][:, self.T], np.zeros((2 * nu,))))
             # set the parameter values
             parameter_values = np.concatenate((dyn_value, tighten_value))
+            # manually check the shapes
+            assert self.ocp.model.p.shape[0] == parameter_values.shape[0], \
+                   f'parameter_values.shape: {parameter_values.shape}; model.p.shape: {self.ocp.model.p.shape}'
             self.acados_ocp_solver.set(self.T, 'p', parameter_values)
         else:
             for idx in range(self.T):
@@ -1485,6 +1502,7 @@ class GPMPC_ACADOS_TP(GPMPC):
 
     @timing
     def reset(self):
+        print(colored('Resetting the GPMPC controller.', 'green'))
         '''Reset the controller before running.'''
         # Setup reference input.
         if self.env.TASK == Task.STABILIZATION:

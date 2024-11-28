@@ -1,4 +1,4 @@
-'''Model Predictive Control using Acados.'''
+'''Linear Time-Invariant (LTI) Model Predictive Control using Acados.'''
 import os
 import shutil
 from copy import deepcopy
@@ -24,8 +24,8 @@ except ImportError as e:
     exit()
 
 
-class MPC_ACADOS(MPC):
-    '''MPC with full nonlinear model.'''
+class LinearMPC_ACADOS(MPC):
+    '''MPC with linear time-invariant (LIT) model.'''
 
     def __init__(
             self,
@@ -90,6 +90,9 @@ class MPC_ACADOS(MPC):
 
         self.x_guess = None
         self.u_guess = None
+        # linearization point
+        self.x_lin = np.atleast_2d(self.model.X_EQ)[0, :].T
+        self.u_lin = np.atleast_2d(self.model.U_EQ)[0, :].T
         # acados settings
         self.use_RTI = use_RTI
 
@@ -129,15 +132,19 @@ class MPC_ACADOS(MPC):
         acados_model.u = self.model.u_sym
         acados_model.name = self.env.NAME
 
-        # continuous-time dynamics
-        fc_func = self.model.fc_func
-        # set up rk4 (acados need symbolic expression of dynamics, not function)
-        k1 = fc_func(acados_model.x, acados_model.u)
-        k2 = fc_func(acados_model.x + self.dt / 2 * k1, acados_model.u)
-        k3 = fc_func(acados_model.x + self.dt / 2 * k2, acados_model.u)
-        k4 = fc_func(acados_model.x + self.dt * k3, acados_model.u)
-
-        f_disc = acados_model.x + self.dt / 6 * (k1 + 2 * k2 + 2 * k3 + k4) 
+        # # continuous-time dynamics
+        # fc_func = self.model.fc_func
+        # x_dot = self.model.fc_linear_func(self.x_lin, self.u_lin, acados_model.x, acados_model.u)
+        # fc_func = cs.Function('fc_func', [acados_model.x, acados_model.u], 
+        #                                  [x_dot],)
+        # # set up rk4 (acados need symbolic expression of dynamics, not function)
+        # k1 = fc_func(acados_model.x, acados_model.u)
+        # k2 = fc_func(acados_model.x + self.dt / 2 * k1, acados_model.u)
+        # k3 = fc_func(acados_model.x + self.dt / 2 * k2, acados_model.u)
+        # k4 = fc_func(acados_model.x + self.dt * k3, acados_model.u)
+        # f_disc = acados_model.x + self.dt / 6 * (k1 + 2 * k2 + 2 * k3 + k4) 
+        
+        f_disc = self.linear_dynamics_func(acados_model.x, acados_model.u)
 
         acados_model.disc_dyn_expr = f_disc
         '''
@@ -196,9 +203,9 @@ class MPC_ACADOS(MPC):
         state_constraint_expr_list = []
         input_constraint_expr_list = []
         for sc_i, state_constraint in enumerate(self.state_constraints_sym):
-            state_constraint_expr_list.append(state_constraint(ocp.model.x))
+            state_constraint_expr_list.append(state_constraint(ocp.model.x+self.x_lin))
         for ic_i, input_constraint in enumerate(self.input_constraints_sym):
-            input_constraint_expr_list.append(input_constraint(ocp.model.u))
+            input_constraint_expr_list.append(input_constraint(ocp.model.u+self.u_lin))
 
         h_expr_list = state_constraint_expr_list + input_constraint_expr_list
         h_expr = cs.vertcat(*h_expr_list)
@@ -246,7 +253,7 @@ class MPC_ACADOS(MPC):
         # c code generation
         # NOTE: when using GP-MPC, a separated directory is needed;
         # otherwise, Acados solver can read the wrong c code
-        ocp.code_export_directory = self.output_dir + '/mpc_c_generated_code'
+        ocp.code_export_directory = self.output_dir + '/linear_mpc_c_generated_code'
 
         self.ocp = ocp
 
@@ -316,6 +323,8 @@ class MPC_ACADOS(MPC):
 
         Returns:
             action (ndarray): Input/action to the task/env.
+        
+        NOTE: The the previous solutions has the value of linearized dynamics
         '''
         nx, nu = self.model.nx, self.model.nu
         # set initial condition (0-th state)
@@ -345,7 +354,9 @@ class MPC_ACADOS(MPC):
             self.traj_step += 1
 
         # y_ref = np.concatenate((goal_states[:, :-1], np.zeros((nu, self.T))))
-        y_ref = np.concatenate((goal_states[:, :-1], np.repeat(self.U_EQ.reshape(-1, 1), self.T, axis=1)), axis=0)
+        x_ref = goal_states[:, :-1] - np.repeat(self.x_lin.reshape(-1, 1), self.T, axis=1)
+        u_ref = np.repeat(self.U_EQ.reshape(-1, 1) - self.u_lin.reshape(-1, 1), self.T, axis=1)
+        y_ref = np.concatenate((x_ref, u_ref), axis=0)
         for idx in range(self.T):
             self.acados_ocp_solver.set(idx, 'yref', y_ref[:, idx])
         y_ref_e = goal_states[:, -1]
@@ -420,7 +431,9 @@ class MPC_ACADOS(MPC):
         self.results_dict['horizon_inputs'].append(deepcopy(self.u_prev))
         self.results_dict['goal_states'].append(deepcopy(goal_states))
 
-        self.prev_action = action
+        # recover the action
+        action += self.u_lin.flatten()
+
         if self.use_lqr_gain_and_terminal_cost:
             action += self.lqr_gain @ (obs - self.x_prev[:, 0])
 

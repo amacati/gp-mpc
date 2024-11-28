@@ -13,7 +13,7 @@ from safe_control_gym.controllers.mpc.mpc_utils import (compute_discrete_lqr_gai
 from safe_control_gym.envs.benchmark_env import Task
 from safe_control_gym.envs.constraints import GENERAL_CONSTRAINTS, create_constraint_list
 from safe_control_gym.utils.utils import timing
-
+from numpy.linalg import LinAlgError
 
 class MPC(BaseController):
     '''MPC with full nonlinear model.'''
@@ -166,11 +166,27 @@ class MPC(BaseController):
                                                 ['xf'])
         self.dfdx = dfdx
         self.dfdu = dfdu
-        self.lqr_gain, _, _, self.P = compute_discrete_lqr_gain_from_cont_linear_system(dfdx,
-                                                                                        dfdu,
-                                                                                        self.Q,
-                                                                                        self.R,
-                                                                                        self.dt)
+        # # check controlled system is stabilizable
+        # A = dfdx
+        # B = dfdu
+        # n = self.model.nx
+        # m = self.model.nu
+        # import control
+        # ctrb = control.ctrb(A, B)
+        # if np.linalg.matrix_rank(ctrb) != n:
+        #     raise Exception('System is not stabilizable')
+        try:
+            self.lqr_gain, _, _, self.P = \
+                compute_discrete_lqr_gain_from_cont_linear_system(dfdx,
+                                                                  dfdu,
+                                                                  self.Q,
+                                                                  self.R,
+                                                                  self.dt)
+        except LinAlgError:
+            print(colored('LQR gain computation failed', 'red'))
+            print(colored('Using the LQR gain and terminal cost in the MPC is disabled', 'yellow'))
+            self.use_lqr_gain_and_terminal_cost = False
+            
         # nonlinear dynamics
         self.dynamics_func = rk_discrete(self.model.fc_func,
                                          self.model.nx,

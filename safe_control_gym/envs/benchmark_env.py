@@ -617,6 +617,13 @@ class BenchmarkEnv(gym.Env, ABC):
                                                                                position_offset[1],
                                                                                scaling)
                 speed_traj[t[0]] = np.linalg.norm(vel_ref_traj[t[0]])
+        # 
+        # NOTE: update 25.11.24: manually shift the z axis to 1.0 if not in the traj plane
+        #       ptherwise flying on the floor with z=0.0 
+        if 'z' not in traj_plane:
+            pos_ref_traj[:, 2] = 1.0
+            vel_ref_traj[:, 2] = 0.0
+            
         return pos_ref_traj, vel_ref_traj, speed_traj
 
     def _get_coordinates(self,

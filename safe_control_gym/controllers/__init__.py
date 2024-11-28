@@ -85,3 +85,7 @@ register(idx='gpmpc_casadi',
 register(idx='gpmpc_acados_TP',
             entry_point='safe_control_gym.controllers.mpc.gpmpc_acados_TP:GPMPC_ACADOS_TP',
             config_entry_point='safe_control_gym.controllers.mpc:gpmpc_acados_TP.yaml')
+
+register(idx='linear_mpc_acados',
+            entry_point='safe_control_gym.controllers.mpc.linear_mpc_acados:LinearMPC_ACADOS',
+            config_entry_point='safe_control_gym.controllers.mpc:linear_mpc_acados.yaml')

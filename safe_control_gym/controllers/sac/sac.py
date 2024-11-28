@@ -156,6 +156,7 @@ class SAC(BaseController):
             set_random_state(state['random_state'])
             self.env.set_env_random_state(state['env_random_state'])
             if 'buffer' in state:
+                self.buffer = SACBuffer(self.env.observation_space, self.env.action_space, self.max_buffer_size, self.train_batch_size)
                 self.buffer.load_state_dict(state['buffer'])
             self.logger.load(self.total_steps)
 
@@ -357,52 +358,55 @@ class SAC(BaseController):
             prefix='time')
 
         # learning stats
-        if 'policy_loss' in results:
+        try:
+            if 'policy_loss' in results:
+                self.logger.add_scalars(
+                    {
+                        k: results[k]
+                        for k in ['policy_loss', 'critic_loss', 'entropy_loss']
+                    },
+                    step,
+                    prefix='loss')
+
+            # performance stats
+            ep_lengths = np.asarray(self.env.length_queue)
+            ep_returns = np.asarray(self.env.return_queue)
+            ep_constraint_violation = np.asarray(self.env.queued_stats['constraint_violation'])
             self.logger.add_scalars(
                 {
-                    k: results[k]
-                    for k in ['policy_loss', 'critic_loss', 'entropy_loss']
+                    'ep_length': ep_lengths.mean(),
+                    'ep_return': ep_returns.mean(),
+                    'ep_return_std': ep_returns.std(),
+                    'ep_reward': (ep_returns / ep_lengths).mean(),
+                    'ep_constraint_violation': ep_constraint_violation.mean()
                 },
                 step,
-                prefix='loss')
+                prefix='stat')
 
-        # performance stats
-        ep_lengths = np.asarray(self.env.length_queue)
-        ep_returns = np.asarray(self.env.return_queue)
-        ep_constraint_violation = np.asarray(self.env.queued_stats['constraint_violation'])
-        self.logger.add_scalars(
-            {
-                'ep_length': ep_lengths.mean(),
-                'ep_return': ep_returns.mean(),
-                'ep_return_std': ep_returns.std(),
-                'ep_reward': (ep_returns / ep_lengths).mean(),
-                'ep_constraint_violation': ep_constraint_violation.mean()
-            },
-            step,
-            prefix='stat')
+            # total constraint violation during learning
+            total_violations = self.env.accumulated_stats['constraint_violation']
+            self.logger.add_scalars({'constraint_violation': total_violations}, step, prefix='stat')
 
-        # total constraint violation during learning
-        total_violations = self.env.accumulated_stats['constraint_violation']
-        self.logger.add_scalars({'constraint_violation': total_violations}, step, prefix='stat')
-
-        if 'eval' in results:
-            eval_ep_lengths = results['eval']['ep_lengths']
-            eval_ep_returns = results['eval']['ep_returns']
-            eval_constraint_violation = results['eval']['constraint_violation']
-            eval_rmse = results['eval']['rmse']
-            eval_rmse_std = results['eval']['rmse_std']
-            self.logger.add_scalars(
-                {
-                    'ep_length': eval_ep_lengths.mean(),
-                    'ep_return': eval_ep_returns.mean(),
-                    'ep_return_std': eval_ep_returns.std(),
-                    'ep_reward': (eval_ep_returns / eval_ep_lengths).mean(),
-                    'constraint_violation': eval_constraint_violation.mean(),
-                    'rmse': eval_rmse,
-                    'rmse_std': eval_rmse_std
-                },
-                step,
-                prefix='stat_eval')
+            if 'eval' in results:
+                eval_ep_lengths = results['eval']['ep_lengths']
+                eval_ep_returns = results['eval']['ep_returns']
+                eval_constraint_violation = results['eval']['constraint_violation']
+                eval_rmse = results['eval']['rmse']
+                eval_rmse_std = results['eval']['rmse_std']
+                self.logger.add_scalars(
+                    {
+                        'ep_length': eval_ep_lengths.mean(),
+                        'ep_return': eval_ep_returns.mean(),
+                        'ep_return_std': eval_ep_returns.std(),
+                        'ep_reward': (eval_ep_returns / eval_ep_lengths).mean(),
+                        'constraint_violation': eval_constraint_violation.mean(),
+                        'rmse': eval_rmse,
+                        'rmse_std': eval_rmse_std
+                    },
+                    step,
+                    prefix='stat_eval')
+        except:
+            pass
 
         # print summary table
         self.logger.dump_scalars()

@@ -206,6 +206,6 @@ def timing(f):
         result = f(*args, **kw)
         te = time.time()
         wrap.elapsed_time = te - ts
-        print(colored(f'func:{f.__name__} took: {wrap.elapsed_time:.3f} sec', 'blue' ))
+        print(colored(f'func:{f.__name__} took: {wrap.elapsed_time:.4f} sec', 'blue' ))
         return result
     return wrap
