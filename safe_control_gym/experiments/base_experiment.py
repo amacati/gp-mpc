@@ -241,7 +241,9 @@ class BaseExperiment:
             metrics (dict): The metrics calculated from the raw data.
         '''
 
-        metrics = self.metric_extractor.compute_metrics(data=trajs_data, verbose=self.verbose)
+        metrics = self.metric_extractor.compute_metrics(data=trajs_data, 
+                                                        max_steps=self.MAX_STEPS,
+                                                        verbose=self.verbose)
 
         return metrics
 
@@ -389,7 +391,7 @@ class MetricExtractor:
         (how many constraint violations happened in each episode)
     '''
 
-    def compute_metrics(self, data, verbose=False):
+    def compute_metrics(self, data, max_steps, verbose=False):
         '''Compute all standard metrics on the given trajectory data.
 
         Args:
@@ -402,6 +404,7 @@ class MetricExtractor:
 
         self.data = data
         self.verbose = verbose
+        self.max_steps = max_steps
 
         # collect & compute all sorts of metrics here
         metrics = {
@@ -420,6 +423,7 @@ class MetricExtractor:
             'constraint_violation_std': np.asarray(self.get_episode_constraint_violation_steps()).std(),
             'constraint_violation': np.asarray(self.get_episode_constraint_violation_steps()) if len(self.get_episode_constraint_violation_steps()) > 1 else self.get_episode_constraint_violation_steps()[0],
             'avarage_inference_time': np.asarray(self.get_episode_inference_time()).mean(),
+            'early_stop': np.asarray(self.get_episode_early_stop()),
             # others ???
         }
         return metrics
@@ -509,4 +513,20 @@ class MetricExtractor:
                                      postprocess_func=sum)
     
     def get_episode_inference_time(self):
+        '''Average inference time of episodes.
+        
+        Returns:
+            episode_inference_time (double): The average inference time of all episodes.
+        '''
         return self.get_episode_data('inference_time_data')
+    
+    def get_episode_early_stop(self):
+        '''Occurence of early stop in episodes.
+
+        Returns:
+            episode_early_stop (list): Whether each episode had an early stop. 
+            1 if early stop, 0 otherwise.
+        '''
+        episode_length = self.get_episode_data('length', postprocess_func=sum)
+        num_length_data = len(episode_length)
+        return [1 if episode_length[i] < self.max_steps else 0 for i in range(num_length_data)]
