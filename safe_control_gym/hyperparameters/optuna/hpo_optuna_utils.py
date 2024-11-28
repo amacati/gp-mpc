@@ -474,37 +474,37 @@ def pid_sampler(trial: optuna.Trial, state_dim: int, action_dim: int) -> Dict[st
     """
 
     p_coeff_for = [
-        trial.suggest_float(f'P_COEFF_FOR_{i}', PID_dict['P_COEFF_FOR']['values'][0], PID_dict['P_COEFF_FOR']['values'][1], log=is_log_scale(PID_dict['P_COEFF_FOR']))
+        trial.suggest_float(f'p_coeff_for_{i}', PID_dict['p_coeff_for']['values'][0], PID_dict['p_coeff_for']['values'][1], log=is_log_scale(PID_dict['p_coeff_for']))
         for i in range(3)
     ]
     i_coeff_for = [
-        trial.suggest_float(f'I_COEFF_FOR_{i}', PID_dict['I_COEFF_FOR']['values'][0], PID_dict['I_COEFF_FOR']['values'][1], log=is_log_scale(PID_dict['I_COEFF_FOR']))
+        trial.suggest_float(f'i_coeff_for_{i}', PID_dict['i_coeff_for']['values'][0], PID_dict['i_coeff_for']['values'][1], log=is_log_scale(PID_dict['i_coeff_for']))
         for i in range(3)
     ]
     d_coeff_for = [
-        trial.suggest_float(f'D_COEFF_FOR_{i}', PID_dict['D_COEFF_FOR']['values'][0], PID_dict['D_COEFF_FOR']['values'][1], log=is_log_scale(PID_dict['D_COEFF_FOR']))
+        trial.suggest_float(f'd_coeff_for_{i}', PID_dict['d_coeff_for']['values'][0], PID_dict['d_coeff_for']['values'][1], log=is_log_scale(PID_dict['d_coeff_for']))
         for i in range(3)
     ]
     p_coeff_tor = [
-        trial.suggest_float(f'P_COEFF_TOR_{i}', PID_dict['P_COEFF_TOR']['values'][0], PID_dict['P_COEFF_TOR']['values'][1], log=is_log_scale(PID_dict['P_COEFF_TOR']))
+        trial.suggest_float(f'p_coeff_tor_{i}', PID_dict['p_coeff_tor']['values'][0], PID_dict['p_coeff_tor']['values'][1], log=is_log_scale(PID_dict['p_coeff_tor']))
         for i in range(3)
     ]
     i_coeff_tor = [
-        trial.suggest_float(f'I_COEFF_TOR_{i}', PID_dict['I_COEFF_TOR']['values'][0], PID_dict['I_COEFF_TOR']['values'][1], log=is_log_scale(PID_dict['I_COEFF_TOR']))
+        trial.suggest_float(f'i_coeff_tor_{i}', PID_dict['i_coeff_tor']['values'][0], PID_dict['i_coeff_tor']['values'][1], log=is_log_scale(PID_dict['i_coeff_tor']))
         for i in range(3)
     ]
     d_coeff_tor = [
-        trial.suggest_float(f'D_COEFF_TOR_{i}', PID_dict['D_COEFF_TOR']['values'][0], PID_dict['D_COEFF_TOR']['values'][1], log=is_log_scale(PID_dict['D_COEFF_TOR']))
+        trial.suggest_float(f'd_coeff_tor_{i}', PID_dict['d_coeff_tor']['values'][0], PID_dict['d_coeff_tor']['values'][1], log=is_log_scale(PID_dict['d_coeff_tor']))
         for i in range(3)
     ]
 
     hps_suggestion = {
-        'P_COEFF_FOR': p_coeff_for,
-        'I_COEFF_FOR': i_coeff_for,
-        'D_COEFF_FOR': d_coeff_for,
-        'P_COEFF_TOR': p_coeff_tor,
-        'I_COEFF_TOR': i_coeff_tor,
-        'D_COEFF_TOR': d_coeff_tor,
+        'p_coeff_for': p_coeff_for,
+        'i_coeff_for': i_coeff_for,
+        'd_coeff_for': d_coeff_for,
+        'p_coeff_tor': p_coeff_tor,
+        'i_coeff_tor': i_coeff_tor,
+        'd_coeff_tor': d_coeff_tor,
     }
 
     return hps_suggestion

@@ -7,12 +7,40 @@ from copy import deepcopy
 from functools import partial
 
 import numpy as np
+import matplotlib.pyplot as plt
+import colorsys
 
 from safe_control_gym.experiments.base_experiment import BaseExperiment
 from safe_control_gym.hyperparameters.hpo_search_space import HYPERPARAMS_DICT
 from safe_control_gym.utils.logging import ExperimentLogger
 from safe_control_gym.utils.registration import make
 from safe_control_gym.utils.utils import mkdirs
+
+def interpolate_color(base_hex, light_hex, num_seeds, max_seeds):
+    # Convert HEX to RGB
+    def hex_to_rgb(hex_color):
+        hex_color = hex_color.lstrip('#')
+        return tuple(int(hex_color[i:i+2], 16) / 255.0 for i in (0, 2, 4))
+    
+    # Convert RGB to HEX
+    def rgb_to_hex(rgb):
+        return '#' + ''.join(f'{int(c * 255):02x}' for c in rgb)
+    
+    # Convert RGB to HLS
+    base_rgb = hex_to_rgb(base_hex)
+    light_rgb = hex_to_rgb(light_hex)
+    base_hls = colorsys.rgb_to_hls(*base_rgb)
+    light_hls = colorsys.rgb_to_hls(*light_rgb)
+    
+    # Interpolate lightness
+    ratio = min(num_seeds / max_seeds, 1.0)  # Clamp to [0, 1]
+    interpolated_lightness = base_hls[1] + (light_hls[1] - base_hls[1]) * ratio
+    
+    # Keep hue and saturation constant, change lightness
+    interpolated_hls = (base_hls[0], interpolated_lightness, base_hls[2])
+    interpolated_rgb = colorsys.hls_to_rgb(*interpolated_hls)
+    
+    return rgb_to_hex(interpolated_rgb)
 
 
 class BaseHPO(ABC):
@@ -287,7 +315,7 @@ class BaseHPO(ABC):
         """
         sampled_hyperparams = params
 
-        returns, seeds = [], []
+        returns, seeds, trajs_data_list, metrics_list = [], [], [], []
         for i in range(self.hpo_config.repetitions):
 
             seed = np.random.randint(0, 10000)
@@ -366,7 +394,7 @@ class BaseHPO(ABC):
 
             # TODO: add n_episondes to the config
             try:
-                _, metrics = experiment.run_evaluation(n_episodes=self.n_episodes, n_steps=None, done_on_max_steps=False)
+                trajs_data, metrics = experiment.run_evaluation(n_episodes=self.n_episodes, n_steps=None, done_on_max_steps=False)
             except Exception as e:
                 self.agent.close()
                 # delete instances
@@ -381,13 +409,22 @@ class BaseHPO(ABC):
                 return self.none_handler()
 
             # at the moment, only single-objective optimization is supported
-            returns.append(metrics[self.hpo_config.objective[0]])
+            trajs_data_list.append(trajs_data)
+            metrics_list.append(metrics)
+            obj_value = metrics[self.hpo_config.objective[0]]
+            penalty = metrics[self.hpo_config.penalty[0]]
+            res_obj = obj_value - self.hpo_config.penalty_coeff[0] * penalty
+            self.logger.info(f'f - penalty_coeff * penalty: {obj_value} - {self.hpo_config.penalty_coeff[0]} * {penalty} = {res_obj}')
+            returns.append(res_obj)
             self.logger.info('Sampled objectives: {}'.format(returns))
 
             self.agent.close()
             # delete instances
             del self.agent
             del self.env_func
+        
+        self.trajs_data_list = trajs_data_list
+        self.metrics_list = metrics
 
         return returns
 
@@ -413,3 +450,159 @@ class BaseHPO(ABC):
         Save checkpoints, results, and logs during optimization.
         """
         raise NotImplementedError
+    
+    def plot_results(self, trajs_data_list, metrics, output_dir, tag):
+        '''Plot the evaluation results, overlaying all trajectories.
+
+        Args:
+            trajs_data_list (list): List of seeds, where each seed is a dictionary with keys:
+                'obs': Array of shape (num_episodes, ).
+                'current_physical_action': Array of shape (num_episodes, ).
+            metrics (list): List of metrics for each seed.
+            output_dir (str): Output directory for plots.
+            tag (str): Other info for the plot.
+        '''
+        # Ensure the output directory exists
+        os.makedirs(output_dir, exist_ok=True)
+
+        # Number of seeds
+        num_seeds = len(trajs_data_list)
+
+        # metrics
+        returns_mean = np.mean(metrics['rmse'])
+        action_change = np.mean(metrics['rms_action_change'])
+
+        # Flatten data: extract episodes from each seed
+        state_traj = np.vstack([seed_data['obs'] for seed_data in trajs_data_list])
+        action_traj = np.vstack([seed_data['current_clipped_action'] for seed_data in trajs_data_list]) 
+
+        # Total number of episodes
+        num_episodes = state_traj.shape[0]
+        episodes_per_seed = state_traj.shape[0] // num_seeds  # Assuming equal episodes per seed
+
+        alpha_values = np.linspace(0.65, 1.0, num_seeds)  # Transparency range
+
+        thrust_color = '#1b9e77'  # Green
+        thrust_light_color = '#a6dbb0'  # Light green
+        pitch_color = '#7570b3'  # Purple
+        pitch_light_color = '#c7c1e4'  # Light purple
+
+        # Plot all action trajectories in one plot
+        fig, ax = plt.subplots(figsize=(8, 4))
+        for ep_idx in range(num_episodes):
+            seed_idx = ep_idx // episodes_per_seed  # Determine which seed this episode belongs to
+            color = interpolate_color(thrust_color, thrust_light_color, seed_idx, num_seeds)
+            ax.plot(action_traj[ep_idx, :, 0], label=f'Seed {seed_idx + 1} Thrust' if ep_idx % episodes_per_seed == 0 else None, color=color, lw=2)
+            color = interpolate_color(pitch_color, pitch_light_color, seed_idx, num_seeds)
+            ax.plot(action_traj[ep_idx, :, 1], label=f'Seed {seed_idx + 1} Pitch' if ep_idx % episodes_per_seed == 0 else None, color=color, lw=2, linestyle='--')
+        ax.set_xlabel('Time step')
+        ax.set_ylabel('Action')
+        ax.set_title(f'Action Trajectories w/ RMS: {action_change:.4f} {tag}')
+        ax.legend(loc='best', fontsize='small', ncol=2)
+        plt.tight_layout()
+        plt.savefig(os.path.join(output_dir, f'action_trajectories_{tag}.png'))
+        plt.close()
+
+        # Plot all state trajectories in x-z plane in one plot
+        fig, ax = plt.subplots(figsize=(8, 4))
+        for ep_idx in range(num_episodes):
+            seed_idx = ep_idx // episodes_per_seed  # Determine which seed this episode belongs to
+            alpha = alpha_values[seed_idx]
+            ax.plot(state_traj[ep_idx, :, 0], state_traj[ep_idx, :, 2],
+                    label=f'Seed {seed_idx + 1}' if ep_idx % episodes_per_seed == 0 else None, color='blue', lw=2, alpha=alpha)
+        ax.set_xlabel('$x$ [m]')
+        ax.set_ylabel('$z$ [m]')
+        ax.set_title(f'State Paths w/ {self.hpo_config.eval_objective[0]}: {returns_mean:.4f} {tag}')
+        ax.legend(loc='best', fontsize='small', ncol=2)
+        plt.tight_layout()
+        plt.savefig(os.path.join(output_dir, f'state_paths_{tag}.png'))
+        plt.close()
+
+    def plot_results_grid(self, trajs_dict, metrics_dict, output_dir):
+        """
+        Plot evaluation results in a grid layout.
+        Each row corresponds to a trajectory type (state or action),
+        and each column corresponds to a hyperparameter set.
+
+        Args:
+            trajs_dict (dict): Dictionary where keys are tags (e.g., 'handtuned hps', 'vizier hps') 
+                            and values are corresponding trajs_data_list.
+            metrics_dict (dict): Dictionary where keys are tags (e.g., 'handtuned hps', 'vizier hps')
+            output_dir (str): Output directory for plots.
+        """
+        # Ensure the output directory exists
+        os.makedirs(output_dir, exist_ok=True)
+
+        # Create a figure with a grid layout: 2 rows (state and action) and N columns (tags)
+        num_tags = len(trajs_dict)
+        fig, axes = plt.subplots(2, num_tags, figsize=(5 * num_tags, 8))
+        
+        if num_tags == 1:  # Handle case where there is only one tag (axes won't be a 2D array)
+            axes = np.expand_dims(axes, axis=-1)
+
+        # Define a base color for each hyperparameter set
+        hps_colors = {
+            'handtuned hps': 'blue',
+            'vizier hps': 'green',
+            'optuna hps': 'orange'
+        }
+
+        # Iterate over tags and data
+        for col_idx, (tag, trajs_data_list) in enumerate(trajs_dict.items()):
+            # Number of seeds
+            num_seeds = len(trajs_data_list)
+
+            # Flatten data: extract episodes from each seed
+            state_traj = np.vstack([seed_data['obs'] for seed_data in trajs_data_list])
+            action_traj = np.vstack([seed_data['current_clipped_action'] for seed_data in trajs_data_list]) 
+
+            # Total number of episodes
+            num_episodes = state_traj.shape[0]
+            episodes_per_seed = state_traj.shape[0] // num_seeds  # Assuming equal episodes per seed
+
+            # Define a base color and varying transparency levels
+            base_color = hps_colors.get(tag, 'gray')
+            alpha_values = np.linspace(0.65, 1.0, num_seeds)  # Transparency range
+            thrust_color = '#1b9e77'  # Green
+            thrust_light_color = '#a6dbb0'  # Light green
+            pitch_color = '#7570b3'  # Purple
+            pitch_light_color = '#c7c1e4'  # Light purple
+
+            metrics = metrics_dict[tag]
+            action_change = np.mean(metrics['rms_action_change'])
+
+            # Plot action trajectories
+            ax = axes[0, col_idx]
+            for ep_idx in range(num_episodes):
+                seed_idx = ep_idx // episodes_per_seed  # Determine which seed this episode belongs to
+                alpha = alpha_values[seed_idx]
+                color = interpolate_color(thrust_color, thrust_light_color, seed_idx, num_seeds)
+                ax.plot(action_traj[ep_idx, :, 0], label=f'Seed {seed_idx + 1} Thrust' if ep_idx % episodes_per_seed == 0 else None,
+                        color=color, lw=2, alpha=alpha)
+                color = interpolate_color(pitch_color, pitch_light_color, seed_idx, num_seeds)
+                ax.plot(action_traj[ep_idx, :, 1], label=f'Seed {seed_idx + 1} Pitch' if ep_idx % episodes_per_seed == 0 else None,
+                        color=color, lw=2, linestyle='--', alpha=alpha)
+            ax.set_xlabel('Time step')
+            ax.set_ylabel('Action')
+            ax.set_title(f'Action Trajectories w/ RMS: {action_change:.4f} ({tag})')
+            ax.legend(loc='best', fontsize='small', ncol=2)
+
+            # metrics
+            returns_mean = np.mean(metrics['rmse'])
+
+            # Plot state trajectories in x-z plane
+            ax = axes[1, col_idx]
+            for ep_idx in range(num_episodes):
+                seed_idx = ep_idx // episodes_per_seed  # Determine which seed this episode belongs to
+                alpha = alpha_values[seed_idx]
+                ax.plot(state_traj[ep_idx, :, 0], state_traj[ep_idx, :, 2],
+                        label=f'Seed {seed_idx + 1}' if ep_idx % episodes_per_seed == 0 else None,
+                        color=base_color, lw=2, alpha=alpha)
+            ax.set_xlabel('$x$ [m]')
+            ax.set_ylabel('$z$ [m]')
+            ax.set_title(f'State Paths w/ {self.hpo_config.eval_objective[0]}: {returns_mean:.4f} ({tag})')
+            ax.legend(loc='best', fontsize='small', ncol=2)
+
+        plt.tight_layout()
+        plt.savefig(os.path.join(output_dir, 'overall_evaluation_results.png'))
+        plt.close()

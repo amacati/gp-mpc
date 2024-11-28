@@ -70,6 +70,13 @@ class HPO_Optuna(BaseHPO):
         self.logger.info('Trial number: {}'.format(trial.number))
 
         returns = self.evaluate(sampled_hyperparams)
+        if returns != self.none_handler():
+            trajs_data_list = self.trajs_data_list
+            metrics_list = self.metrics_list
+            try:
+                self.plot_results(trajs_data_list, metrics_list, self.output_dir, '(warmstart)')
+            except:
+                pass
         Gss = np.array(returns).mean()
 
         if trial.number == 0:

@@ -3,6 +3,9 @@ hpo_config:
   load_if_exists: True # this should set to True if hpo is run in parallel
   objective: [exponentiated_rmse] # [other metrics defined in base_experiment.py]
   objective_bounds: [[0.0, 1.0]] # [bounds for each objective]. Worse value will be assigned if objective evaluation is None
+  penalty: [rms_action_change] # [other metrics defined in base_experiment.py]
+  penalty_coeff: [1.0] # [penalty coefficient for each penalty]
+  eval_objective: [rmse] # [other metrics defined in base_experiment.py]
   direction: [maximize] # [minimize, maximize]
   repetitions: 5 # number of samples of performance for each objective query
   n_episodes: 5 # number of episodes to evaluate each policy
@@ -14,10 +17,60 @@ hpo_config:
 
   # hyperparameters
   hps_config:
-    P_COEFF_FOR: [.4, .4, 1.25]
-    I_COEFF_FOR: [.05, .05, .05]
-    D_COEFF_FOR: [.2, .2, .5]
+    p_coeff_for: [.4, .4, 1.25]
+    i_coeff_for: [.05, .05, .05]
+    d_coeff_for: [.2, .2, .5]
 
-    P_COEFF_TOR: [70000., 70000., 60000.]
-    I_COEFF_TOR: [.0, .0, 500.]
-    D_COEFF_TOR: [20000., 20000., 12000.]
+    p_coeff_tor: [70000., 70000., 60000.]
+    i_coeff_tor: [.0, .0, 500.]
+    d_coeff_tor: [20000., 20000., 12000.]
+  vizier_hps:
+    d_coeff_for:
+    - 2.129021744940595
+    - 0.4640573281692209
+    - 2.542887187784077
+    d_coeff_tor:
+    - 14998.998579124276
+    - 10019.881571806687
+    - 10534.570451701942
+    i_coeff_for:
+    - 0.0014889448824393103
+    - 2.1744158095428565
+    - 0.0029573499100777104
+    i_coeff_tor:
+    - 441.54939925530545
+    - 0.5010238470068967
+    - 444.3856421179262
+    p_coeff_for:
+    - 4.886838283343341
+    - 4.608092291879853
+    - 4.996853766830539
+    p_coeff_tor:
+    - 50002.195370586196
+    - 79982.3047902415
+    - 50006.91012411862
+  optuna_hps:
+    d_coeff_for:
+    - 1.5604761716915811
+    - 1.3593133298420035
+    - 3.2553437457217855
+    d_coeff_tor:
+    - 12782.496926017255
+    - 13315.217714132743
+    - 13650.965688467855
+    i_coeff_for:
+    - 2.4249337311042356
+    - 0.5072768704878523
+    - 4.280513008919815
+    i_coeff_tor:
+    - 518.9194229378894
+    - 298.29551117414286
+    - 332.42926926363987
+    p_coeff_for:
+    - 4.553904304026884
+    - 3.439182803233737
+    - 4.778645189386438
+    p_coeff_tor:
+    - 68371.22038933045
+    - 69727.19131379195
+    - 68354.19711764912
