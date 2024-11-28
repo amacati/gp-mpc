@@ -422,7 +422,7 @@ class MetricExtractor:
             'average_constraint_violation': np.asarray(self.get_episode_constraint_violation_steps()).mean(),
             'constraint_violation_std': np.asarray(self.get_episode_constraint_violation_steps()).std(),
             'constraint_violation': np.asarray(self.get_episode_constraint_violation_steps()) if len(self.get_episode_constraint_violation_steps()) > 1 else self.get_episode_constraint_violation_steps()[0],
-            'avarage_inference_time': np.asarray(self.get_episode_inference_time()).mean(),
+            'avarage_inference_time': np.asarray(self.get_episode_inference_time()),
             'early_stop': np.asarray(self.get_episode_early_stop()),
             # others ???
         }
@@ -518,7 +518,7 @@ class MetricExtractor:
         Returns:
             episode_inference_time (double): The average inference time of all episodes.
         '''
-        return self.get_episode_data('inference_time_data')
+        return self.get_episode_data('inference_time_data', postprocess_func=lambda x: np.mean(x))
     
     def get_episode_early_stop(self):
         '''Occurence of early stop in episodes.
