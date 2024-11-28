@@ -97,12 +97,15 @@ class HPO_Vizier(BaseHPO):
                 raise ValueError('Invalid hyperparameter category')
 
         # Set optimization direction based on objective and direction from the HPO config
-        if self.hpo_config.direction[0] == 'maximize':
-            self.problem.metric_information.append(
-                vz.MetricInformation(name=self.hpo_config.objective[0], goal=vz.ObjectiveMetricGoal.MAXIMIZE))
-        elif self.hpo_config.direction[0] == 'minimize':
-            self.problem.metric_information.append(
-                vz.MetricInformation(name=self.hpo_config.objective[0], goal=vz.ObjectiveMetricGoal.MINIMIZE))
+        for objective, direction in zip(self.hpo_config.objective, self.hpo_config.direction):
+            if direction == 'maximize':
+                self.problem.metric_information.append(
+                    vz.MetricInformation(name=objective, goal=vz.ObjectiveMetricGoal.MAXIMIZE))
+            elif direction == 'minimize':
+                self.problem.metric_information.append(
+                    vz.MetricInformation(name=objective, goal=vz.ObjectiveMetricGoal.MINIMIZE))
+            else:
+                raise ValueError('Invalid direction, must be either maximize or minimize')
 
     def hyperparameter_optimization(self) -> None:
         """ Hyperparameter optimization.
@@ -112,6 +115,7 @@ class HPO_Vizier(BaseHPO):
                 endpoint = yaml.safe_load(config_file)['endpoint']
             clients.environment_variables.server_endpoint = endpoint
             study_config = vz.StudyConfig.from_problem(self.problem)
+            study_config.algorithm = 'GAUSSIAN_PROCESS_BANDIT'
             self.study_client = clients.Study.from_study_config(study_config, owner='owner', study_id=self.study_name)
             self.study_client = clients.Study.from_resource_name(self.study_client.resource_name)
         else:
@@ -122,6 +126,7 @@ class HPO_Vizier(BaseHPO):
                 yaml.dump({'endpoint': endpoint}, config_file, default_flow_style=False)
 
             study_config = vz.StudyConfig.from_problem(self.problem)
+            study_config.algorithm = 'GAUSSIAN_PROCESS_BANDIT'
             self.study_client = clients.Study.from_study_config(study_config, owner='owner', study_id=self.study_name)
             self.warm_start(self.config_to_param(self.hps_config))
 
@@ -148,12 +153,13 @@ class HPO_Vizier(BaseHPO):
                     metrics_list = self.metrics_list
                     try:
                         self.plot_results(trajs_data_list, metrics_list, self.output_dir, f'(trial_{suggestion.id})')
-                    except:
-                        pass
-                objective_value = np.mean(res)
-                self.logger.info(f'Returns: {objective_value}')
-                final_measurement = vz.Measurement({f'{self.hpo_config.objective[0]}': objective_value})
-                self.objective_value = objective_value
+                    except Exception as e:
+                        self.logger.info('Error plotting results: {}'.format(e))
+                        self.logger.std_out_logger.logger.exception('Full exception traceback')
+                objective_values = {obj: np.mean(res[obj]) for obj in self.hpo_config.objective}
+                self.logger.info(f'Returns: {objective_values}')
+                final_measurement = vz.Measurement(objective_values)
+                self.objective_value = objective_values
                 # wandb.log({f'{self.hpo_config.objective[0]}': objective_value})
                 suggestion.complete(final_measurement)
 
@@ -194,89 +200,127 @@ class HPO_Vizier(BaseHPO):
                 metrics_list = self.metrics_list
                 try:
                     self.plot_results(trajs_data_list, metrics_list, self.output_dir, '(warmstart)')
-                except:
-                    pass
-            objective_value = np.mean(res)
-            trial = vz.Trial(parameters=params, final_measurement=vz.Measurement({f'{self.hpo_config.objective[0]}': objective_value}))
+                except Exception as e:
+                    self.logger.info('Error plotting results: {}'.format(e))
+                    self.logger.std_out_logger.logger.exception('Full exception traceback')
+            objective_values = {obj: np.mean(res[obj]) for obj in self.hpo_config.objective}
+            trial = vz.Trial(parameters=params, final_measurement=vz.Measurement(objective_values))
             self.study_client._add_trial(trial)
             self.warmstart_trial_value = res
 
     def checkpoint(self):
         """
-        Save checkpoints, results, and logs during optimization.
+        Save checkpoints, results, and logs during hyperparameter optimization.
+        Supports logging and visualizing multiple optimization objectives.
         """
         output_dir = os.path.join(self.output_dir, 'hpo')
         if not os.path.exists(output_dir):
             os.makedirs(output_dir)
+        
+        # Save warmstart trial value if exists
         if hasattr(self, 'warmstart_trial_value'):
             with open(f'{output_dir}/warmstart_trial_value.txt', 'w') as f:
                 f.write(str(self.warmstart_trial_value))
-
+        
+        # Filter completed trials
         completed_trial_filter = vz.TrialFilter(status=[vz.TrialStatus.COMPLETED])
         all_trials = [tc.materialize() for tc in self.study_client.trials(trial_filter=completed_trial_filter)]
-
+        
         try:
-            for optimal_trial in self.study_client.optimal_trials():
+            # Handle optimal trials for hyperparameter optimization
+            optimal_trials = list(self.study_client.optimal_trials())
+            
+            # Save hyperparameters for each optimal trial
+            for optimal_trial in optimal_trials:
                 optimal_trial = optimal_trial.materialize()
+                
+                # Extract parameters
                 params = {key: val.value for key, val in optimal_trial.parameters._items.items()}
                 params = self.post_process_best_hyperparams(params)
-                with open(f'{output_dir}/hyperparameters_trial{len(all_trials)}_{optimal_trial.final_measurement.metrics[self.hpo_config.objective[0]].value:.4f}.yaml', 'w')as f:
+                
+                # Create filename with multiple objective values
+                objective_values = [
+                    f"{objective}_{optimal_trial.final_measurement.metrics[objective].value:.4f}"
+                    for objective in self.hpo_config.objective
+                ]
+                filename = f'{output_dir}/hyperparameters_trial{optimal_trial.id}_' + '_'.join(objective_values) + '.yaml'
+                
+                with open(filename, 'w') as f:
                     yaml.dump(params, f, default_flow_style=False)
+        
         except Exception as e:
             print(e)
             print('Saving hyperparameters failed')
-
+        
         try:
-            # Visualize all trials so-far.
-            trial_i = [t for t in range(len(all_trials))]
-            trial_ys = [t.final_measurement.metrics[self.hpo_config.objective[0]].value for t in all_trials]
-            plt.scatter(trial_i, trial_ys, label='trials', marker='o', color='blue')
-
-            # Mark optimal trial so far.
-            optimal_trial_i = [optimal_trial.id - 1]
-            optimal_trial_ys = [optimal_trial.final_measurement.metrics[self.hpo_config.objective[0]].value]
-            plt.scatter(optimal_trial_i, optimal_trial_ys, label='optimal', marker='x', color='green', s=100)
-
-            # Plot.
-            plt.legend()
-            plt.title('Optimization History Plot')
-            plt.xlabel('Trial')
-            plt.ylabel('Objective Value')
+            # Visualization for hyperparameter optimization
+            plt.figure(figsize=(12, 5))
+            
+            # Create subplots for each objective
+            num_objectives = len(self.hpo_config.objective)
+            for obj_idx, objective in enumerate(self.hpo_config.objective, 1):
+                plt.subplot(1, num_objectives, obj_idx)
+                
+                # Scatter plot of trials for this objective
+                trial_i = [t.id - 1 for t in all_trials]
+                trial_ys = [t.final_measurement.metrics[objective].value for t in all_trials]
+                plt.scatter(trial_i, trial_ys, label='trials', marker='o', color='blue')
+                
+                if num_objectives == 1:
+                    # Mark optimal trials
+                    optimal_trial_i = [t.id - 1 for t in optimal_trials]
+                    optimal_trial_ys = [t.final_measurement.metrics[objective].value for t in optimal_trials]
+                    plt.scatter(optimal_trial_i, optimal_trial_ys, label='optimal', marker='x', color='green', s=100)
+                
+                plt.title(f'Optimization History: {objective}')
+                plt.xlabel('Trial')
+                plt.ylabel(f'{objective} Value')
+                plt.legend()
+            
             plt.tight_layout()
             plt.savefig(output_dir + '/optimization_history.png')
             plt.close()
-
+            
+            # Collect trial data for CSV
             trial_data = []
-
-            # Collect all the parameter keys across trials for use in the CSV header
             parameter_keys = set()
-
+            
             for t in all_trials:
                 trial_number = t.id - 1
-                trial_value = t.final_measurement.metrics[self.hpo_config.objective[0]].value
-
+                # Collect all objective values
+                trial_objective_values = {
+                    objective: t.final_measurement.metrics[objective].value 
+                    for objective in self.hpo_config.objective
+                }
+                
                 # Extract parameters for each trial
                 trial_params = {key: val.value for key, val in t.parameters._items.items()}
                 trial_params = self.post_process_best_hyperparams(trial_params)
-                parameter_keys.update(trial_params.keys())  # Collect parameter keys dynamically
-                trial_data.append((trial_number, trial_value, trial_params))
-
-            # Convert set to list for a consistent order in the CSV header
+                parameter_keys.update(trial_params.keys())
+                
+                trial_data.append((trial_number, trial_objective_values, trial_params))
+            
+            # Convert set to sorted list for consistent CSV header
             parameter_keys = sorted(list(parameter_keys))
-
+            
             # Save to CSV file
             csv_file = 'trials.csv'
             with open(output_dir + '/' + csv_file, mode='w', newline='') as file:
                 writer = csv.writer(file)
-
-                # Write the header with 'number', 'value', followed by all parameter keys
-                writer.writerow(['number', 'value'] + parameter_keys)
-
-                # Write the trial data
-                for trial_number, trial_value, trial_params in trial_data:
-                    # Ensure that parameters are written in the same order as the header
-                    param_values = [trial_params.get(key, '') for key in parameter_keys]
-                    writer.writerow([trial_number, trial_value] + param_values)
+                
+                # Create header: number, objective values, then parameters
+                header = ['number'] + self.hpo_config.objective + parameter_keys
+                writer.writerow(header)
+                
+                # Write trial data
+                for trial_number, objective_values, trial_params in trial_data:
+                    # Ensure objectives and parameters are in consistent order
+                    row_values = [trial_number]
+                    row_values.extend([objective_values.get(obj, '') for obj in self.hpo_config.objective])
+                    row_values.extend([trial_params.get(key, '') for key in parameter_keys])
+                    
+                    writer.writerow(row_values)
+        
         except Exception as e:
             print(e)
-            print('Saving optimization history failed')
+            print('Saving hyperparameter optimization history failed')

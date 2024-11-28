@@ -413,6 +413,7 @@ class MetricExtractor:
             'rmse': np.asarray(self.get_episode_rmse()) if len(self.get_episode_rmse()) > 1 else self.get_episode_rmse()[0],
             'rmse_std': np.asarray(self.get_episode_rmse()).std(),
             'exponentiated_rmse': np.asarray(self.get_episode_exponentiated_rmse()).mean(),
+            'exponentiated_rms_action_change': np.asarray(self.get_episode_exponentiated_rms_action_change()).mean(),
             'worst_case_rmse_at_0.5': compute_cvar(np.asarray(self.get_episode_rmse()), 0.5, lower_range=False),
             'failure_rate': np.asarray(self.get_episode_constraint_violations()).mean(),
             'failure_rates': np.asarray(self.get_episode_constraint_violations()),
@@ -469,12 +470,20 @@ class MetricExtractor:
         return self.get_episode_data('reward', postprocess_func=sum)
     
     def get_episode_rms_action_change(self):
-        '''Total reward/return of episodes.
+        '''Total rms_action_change of episodes.
 
         Returns:
-            episode_rewards (list): The total reward of each episode.
+            rms_action_change (list): The total reward of each episode.
         '''
         return self.get_episode_data('current_physical_action', postprocess_func=lambda x: float(np.sqrt(np.mean(np.sum(np.square(np.diff(x, axis=0)), axis=1)))))
+
+    def get_episode_exponentiated_rms_action_change(self):
+        '''Total rms_action_change of episodes.
+
+        Returns:
+            rms_action_change (list): The total reward of each episode.
+        '''
+        return self.get_episode_data('current_physical_action', postprocess_func=lambda x: float(np.exp(-np.sqrt(np.mean(np.sum(np.square(np.diff(x, axis=0)), axis=1))))))
 
     def get_episode_exponentiated_rmse(self):
         '''Total exponentiated rmse of episodes.'''
@@ -506,6 +515,7 @@ class MetricExtractor:
             episode_violations (list): The total number of constraint violations of each episode.
         '''
         return self.get_episode_data('constraint_violation',
+                                     postprocess_func=sum)
     
     def get_episode_inference_time(self):
         return self.get_episode_data('inference_time_data')

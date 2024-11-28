@@ -70,24 +70,29 @@ class HPO_Optuna(BaseHPO):
         self.logger.info('Trial number: {}'.format(trial.number))
 
         returns = self.evaluate(sampled_hyperparams)
+        if trial.number == 0:
+            self.warmstart_trial_value = returns
+            tag = 'warmstart'
+        else:
+            tag = f'trial_{trial.number}'
         if returns != self.none_handler():
             trajs_data_list = self.trajs_data_list
             metrics_list = self.metrics_list
             try:
-                self.plot_results(trajs_data_list, metrics_list, self.output_dir, '(warmstart)')
-            except:
-                pass
-        Gss = np.array(returns).mean()
+                self.plot_results(trajs_data_list, metrics_list, self.output_dir, f'({tag})')
+            except Exception as e:
+                self.logger.info('Error plotting results: {}'.format(e))
+                self.logger.std_out_logger.logger.exception('Full exception traceback')
+        objective_values = {obj: np.mean(returns[obj]) for obj in self.hpo_config.objective}
+        # convert to tuple
+        Gss = tuple([objective_values[obj] for obj in self.hpo_config.objective])
 
-        if trial.number == 0:
-            self.warmstart_trial_value = returns
-
-        self.logger.info('Returns: {}'.format(Gss))
+        self.logger.info('Returns: {}'.format(objective_values))
 
         if len(self.study.trials) > 0:
             self.checkpoint()
 
-        self.objective_value = Gss
+        self.objective_value = objective_values
         # wandb.log({self.hpo_config.objective[0]: Gss})
         return Gss
 
@@ -164,8 +169,8 @@ class HPO_Optuna(BaseHPO):
 
         try:
             # save top-n best hyperparameters
+            trials = self.study.get_trials(deepcopy=True, states=(TrialState.COMPLETE,))
             if len(self.hpo_config.direction) == 1:
-                trials = self.study.get_trials(deepcopy=True, states=(TrialState.COMPLETE,))
                 if self.hpo_config.direction[0] == 'minimize':
                     trials.sort(key=self._value_key)
                 else:
@@ -180,7 +185,8 @@ class HPO_Optuna(BaseHPO):
                 for i in range(len(self.study.best_trials)):
                     params = best_trials[i].params
                     params = self.post_process_best_hyperparams(params)
-                    with open(f'{output_dir}/best_hyperparameters_[{best_trials[i].values[0]:.4f},{best_trials[i].values[1]:.4f}].yaml', 'w')as f:
+                    objective_values = [best_trials[i].values[j] for j in range(len(self.hpo_config.objective))]
+                    with open(f'{output_dir}/hyperparameters_trial{len(trials)}_{objective_values}.yaml', 'w')as f:
                         yaml.dump(params, f, default_flow_style=False)
         except Exception as e:
             print(e)
