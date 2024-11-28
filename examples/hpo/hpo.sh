@@ -40,7 +40,7 @@ fi
 conda activate safe
 
 # echo config path
-echo "task config path: ./examples/hpo/${sys_name}/config_overrides/${sys}_${task}.yaml"
+echo "task config path: ./examples/hpo/${sys_name}/config_overrides/${sys}_${task}_eval.yaml"
 echo "algo config path: ./examples/hpo/${sys_name}/config_overrides/${algo}_${sys}_${task}_${prior}.yaml"
 echo "hpo config path: ./examples/hpo/${sys_name}/config_overrides/${algo}_${sys}_hpo.yaml"
 
@@ -56,7 +56,7 @@ if [ "$resume" == 'False' ]; then
     if [ "$safety_filter" == 'False' ]; then
         python ./examples/hpo/hpo_experiment.py \
                             --algo $algo \
-                            --overrides ./examples/hpo/${sys_name}/config_overrides/${sys}_${task}.yaml \
+                            --overrides ./examples/hpo/${sys_name}/config_overrides/${sys}_${task}_eval.yaml \
                                         ./examples/hpo/${sys_name}/config_overrides/${algo}_${sys}_${task}_${prior}.yaml \
                                         ./examples/hpo/${sys_name}/config_overrides/${algo}_${sys}_hpo.yaml \
                             --output_dir ./examples/hpo/hpo/${algo} \
@@ -73,7 +73,7 @@ if [ "$resume" == 'False' ]; then
         for ((i=1; i<parallel_jobs; i++)); do
             python ./examples/hpo/hpo_experiment.py \
                                 --algo $algo \
-                                --overrides ./examples/hpo/${sys_name}/config_overrides/${sys}_${task}.yaml \
+                                --overrides ./examples/hpo/${sys_name}/config_overrides/${sys}_${task}_eval.yaml \
                                             ./examples/hpo/${sys_name}/config_overrides/${algo}_${sys}_${task}_${prior}.yaml \
                                             ./examples/hpo/${sys_name}/config_overrides/${algo}_${sys}_hpo.yaml \
                                 --output_dir ./examples/hpo/hpo/${algo} \
@@ -87,7 +87,7 @@ if [ "$resume" == 'False' ]; then
     if [ "$safety_filter" == 'True' ]; then
         python ./examples/hpo/hpo_experiment.py \
                             --algo $algo \
-                            --overrides ./examples/hpo/${sys_name}/config_overrides/${sys}_${task}.yaml \
+                            --overrides ./examples/hpo/${sys_name}/config_overrides/${sys}_${task}_eval.yaml \
                                         ./examples/hpo/${sys_name}/config_overrides/${algo}_${sys}_${task}_${prior}.yaml \
                                         ./examples/hpo/${sys_name}/config_overrides/${algo}_${sys}_hpo.yaml \
                                         ./examples/hpo/${sys_name}/config_overrides/linear_mpsc_${sys}_${task}_${prior}.yaml \
@@ -105,7 +105,7 @@ if [ "$resume" == 'False' ]; then
         for ((i=1; i<parallel_jobs; i++)); do
             python ./examples/hpo/hpo_experiment.py \
                                 --algo $algo \
-                                --overrides ./examples/hpo/${sys_name}/config_overrides/${sys}_${task}.yaml \
+                                --overrides ./examples/hpo/${sys_name}/config_overrides/${sys}_${task}_eval.yaml \
                                             ./examples/hpo/${sys_name}/config_overrides/${algo}_${sys}_${task}_${prior}.yaml \
                                             ./examples/hpo/${sys_name}/config_overrides/${algo}_${sys}_hpo.yaml \
                                             ./examples/hpo/${sys_name}/config_overrides/linear_mpsc_${sys}_${task}_${prior}.yaml \
@@ -129,7 +129,7 @@ if [ "$resume" == 'True' ]; then
     for ((i=0; i<parallel_jobs; i++)); do
         python ./examples/hpo/hpo_experiment.py \
                             --algo $algo \
-                            --overrides ./examples/hpo/${sys_name}/config_overrides/${sys}_${task}.yaml \
+                            --overrides ./examples/hpo/${sys_name}/config_overrides/${sys}_${task}_eval.yaml \
                                         ./examples/hpo/${sys_name}/config_overrides/${algo}_${sys}_${task}_${prior}.yaml \
                                         ./examples/hpo/${sys_name}/config_overrides/${algo}_${sys}_hpo.yaml \
                             --output_dir ./examples/hpo/hpo/${algo} \

@@ -143,10 +143,15 @@ class HPO_Vizier(BaseHPO):
                 materialized_suggestion = suggestion.materialize()
                 suggested_params = {key: val.value for key, val in materialized_suggestion.parameters._items.items()}
                 res = self.evaluate(suggested_params)
+                if res != self.none_handler():
+                    trajs_data_list = self.trajs_data_list
+                    metrics_list = self.metrics_list
+                    try:
+                        self.plot_results(trajs_data_list, metrics_list, self.output_dir, f'(trial_{suggestion.id})')
+                    except:
+                        pass
                 objective_value = np.mean(res)
                 self.logger.info(f'Returns: {objective_value}')
-                if objective_value is None:
-                    objective_value = 0.0
                 final_measurement = vz.Measurement({f'{self.hpo_config.objective[0]}': objective_value})
                 self.objective_value = objective_value
                 # wandb.log({f'{self.hpo_config.objective[0]}': objective_value})
@@ -184,6 +189,13 @@ class HPO_Vizier(BaseHPO):
         """
         if hasattr(self, 'study_client'):
             res = self.evaluate(params)
+            if res != self.none_handler():
+                trajs_data_list = self.trajs_data_list
+                metrics_list = self.metrics_list
+                try:
+                    self.plot_results(trajs_data_list, metrics_list, self.output_dir, '(warmstart)')
+                except:
+                    pass
             objective_value = np.mean(res)
             trial = vz.Trial(parameters=params, final_measurement=vz.Measurement({f'{self.hpo_config.objective[0]}': objective_value}))
             self.study_client._add_trial(trial)
