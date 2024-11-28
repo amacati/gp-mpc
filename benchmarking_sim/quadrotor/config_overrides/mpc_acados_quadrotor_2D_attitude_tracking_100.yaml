@@ -11,23 +11,36 @@ algo_config:
   #   - 0.1
   #   - 0.5
   #   - 0.001
-  horizon: 25
-  q_mpc: [18, 0.1, 18, 0.5, 0.5, 0.0001]
-  r_mpc: [3., 3.]
-  # Prior info
+  # horizon: 25
+  q_mpc: [18, 0.1, 18, 0.1, 0.5, 0.01]
+  r_mpc: [15., 5.]
+  # r_mpc: [3., 3.]
+  # horizon: 50
+  # q_mpc:
+  # - 7.920690650196039
+  # - 0.0001
+  # - 2.284725973739269
+  # - 0.00010069955204926803
+  # - 0.017010527262423716
+  # - 0.0001
+  # r_mpc:
+  # - 0.0001
+  # - 0.010206543973281433
   prior_info:
     # prior_prop: null
     prior_prop: 
-      beta_1: 18.11298
-      beta_2: 3.6800
-      beta_3: 0
+      M: 0.033
+      beta_1: 18.11
+      beta_2: 3.68
+      beta_3: 0.0
       alpha_1: -140.8
       alpha_2: -13.4
       alpha_3: 124.8
-    #   pitch_bias: 0.0 # in radian
+      pitch_bias: 0.0 # in radian
     randomize_prior_prop: False
     prior_prop_rand_info: null
   warmstart: True
+  # use_lqr_gain_and_terminal_cost: True
   # soft_constraints: True
   # use_RTI: True
   output_dir: ./mpc_acados/results
