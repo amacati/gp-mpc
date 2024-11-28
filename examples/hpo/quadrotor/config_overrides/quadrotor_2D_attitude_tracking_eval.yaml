@@ -1,0 +1,103 @@
+task_config:
+  info_in_reset: True
+  ctrl_freq: 60
+  pyb_freq: 60
+  physics: dyn_si
+  # physics: pyb
+  quad_type: 4
+
+  init_state:
+    init_x: 0
+    init_x_dot: 0
+    init_z: 1.0
+    init_z_dot: 0
+    init_theta: 0
+    init_theta_dot: 0
+  randomized_init: True
+  randomized_inertial_prop: False
+
+  inertial_prop_randomization_info:
+    beta_1: # Nominal: 18.11
+      distrib: 'uniform'
+      low: -4
+      high: 4
+    beta_2: # Nominal: 3.68
+      distrib: 'uniform'
+      low: -0.7
+      high: 0.7
+    alpha_1:  # Nominal: -140.8
+      distrib: 'uniform'
+      low: -5
+      high: 10
+    alpha_2: # Nominal: -13.4
+      distrib: 'uniform'
+      low: -3
+      high: 3
+    alpha_3:  # Nominal: 124.8
+      distrib: 'uniform'
+      low: -5
+      high: 5
+
+  init_state_randomization_info:
+    init_x:
+      distrib: 'uniform'
+      low: -0.05
+      high: 0.05
+    init_x_dot:
+      distrib: 'uniform'
+      low: -0.05
+      high: 0.05
+    init_z:
+      distrib: 'uniform'
+      low: -0.05
+      high: 0.05
+    init_z_dot:
+      distrib: 'uniform'
+      low: -0.05
+      high: 0.05
+    init_theta:
+      distrib: 'uniform'
+      low: -0.05
+      high: 0.05
+    init_theta_dot:
+      distrib: 'uniform'
+      low: -0.05
+      high: 0.05
+
+  task: traj_tracking
+  task_info:
+    trajectory_type: figure8
+    num_cycles: 2
+    trajectory_plane: 'xz'
+    trajectory_position_offset: [0, 1.]
+    trajectory_scale: 1.0
+    # ilqr_ref: False
+    # ilqr_traj_data: '../lqr/ilqr_ref_traj.npy'
+
+  inertial_prop:
+    M: 0.033
+    Iyy: 1.4e-05
+    beta_1: 18.11
+    beta_2: 3.68
+    beta_3: 0.0
+    alpha_1: -140.8
+    alpha_2: -13.4
+    alpha_3: 124.8
+    pitch_bias: 0.0 # in radian
+
+  episode_len_sec: 11
+  cost: quadratic
+
+  rew_state_weight: [10.0, 0.1, 10.0, 0.1, 0.1, 0.001]
+  rew_act_weight: [0.1, 0.1]
+
+  constraints:
+    - constraint_form: default_constraint
+      constrained_variable: state
+    - constraint_form: default_constraint
+      constrained_variable: input
+      upper_bounds: [0.58212, 0.7]
+      lower_bounds: [0.09702, -0.7]
+
+  done_on_out_of_bound: True
+  done_on_violation: False

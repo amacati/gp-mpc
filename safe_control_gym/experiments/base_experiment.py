@@ -401,6 +401,7 @@ class MetricExtractor:
         metrics = {
             'average_length': np.asarray(self.get_episode_lengths()).mean(),
             'length': self.get_episode_lengths() if len(self.get_episode_lengths()) > 1 else self.get_episode_lengths()[0],
+            'rms_action_change': np.asarray(self.get_episode_rms_action_change()).mean(),
             'average_return': np.asarray(self.get_episode_returns()).mean(),
             'average_rmse': np.asarray(self.get_episode_rmse()).mean(),
             'rmse': np.asarray(self.get_episode_rmse()) if len(self.get_episode_rmse()) > 1 else self.get_episode_rmse()[0],
@@ -459,6 +460,14 @@ class MetricExtractor:
             episode_rewards (list): The total reward of each episode.
         '''
         return self.get_episode_data('reward', postprocess_func=sum)
+    
+    def get_episode_rms_action_change(self):
+        '''Total reward/return of episodes.
+
+        Returns:
+            episode_rewards (list): The total reward of each episode.
+        '''
+        return self.get_episode_data('current_physical_action', postprocess_func=lambda x: float(np.sqrt(np.mean(np.sum(np.square(np.diff(x, axis=0)), axis=1)))))
 
     def get_episode_exponentiated_rmse(self):
         '''Total exponentiated rmse of episodes.'''
