@@ -76,7 +76,6 @@ class HPOEval(BaseHPO):
 
         # Remove None values
         trajs_dict = {k: v for k, v in trajs_dict.items() if v is not None}
-        returns_dict = {k: v for k, v in returns_dict.items() if v is not None}
         metrics_dict = {k: v for k, v in metrics_dict.items() if v is not None}
 
         self.plot_results_grid(trajs_dict, metrics_dict, self.output_dir)
