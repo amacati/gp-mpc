@@ -157,8 +157,9 @@ class HPO_Optuna(BaseHPO):
         # check if initial trial is completed
         if len(self.study.trials) > 0:
             if self.study.trials[0].state == TrialState.COMPLETE:
-                with open(f'{output_dir}/warmstart_trial_value.txt', 'w') as f:
-                    f.write(str(self.warmstart_trial_value))
+                if hasattr(self, 'warmstart_trial_value'):
+                    with open(f'{output_dir}/warmstart_trial_value.txt', 'w') as f:
+                        f.write(str(self.warmstart_trial_value))
 
         try:
             # save meta data

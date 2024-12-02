@@ -62,7 +62,7 @@ GPMPC_dict = {
     'n_ind_points': {'values': [30, 40, 50], 'scale': 'uniform', 'type': int, 'cat': 'discrete'},
     'num_epochs': {'values': [2, 3, 4, 5, 6, 7, 8, 9, 10], 'scale': 'uniform', 'type': int, 'cat': 'discrete'},
     'num_samples': {'values': [20, 30, 40, 50, 60, 70, 80], 'scale': 'uniform', 'type': int, 'cat': 'discrete'},
-    'optimization_iterations': {'values': [1000, 1500, 2000, 2500, 3000], 'scale': 'uniform', 'type': int, 'cat': 'discrete'},  # type belongs to int due to 1 DoF
+    'optimization_iterations': {'values': [500, 1000, 1500, 2000, 2500, 3000], 'scale': 'uniform', 'type': int, 'cat': 'discrete'},  # type belongs to int due to 1 DoF
     'kernel': {'values': ['Matern', 'RBF'], 'scale': 'uniform', 'type': str, 'cat': 'categorical'},
     'learning_rate': {'values': [5e-4, 0.5], 'scale': 'log', 'type': float, 'cat': 'float'},  # type belongs to float due to 1 DoF
     'q_mpc': {'values': [0.0001, 15], 'scale': 'uniform', 'type': list, 'cat': 'float'},
@@ -74,7 +74,7 @@ GPMPC_TP_dict = {
     'n_ind_points': {'values': [30, 40, 50], 'scale': 'uniform', 'type': int, 'cat': 'discrete'},
     'num_epochs': {'values': [2, 3, 4, 5, 6, 7, 8, 9, 10], 'scale': 'uniform', 'type': int, 'cat': 'discrete'},
     'num_samples': {'values': [20, 30, 40, 50, 60, 70, 80], 'scale': 'uniform', 'type': int, 'cat': 'discrete'},
-    'optimization_iterations': {'values': [1000, 1500, 2000, 2500, 3000], 'scale': 'uniform', 'type': int, 'cat': 'discrete'},  # type belongs to int due to 1 DoF
+    'optimization_iterations': {'values': [500, 1000, 1500, 2000, 2500, 3000], 'scale': 'uniform', 'type': int, 'cat': 'discrete'},  # type belongs to int due to 1 DoF
     'learning_rate': {'values': [5e-4, 0.5], 'scale': 'log', 'type': float, 'cat': 'float'},  # type belongs to float due to 1 DoF
     'q_mpc': {'values': [0.0001, 15], 'scale': 'uniform', 'type': list, 'cat': 'float'},
     'r_mpc': {'values': [0.0001, 15], 'scale': 'uniform', 'type': list, 'cat': 'float'},
