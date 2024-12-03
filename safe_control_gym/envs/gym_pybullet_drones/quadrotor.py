@@ -917,24 +917,39 @@ class Quadrotor(BaseAviary):
             params_pitch_rate = [-99.94, -13.3, 84.73]
             psi = 0
 
+            self.a = prior_prop.get('a', 20.907574256269616)
+            self.b = prior_prop.get('b', 3.653687545690674)
+            self.c = prior_prop.get('c', -130.3)
+            self.d = prior_prop.get('d', -16.33)
+            self.e = prior_prop.get('e', 119.3)
+            self.f = prior_prop.get('f', -99.94)
+            self.h = prior_prop.get('h', -13.3)
+            self.l = prior_prop.get('l', 84.73)
+
             # Define dynamics equations.
             # TODO: create a parameter for the new quad model
             X_dot = cs.vertcat(x_dot,
-                               (params_acc[0] * T + params_acc[1]) * (
+                               (self.a * T + self.b) * (
                                            cs.cos(phi) * cs.sin(theta) * cs.cos(psi) + cs.sin(phi) * cs.sin(psi)),
                                y_dot,
-                               (params_acc[0] * T + params_acc[1]) * (
+                               (self.a * T + self.b) * (
                                            cs.cos(phi) * cs.sin(theta) * cs.sin(psi) - cs.sin(phi) * cs.cos(psi)),
                                z_dot,
-                               (params_acc[0] * T + params_acc[1]) * cs.cos(phi) * cs.cos(theta) - g,
+                               (self.a * T + self.b) * cs.cos(phi) * cs.cos(theta) - g,
                                phi_dot,
                                theta_dot,
-                               params_roll_rate[0] * phi + params_roll_rate[1] * phi_dot + params_roll_rate[2] * R,
-                               params_pitch_rate[0] * theta + params_pitch_rate[1] * theta_dot + params_pitch_rate[2] * P,
+                               self.c * phi + self.d * phi_dot + self.e * R,
+                               self.f * theta + self.h * theta_dot + self.l * P,
                                  )
             # Define observation.
             Y = cs.vertcat(x, x_dot, y, y_dot, z, z_dot, phi, theta, phi_dot, theta_dot)
 
+            T_mapping = self.a * T + self.b
+            R_mapping = self.c * phi + self.d * phi_dot + self.e * R
+            P_mapping = self.f * theta + self.h * theta_dot + self.l * P
+            self.T_mapping_func = cs.Function('T_mapping', [T], [T_mapping])
+            self.P_mapping_func = cs.Function('P_mapping', [theta, theta_dot, P], [P_mapping])
+            self.R_mapping_func = cs.Function('R_mapping', [phi, phi_dot, R], [R_mapping])
         # Set the equilibrium values for linearizations.
         X_EQ = np.zeros(self.state_dim)
         # if self.QUAD_TYPE == QuadType.TWO_D_ATTITUDE:
@@ -1018,6 +1033,9 @@ class Quadrotor(BaseAviary):
         # Defining physical bounds for actions
         # NOTE: update 25.11.24: set roll and pitch action bounds to 1 rad (57 deg) to allow more
         #       aggressive maneuvers. No update in yaw since no yaw dynamics yet.
+        # # NOTE: update 29.11.24: put bounds back for generating results
+        # max_roll_deg = 25
+        # max_pitch_deg = 25
         max_roll_deg = 57
         max_pitch_deg = 57
         max_yaw_deg = 25

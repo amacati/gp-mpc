@@ -39,11 +39,12 @@ def run(gui=False, n_episodes=1, n_steps=None, save_data=True):
         # ALGO = 'gp_mpc'
         # ALGO = 'gpmpc_acados'
         # ALGO = 'gpmpc_acados_TP'
+        ALGO = 'gpmpc_acados_TRP'
         # ALGO = 'mpc'
         # ALGO = 'mpc_acados'
         # ALGO = 'linear_mpc_acados'
         # ALGO = 'linear_mpc'
-        ALGO = 'lqr'
+        # ALGO = 'lqr'
         # ALGO = 'lqr_c'
         # ALGO = 'pid'
     # SYS = 'quadrotor_2D_attitude'
@@ -52,7 +53,9 @@ def run(gui=False, n_episodes=1, n_steps=None, save_data=True):
     # TASK = 'stab'
     # PRIOR = '200'
     # PRIOR = '150'
-    ADDITIONAL = ''
+    # ADDITIONAL = ''
+    # ADDITIONAL = '_9'
+    ADDITIONAL = '_11'
     # ADDITIONAL='_snap'
     PRIOR = '100'
     agent = 'quadrotor' if SYS in ['quadrotor_2D', 'quadrotor_2D_attitude', 'quadrotor_3D_attitude'] else SYS
@@ -96,7 +99,7 @@ def run(gui=False, n_episodes=1, n_steps=None, save_data=True):
     if ALGO in ['gpmpc_acados', 'gp_mpc' , 'gpmpc_acados_TP']:
         num_data_max = config.algo_config.num_epochs * config.algo_config.num_samples
         config.output_dir = os.path.join(config.output_dir, PRIOR + '_' + repr(num_data_max))
-    print('output_dir',  config.algo_config.output_dir)
+    # print('output_dir',  config.algo_config.output_dir)
     set_dir_from_config(config)
     config.algo_config.output_dir = config.output_dir
     mkdirs(config.output_dir)
@@ -141,7 +144,7 @@ def run(gui=False, n_episodes=1, n_steps=None, save_data=True):
 
         # Create experiment, train, and run evaluation
         if SAFETY_FILTER is None:  
-            if ALGO in ['gpmpc_acados', 'gp_mpc' , 'gpmpc_acados_TP']:
+            if ALGO in ['gpmpc_acados', 'gp_mpc' , 'gpmpc_acados_TP', 'gpmpc_acados_TRP']:
                 experiment = BaseExperiment(env=static_env, ctrl=ctrl, train_env=static_train_env)
                 if config.algo_config.num_epochs == 1:
                     print('Evaluating prior controller')
@@ -169,7 +172,7 @@ def run(gui=False, n_episodes=1, n_steps=None, save_data=True):
 
         # plotting training and evaluation results
         # training
-        if ALGO in ['gpmpc_acados', 'gp_mpc' , 'gpmpc_acados_TP'] and \
+        if ALGO in ['gpmpc_acados', 'gp_mpc' , 'gpmpc_acados_TP', 'gpmpc_acados_TRP'] and \
            config.algo_config.gp_model_path is None and \
            config.algo_config.num_epochs > 1:
                 if isinstance(static_env, Quadrotor):
@@ -283,21 +286,21 @@ def plot_quad_eval(state_stack, input_stack, env, save_path=None):
     if save_path is not None:
         plt.savefig(os.path.join(save_path, 'state_xz_path.png'))
         print(f'Plots saved to {save_path}')
+    if env.QUAD_TYPE in [QuadType.THREE_D_ATTITUDE, QuadType.THREE_D_ATTITUDE_10]:
+        fig, axs = plt.subplots(1)
+        axs.plot(np.array(state_stack).transpose()[x_idx, 0:plot_length], 
+                np.array(state_stack).transpose()[y_idx, 0:plot_length], label='actual')
+        axs.plot(reference.transpose()[x_idx, 0:plot_length],
+                    reference.transpose()[y_idx, 0:plot_length], color='r', label='desired')
+        axs.set_xlabel('x [m]')
+        axs.set_ylabel('y [m]')
+        axs.set_title('State path in x-y plane')
+        axs.legend()
+        fig.tight_layout()
 
-    fig, axs = plt.subplots(1)
-    axs.plot(np.array(state_stack).transpose()[x_idx, 0:plot_length], 
-             np.array(state_stack).transpose()[y_idx, 0:plot_length], label='actual')
-    axs.plot(reference.transpose()[x_idx, 0:plot_length],
-                reference.transpose()[y_idx, 0:plot_length], color='r', label='desired')
-    axs.set_xlabel('x [m]')
-    axs.set_ylabel('y [m]')
-    axs.set_title('State path in x-y plane')
-    axs.legend()
-    fig.tight_layout()
+        if save_path is not None:
+            plt.savefig(os.path.join(save_path, 'state_xy_path.png'))
 
-    if save_path is not None:
-        plt.savefig(os.path.join(save_path, 'state_xy_path.png'))
-        
     # plt.show()
 
 def wrap2pi_vec(angle_vec):

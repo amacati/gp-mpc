@@ -249,6 +249,19 @@ def get_quad_average_rmse_error_xz_only(runs, ref):
     mean_cost = np.mean(costs, axis=1)
     return mean_cost
 
+def get_quad_average_rmse_error_xyz(runs, ref):
+    num_epochs = len(runs)
+    num_episodes = len(runs[0])
+    runs = match_runs_by_append_last(runs, ref)
+    costs = np.zeros((num_epochs, num_episodes))
+    for epoch in range(num_epochs):
+        for episode in range(num_episodes):
+            mse, rmse = compute_state_rmse(runs[epoch][episode]['obs'][:,[0,2,4]] - ref[:,[0,2,4]])
+            costs[epoch, episode] = rmse
+
+    mean_cost = np.mean(costs, axis=1)
+    return mean_cost
+
 def plot_xz_trajectory(runs, ref, dir):
     num_epochs = len(runs)
     plt.figure()
@@ -339,6 +352,8 @@ def make_quad_plots(test_runs, train_runs, trajectory, dir):
     plot_learning_curve(rmse_error, num_points_per_epoch, 'rmse_error_learning_curve', fig_dir)
     rmse_error_xz = get_quad_average_rmse_error_xz_only(test_runs, trajectory)
     plot_learning_curve(rmse_error_xz, num_points_per_epoch, 'rmse_xz_error_learning_curve', fig_dir)
+    rmse_error_state = get_quad_average_rmse_error_xyz(test_runs, trajectory)
+    plot_learning_curve(rmse_error_state, num_points_per_epoch, 'rmse_xyz_error_learning_curve', fig_dir)
     runtime_result = get_runtime(test_runs, train_runs)
     plot_runtime(runtime_result, num_points_per_epoch, fig_dir)
     

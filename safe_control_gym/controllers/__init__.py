@@ -89,3 +89,8 @@ register(idx='gpmpc_acados_TP',
 register(idx='linear_mpc_acados',
             entry_point='safe_control_gym.controllers.mpc.linear_mpc_acados:LinearMPC_ACADOS',
             config_entry_point='safe_control_gym.controllers.mpc:linear_mpc_acados.yaml')
+
+register(idx='gpmpc_acados_TRP',
+            entry_point='safe_control_gym.controllers.mpc.gpmpc_acados_TRP:GPMPC_ACADOS_TRP',
+            config_entry_point='safe_control_gym.controllers.mpc:gpmpc_acados_TRP.yaml')
+            
