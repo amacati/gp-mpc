@@ -1,9 +1,9 @@
 hpo_config:
 
   load_if_exists: True # this should set to True if hpo is run in parallel
-  objective: [exponentiated_rmse] # [other metrics defined in base_experiment.py]
-  objective_bounds: [[0.0, 1.0]] # [bounds for each objective]. Worse value will be assigned if objective evaluation is None
-  direction: [maximize] # [minimize, maximize]
+  objective: [exponentiated_rmse, exponentiated_rms_action_change] # [other metrics defined in base_experiment.py]
+  objective_bounds: [[0.0, 1.0], [0.0, 1.0]] # [bounds for each objective]. Worse value will be assigned if objective evaluation is None
+  direction: [maximize, maximize] # [minimize, maximize]
   repetitions: 5 # number of samples of performance for each objective query
   n_episodes: 5 # number of episodes to evaluate each policy
   use_gpu: True
@@ -38,3 +38,52 @@ hpo_config:
     # objective
     rew_state_weight: [10.0, 0.1, 10.0, 0.1, 0.1, 0.001]
     rew_act_weight: [0.1, 0.1]
+  vizier_hps:
+    activation: relu
+    actor_lr: 0.0008983071385131106
+    clip_param: 0.2
+    critic_lr: 0.0010604750567992504
+    entropy_coef: 0.027168142112125156
+    gae_lambda: 0.92
+    gamma: 0.98
+    hidden_dim: 64
+    max_env_steps: 336000
+    mini_batch_size: 256
+    opt_epochs: 20
+    rew_act_weight:
+    - 0.004342434109985312
+    - 0.16308846035025895
+    rew_state_weight:
+    - 8.681025660217175
+    - 0.007712483036226952
+    - 8.684351881484186
+    - 0.25416422315600956
+    - 0.2089113565062738
+    - 0.042781113613173966
+    rollout_batch_size: 5
+    target_kl: 0.003516987203810008
+  optuna_hps:
+    activation: relu
+    actor_lr: 0.001242429110643358
+    clip_param: 0.2
+    critic_lr: 0.0007409742970868751
+    entropy_coef: 0.011477148555145044
+    gae_lambda: 0.92
+    gamma: 0.995
+    hidden_dim: 64
+    max_env_steps: 336000
+    mini_batch_size: 256
+    opt_epochs: 20
+    rew_act_weight:
+    - 2.398067015799397
+    - 8.4601550853529
+    rew_state_weight:
+    - 8.398154529340253
+    - 3.4328554805141462
+    - 14.329562904757722
+    - 3.167493869531107
+    - 0.28023049036766756
+    - 1.6380948160813094
+    rollout_batch_size: 4
+    target_kl: 0.0049339425693280346
+
