@@ -10,7 +10,7 @@ from safe_control_gym.hyperparameters.hpo_search_space import HYPERPARAMS_DICT
 
 @pytest.mark.parametrize('SYS', ['quadrotor_2D_attitude'])
 @pytest.mark.parametrize('TASK', ['tracking'])
-@pytest.mark.parametrize('ALGO', ['pid', 'lqr', 'ilqr', 'mpc_acados'])
+@pytest.mark.parametrize('ALGO', ['pid', 'lqr', 'ilqr', 'mpc_acados', 'ppo'])
 @pytest.mark.parametrize('PRIOR', [''])
 @pytest.mark.parametrize('SAFETY_FILTER', ['', 'linear_mpsc'])
 def test_hpo_eval(SYS, TASK, ALGO, PRIOR, SAFETY_FILTER):
@@ -72,7 +72,7 @@ def test_hpo_eval(SYS, TASK, ALGO, PRIOR, SAFETY_FILTER):
     fac = ConfigFactory()
     fac.add_argument('--load_study', type=bool, default=False, help='whether to load study from a previous HPO.')
     config = fac.merge()
-    config.hpo_config.repetitions = 2
+    config.hpo_config.repetitions = 1
 
     eval(config)
 

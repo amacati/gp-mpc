@@ -302,23 +302,25 @@ class BaseHPO(ABC):
 
         return params
 
-    def evaluate(self, params):
+    def evaluate(self, params, seed_list=None):
         """
         Evaluation of hyperparameters.
 
         Args:
             params (dict): Hyperparameters to be evaluated.
-
+            seed_list (list): List of seeds for evaluation.
         Returns:
             Sampled objective value (list)
         """
+        if seed_list is not None:
+            assert len(seed_list) == self.hpo_config.repetitions, 'Number of seeds should be equal to the number of repetitions'
         sampled_hyperparams = params
 
         seeds, trajs_data_list, metrics_list = [], [], []
         returns = { obj: [] for obj in self.hpo_config.objective }
         for i in range(self.hpo_config.repetitions):
 
-            seed = np.random.randint(0, 10000)
+            seed = np.random.randint(0, 10000) if seed_list is None else seed_list[i]
 
             # update the agent config with sample candidate hyperparameters
             # pass the hyperparameters to config
