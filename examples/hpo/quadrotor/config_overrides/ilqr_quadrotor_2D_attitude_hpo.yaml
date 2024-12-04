@@ -18,35 +18,13 @@ hpo_config:
     lamb_factor: 10
     lamb_max: 1000
     epsilon: 0.01
-    q_lqr: [5, 0.1, 5, 0.1, 0.5, 0.01]
-    r_lqr: [1.0, 1.0]
   vizier_hps:
-    epsilon: 0.01
-    lamb_factor: 10
-    lamb_max: 1000
-    max_iterations: 15
-    q_lqr:
-    - 4.903486852466305
-    - 0.07811157366922913
-    - 5.029240592694074
-    - 0.09280561797533883
-    - 0.4446202387745285
-    - 0.0035923202561466408
-    r_lqr:
-    - 1.0422280442275553
-    - 0.7807458088068064
+    epsilon: 0.001
+    lamb_factor: 15
+    lamb_max: 2000
+    max_iterations: 10
   optuna_hps:
-    epsilon: 0.01
-    lamb_factor: 10
-    lamb_max: 1000
-    max_iterations: 15
-    q_lqr:
-    - 5.0
-    - 0.1
-    - 5.0
-    - 0.1
-    - 0.5
-    - 0.01
-    r_lqr:
-    - 1.0
-    - 1.0
+    epsilon: 0.0005
+    lamb_factor: 15
+    lamb_max: 3000
+    max_iterations: 10
