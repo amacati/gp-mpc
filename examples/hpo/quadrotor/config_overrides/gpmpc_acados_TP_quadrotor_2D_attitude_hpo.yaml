@@ -1,9 +1,9 @@
 hpo_config:
 
   load_if_exists: True # this should set to True if hpo is run in parallel
-  objective: [exponentiated_rmse] # [other metrics defined in base_experiment.py]
-  objective_bounds: [[0.0, 1.0]] # [bounds for each objective]. Worse value will be assigned if objective evaluation is None
-  direction: [maximize] # [minimize, maximize]
+  objective: [exponentiated_rmse, exponentiated_rms_action_change] # [other metrics defined in base_experiment.py]
+  objective_bounds: [[0.0, 1.0], [0.0, 1.0]] # [bounds for each objective]. Worse value will be assigned if objective evaluation is None
+  direction: [maximize, maximize] # [minimize, maximize]
   repetitions: 5 # number of samples of performance for each objective query
   n_episodes: 5 # number of episodes to evaluate each policy
   use_gpu: True
@@ -16,13 +16,57 @@ hpo_config:
   hps_config:
     horizon: 25
     learning_rate:
-    - 0.01
-    - 0.01
+    - 0.001
+    - 0.001
+    optimization_iterations:
+    - 500 
+    - 500 
+    n_ind_points: 40
+    num_epochs: 4
+    num_samples: 50
+    q_mpc: [15, 0.1, 15, 0.1, 0.5, 0.01]
+    r_mpc: [15., 5.]
+  vizier_hps:
+    horizon: 25
+    learning_rate:
+    - 0.001295064632205154
+    - 0.001295064632205154
+    n_ind_points: 40
+    num_epochs: 2
+    num_samples: 80
     optimization_iterations:
     - 1000
-    - 2000
+    - 1000
+    q_mpc:
+    - 15.0
+    - 0.0001
+    - 15.0
+    - 2.125483674492009
+    - 0.0001
+    - 0.0001
+    r_mpc:
+    - 15.0
+    - 5.983763933381028
+  optuna_hps:
+    horizon: 40
+    learning_rate:
+    - 0.037698716128765714
+    - 0.037698716128765714
     n_ind_points: 40
-    num_epochs: 3
+    num_epochs: 9
     num_samples: 50
-    q_mpc: [15, 0.1, 15, 0.5, 0.5, 0.0001]
-    r_mpc: [3., 3.]
+    optimization_iterations:
+    - 500
+    - 500
+    q_mpc:
+    - 12.522030216382474
+    - 0.005365037059564759
+    - 14.23494784523414
+    - 9.431441342048704
+    - 0.11647151972157371
+    - 0.02161096348902896
+    r_mpc:
+    - 13.96472043195951
+    - 0.17094019932776305
+
+

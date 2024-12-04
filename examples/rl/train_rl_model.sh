@@ -2,19 +2,20 @@
 
 # SYS='cartpole'
 # SYS='quadrotor_2D'
-SYS='quadrotor_2D_attitude'
+# SYS='quadrotor_2D_attitude'
 # SYS='quadrotor_3D'
+SYS='quadrotor_3D_attitude'
 
 # TASK='stab'
 TASK='track'
 
-ALGO='ppo'
+# ALGO='ppo'
 # ALGO='sac'
 # ALGO='td3'
-# ALGO='ddpg'
+ALGO='dppo'
 # ALGO='safe_explorer_ppo'
 
-EXP_NAME='Benchmark_data'
+EXP_NAME='New_batch'
 
 if [ "$SYS" == 'cartpole' ]; then
     SYS_NAME=$SYS
@@ -23,7 +24,7 @@ else
 fi
 
 # Removed the temporary data used to train the new unsafe model.
-# rm -r -f ./${ALGO}_data_2/
+#rm -r -f ./${ALGO}_data/
 
 if [ "$ALGO" == 'safe_explorer_ppo' ]; then
     # Pretrain the unsafe controller/agent.
@@ -46,7 +47,7 @@ if [ "$ALGO" == 'safe_explorer_ppo' ]; then
 fi
 
 # Train the unsafe controller/agent.
-for SEED in {0..0}
+for SEED in {0..4}
 do
     python3 ../../safe_control_gym/experiments/train_rl_controller.py \
         --algo ${ALGO} \
@@ -58,7 +59,8 @@ do
         --seed ${SEED} \
         --use_gpu \
         --kv_overrides \
-            task_config.randomized_init=True
+            task_config.randomized_init=True \
+            task_config.normalized_rl_action_space=True
 done
 
 # Move the newly trained unsafe model.
