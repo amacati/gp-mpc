@@ -136,9 +136,11 @@ def plot_performance_comparison(algorithms, packages=['optuna', 'vizier']):
 
     # Convert to DataFrame for plotting
     df = pd.DataFrame(data, columns=['Algorithm', 'Method', 'Normalized Tracking Reward', 'Normalized Action Change Reward'])
+    rmse_palette = ['#1f77b4', '#d62728', '#9467bd']
+    rms_palette = ['#a1c9f4', '#ff9f9b', '#d0bbff']
 
     plt.figure(figsize=(14, 8))
-    sns.barplot(x='Algorithm', y='Normalized Tracking Reward', hue='Method', data=df[['Algorithm', 'Method', 'Normalized Tracking Reward']])
+    sns.barplot(x='Algorithm', y='Normalized Tracking Reward', hue='Method', data=df[['Algorithm', 'Method', 'Normalized Tracking Reward']], palette=rmse_palette)
     sns.move_legend(plt.gca(), 'lower left')
     plt.title('Performance Comparison of Hand-Tuned, Optuna, and Vizier')
     plt.savefig('hpo_performance_comparison.png')
@@ -164,6 +166,62 @@ def plot_performance_comparison(algorithms, packages=['optuna', 'vizier']):
     plt.savefig('hpo_rms_action_change_comparison.png')
 
 
+    plt.figure(figsize=(14, 8))
+    # Aggregate data for stacking
+    tracking_data = df.groupby(["Algorithm", "Method"])["Normalized Tracking Reward"].sum().unstack()
+    action_data = df.groupby(["Algorithm", "Method"])["Normalized Action Change Reward"].sum().unstack()
+    # Bar positions
+    algorithms = tracking_data.index
+    x = np.arange(len(algorithms))  # Numerical positions for algorithms
+    # make spacing larger
+    x = x * 2
+    bar_width = 0.5  # Width of each bar group
+
+    # Plot hand-tuned data
+    plt.bar(x - bar_width, tracking_data["Hand Tuned"], label="Tracking Reward (Hand Tuned)", color=rmse_palette[0], width=bar_width)
+    plt.bar(x - bar_width, action_data["Hand Tuned"], bottom=tracking_data["Hand Tuned"], label="Action Reward (Hand Tuned)", color=rms_palette[0], width=bar_width)
+
+    # Plot optuna (stacked)
+    plt.bar(x, tracking_data["optuna"], label="Tracking Reward (Optuna)", color=rmse_palette[1], width=bar_width)
+    plt.bar(x, action_data["optuna"], bottom=tracking_data["optuna"], label="Action Reward (Optuna)", color=rms_palette[1], width=bar_width)
+
+    # Plot vizier (stacked)
+    plt.bar(x + bar_width, tracking_data["vizier"], label="Tracking Reward (Vizier)", color=rmse_palette[2], width=bar_width)
+    plt.bar(x + bar_width, action_data["vizier"], bottom=tracking_data["vizier"], label="Action Reward (Vizier)", color=rms_palette[2], width=bar_width)
+
+    # Add labels, legend, and title
+    plt.xticks(x, algorithms)  # Rotate x-axis labels for clarity
+    plt.xlabel("Algorithm")
+    plt.ylabel("Normalized Rewards")
+    plt.title("Performance Comparison of Hand-Tuned, Optuna, and Vizier")
+    plt.legend(loc='lower left')
+    plt.tight_layout()
+
+    # Save the plot
+    plt.savefig("grouped_stacked_hpo_chart.png")
+
+    plt.figure(figsize=(14, 8))
+
+    plt.bar(x - bar_width, -np.log(tracking_data["Hand Tuned"]), label="RMSE (Hand Tuned)", color=rmse_palette[0], width=bar_width)
+    plt.bar(x - bar_width, -np.log(action_data["Hand Tuned"]), bottom=-np.log(tracking_data["Hand Tuned"]), label="RMS Action Change (Hand Tuned)", color=rms_palette[0], width=bar_width)
+
+    # Plot optuna (stacked)
+    plt.bar(x, -np.log(tracking_data["optuna"]), label="RMSE (Optuna)", color=rmse_palette[1], width=bar_width) 
+    plt.bar(x, -np.log(action_data["optuna"]), bottom=-np.log(tracking_data["optuna"]), label="RMS Action Change (Optuna)", color=rms_palette[1], width=bar_width)
+
+    # Plot vizier (stacked)
+    plt.bar(x + bar_width, -np.log(tracking_data["vizier"]), label="RMSE (Vizier)", color=rmse_palette[2], width=bar_width)
+    plt.bar(x + bar_width, -np.log(action_data["vizier"]), bottom=-np.log(tracking_data["vizier"]), label="RMS Action Change (Vizier)", color=rms_palette[2], width=bar_width)
+
+    # Add labels, legend, and title
+    plt.xticks(x, algorithms)  # Rotate x-axis labels for clarity
+    plt.xlabel("Algorithm")
+    plt.ylabel("RMSE and RMS Action Change")
+    plt.title("RMSE and RMS Action Change Comparison of Hand-Tuned, Optuna, and Vizier")
+    plt.legend()
+
+    # Save the plot
+    plt.savefig("grouped_stacked_hpo_rms_chart.png")
 
 # Plot evaluation over trials for each algorithm
 plot_hpo_evaluation(trials, algorithms)
