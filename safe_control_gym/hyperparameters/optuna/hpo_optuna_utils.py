@@ -343,6 +343,42 @@ def mpc_sampler(trial: optuna.Trial, state_dim: int, action_dim: int) -> Dict[st
 
     return hps_suggestion
 
+def fmpc_sampler(trial: optuna.Trial, state_dim: int, action_dim: int) -> Dict[str, Any]:
+    """Sampler for FMPC hyperparameters.
+
+    args:
+        hps_dict: the dict of hyperparameters that will be optimized over
+        trial: budget variable
+        state_dim: dimension of the state space
+        action_dim: dimension of the action space
+    """
+
+    horizon = trial.suggest_categorical('horizon', FMPC_dict['horizon']['values'])
+
+    # hard coded dim ro Q and R
+    if state_dim == 6:
+        q_dim = 8
+        r_dim = 2
+    else:
+        raise ValueError('Only 6D state space is supported for now.')
+    # objective
+    state_weight = [
+        trial.suggest_float(f'q_mpc_{i}', FMPC_dict['q_mpc']['values'][0], FMPC_dict['q_mpc']['values'][1], log=is_log_scale(FMPC_dict['q_mpc']))
+        for i in range(q_dim)
+    ]
+    action_weight = [
+        trial.suggest_float(f'r_mpc_{i}', FMPC_dict['r_mpc']['values'][0], FMPC_dict['r_mpc']['values'][1], log=is_log_scale(FMPC_dict['r_mpc']))
+        for i in range(r_dim)
+    ]
+
+    hps_suggestion = {
+        'horizon': horizon,
+        'q_mpc': state_weight,
+        'r_mpc': action_weight,
+    }
+
+    return hps_suggestion
+
 def lqr_sampler(trial: optuna.Trial, state_dim: int, action_dim: int) -> Dict[str, Any]:
     """Sampler for LQR hyperparameters.
 
@@ -519,6 +555,7 @@ HYPERPARAMS_SAMPLER = {
     'gpmpc_acados_TP': gpmpc_tp_sampler,
     'linear_mpc': lmpc_sampler,
     'mpc_acados': mpc_sampler,
+    'fmpc': fmpc_sampler,
     'lqr': lqr_sampler,
     'ilqr': ilqr_sampler,
     'ilqr_sf': ilqr_sf_sampler,
