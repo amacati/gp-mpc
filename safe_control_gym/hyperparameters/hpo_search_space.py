@@ -92,6 +92,12 @@ MPC_dict = {
     'r_mpc': {'values': [0.0001, 15], 'scale': 'uniform', 'type': list, 'cat': 'float'},
 }
 
+FMPC_dict = {
+    'horizon': {'values': [15, 20, 25, 30, 35, 40, 45, 50], 'scale': 'uniform', 'type': int, 'cat': 'discrete'},
+    'q_mpc': {'values': [0.0001, 50], 'scale': 'uniform', 'type': list, 'cat': 'float'},
+    'r_mpc': {'values': [1e-7, 1e-4], 'scale': 'uniform', 'type': list, 'cat': 'float'},
+}
+
 LQR_dict = {
     'q_lqr': {'values': [0.0001, 15], 'scale': 'uniform', 'type': list, 'cat': 'float'},
     'r_lqr': {'values': [0.0001, 15], 'scale': 'uniform', 'type': list, 'cat': 'float'},
@@ -137,6 +143,7 @@ HYPERPARAMS_DICT = {
     'gp_mpc': GPMPC_dict,
     'gpmpc_acados': GPMPC_dict,
     'gpmpc_acados_TP': GPMPC_TP_dict,
+    'fmpc': FMPC_dict,
     'linear_mpc': LMPC_dict,
     'mpc_acados': MPC_dict,
     'lqr': LQR_dict,

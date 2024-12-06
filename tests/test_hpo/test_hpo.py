@@ -110,7 +110,7 @@ def test_hpo_cartpole(SYS, TASK, ALGO, PRIOR, SAFETY_FILTER, SAMPLER):
 
 @pytest.mark.parametrize('SYS', ['quadrotor_2D_attitude'])
 @pytest.mark.parametrize('TASK', ['tracking'])
-@pytest.mark.parametrize('ALGO', ['pid', 'lqr', 'ilqr', 'gp_mpc', 'gpmpc_acados', 'gpmpc_acados_TP', 'linear_mpc', 'mpc_acados', 'ppo', 'sac', 'dppo'])
+@pytest.mark.parametrize('ALGO', ['pid', 'lqr', 'ilqr', 'gp_mpc', 'gpmpc_acados', 'gpmpc_acados_TP', 'fmpc', 'linear_mpc', 'mpc_acados', 'ppo', 'sac', 'dppo'])
 @pytest.mark.parametrize('PRIOR', [''])
 @pytest.mark.parametrize('SAFETY_FILTER', ['', 'linear_mpsc'])
 @pytest.mark.parametrize('SAMPLER', ['optuna', 'vizier'])
@@ -134,7 +134,7 @@ def test_hpo_quadrotor(SYS, TASK, ALGO, PRIOR, SAFETY_FILTER, SAMPLER):
 
     SYS_NAME = 'quadrotor' if SYS == 'quadrotor_2D' or SYS == 'quadrotor_2D_attitude' else SYS
 
-    if ALGO == 'pid' or ALGO == 'lqr' or ALGO == 'ilqr' or ALGO == 'gpmpc_acados' or ALGO == 'linear_mpc' or ALGO == 'mpc_acados' or ALGO == 'gpmpc_acados_TP':
+    if ALGO == 'fmpc' or ALGO == 'pid' or ALGO == 'lqr' or ALGO == 'ilqr' or ALGO == 'gpmpc_acados' or ALGO == 'linear_mpc' or ALGO == 'mpc_acados' or ALGO == 'gpmpc_acados_TP':
         PRIOR = '100'
     elif ALGO == 'gp_mpc':
         PRIOR = '200'

@@ -6,7 +6,7 @@ import optuna
 
 from safe_control_gym.hyperparameters.hpo_search_space import (GPMPC_dict, GPMPC_TP_dict, LMPC_dict, MPC_dict, PPO_dict,
                                                                DPPO_dict, SAC_dict, LQR_dict, iLQR_dict, iLQR_SF_dict,
-                                                               PID_dict, is_log_scale)
+                                                               PID_dict, FMPC_dict, is_log_scale)
 
 
 def ppo_sampler(trial: optuna.Trial, state_dim: int, action_dim: int) -> Dict[str, Any]:

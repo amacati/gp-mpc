@@ -19,6 +19,8 @@ import matplotlib.pyplot as plt
 from safe_control_gym.controllers.lqr.lqr_utils import discretize_linear_system, compute_lqr_gain
 from safe_control_gym.controllers.mpc.mpc import MPC
 from safe_control_gym.controllers.mpc.linear_mpc import LinearMPC
+from safe_control_gym.controllers.mpc.linear_mpc_acados import LinearMPC_ACADOS
+from safe_control_gym.controllers.base_controller import BaseController
 from safe_control_gym.controllers.mpc.mpc_utils import compute_discrete_lqr_gain_from_cont_linear_system, get_cost_weight_matrix
 from safe_control_gym.envs.benchmark_env import Task
 from safe_control_gym.envs.gym_pybullet_drones.quadrotor_utils import QuadType
@@ -27,12 +29,11 @@ from termcolor import colored
 
 from safe_control_gym.math_and_models.symbolic_systems import SymbolicModel
 
-from plottingUtils import *
 from safe_control_gym.utils.utils import timing
 
 import time
 
-class FlatMPC(LinearMPC):
+class FlatMPC(BaseController):
     '''Flatness based MPC.'''
 
     def __init__(
@@ -51,6 +52,7 @@ class FlatMPC(LinearMPC):
             # shared/base args
             output_dir='results/temp',
             additional_constraints=None,
+            use_acados=False,
             **kwargs):
         '''Creates task and controller.
 
@@ -64,6 +66,7 @@ class FlatMPC(LinearMPC):
             terminate_run_on_done (bool): Terminate the run when the environment returns done or not.
             constraint_tol (float): Tolerance to add the the constraint as sometimes solvers are not exact.
             solver (str): Specify which solver you wish to use (qrqp, qpoases, ipopt, sqpmethod)
+            use_full_flat_reference (bool): Use reference with acceleration and jerk for figure8 and circle trajectories
             output_dir (str): output directory to write logs and results.
             additional_constraints (list): list of constraints.
         '''
@@ -72,27 +75,44 @@ class FlatMPC(LinearMPC):
             if k != 'self' and k != 'kwargs' and '__' not in k:
                 self.__dict__[k] = v
 
-        super().__init__(
-            env_func,
-            horizon=horizon,
-            q_mpc=[1],
-            r_mpc=[1],
-            warmstart=warmstart,
-            soft_constraints=soft_constraints,
-            terminate_run_on_done=terminate_run_on_done,
-            constraint_tol=constraint_tol,
-            # prior_info=prior_info,
-            output_dir=output_dir,
-            additional_constraints=additional_constraints,
-            **kwargs
-        )
+        if use_acados:
+            self.mpc = LinearMPC_ACADOS(
+                                        env_func,
+                                        horizon=horizon,
+                                        q_mpc=[1],
+                                        r_mpc=[1],
+                                        warmstart=warmstart,
+                                        soft_constraints=soft_constraints,
+                                        terminate_run_on_done=terminate_run_on_done,
+                                        constraint_tol=constraint_tol,
+                                        # prior_info=prior_info,
+                                        output_dir=output_dir,
+                                        additional_constraints=additional_constraints,
+                                        **kwargs
+                                    )
+        else:
+            self.mpc = LinearMPC(
+                            env_func,
+                            horizon=horizon,
+                            q_mpc=[1],
+                            r_mpc=[1],
+                            warmstart=warmstart,
+                            soft_constraints=soft_constraints,
+                            terminate_run_on_done=terminate_run_on_done,
+                            constraint_tol=constraint_tol,
+                            # prior_info=prior_info,
+                            output_dir=output_dir,
+                            additional_constraints=additional_constraints,
+                            **kwargs
+                        )
+                        
 
-        self.QUAD_TYPE = self.env.QUAD_TYPE
+        self.QUAD_TYPE = self.mpc.env.QUAD_TYPE
         if self.QUAD_TYPE == QuadType.THREE_D_ATTITUDE_10:
             self.action_from_flat_states_func = _get_u_from_flat_states_3D_SI_10State
             self.transform_env_goal_to_flat_func = _transform_env_goal_to_flat_3D_SI_10State # map components of X_goal to flat state z
             # replace dynamics model with symbolic flat model
-            self.model = _setup_flat_model_symbolic_3D_SI_10State(self.dt)
+            self.mpc.model = _setup_flat_model_symbolic_3D_SI_10State(self.mpc.dt)
 
             # not as a nice variable in the env yet, thats why its defined here again
             self.inertial_prop = {} 
@@ -108,60 +128,70 @@ class FlatMPC(LinearMPC):
             self.action_from_flat_states_func = _get_u_from_flat_states_2D_att
             self.transform_env_goal_to_flat_func = _transform_env_goal_to_flat_2D_att # map components of X_goal to flat state z
             # replace dynamics model with symbolic flat model
-            self.model = _setup_flat_model_symbolic_2D_att(self.dt)
-            self.inertial_prop = self.env.INERTIAL_PROP
+            self.mpc.model = _setup_flat_model_symbolic_2D_att(self.mpc.dt)
+            self.inertial_prop = self.mpc.env.INERTIAL_PROP
         else:
             raise NotImplementedError     
         
         self.use_full_flat_reference = use_full_flat_reference 
 
-
-        self.X_EQ = np.atleast_2d(self.model.X_EQ)[0, :].T
-        self.U_EQ = np.atleast_2d(self.model.U_EQ)[0, :].T 
+        if use_acados:
+            self.mpc.x_lin = np.atleast_2d(self.mpc.model.X_EQ)[0, :].T
+            self.mpc.u_lin = np.atleast_2d(self.mpc.model.U_EQ)[0, :].T 
+        else:
+            self.mpc.X_EQ = np.atleast_2d(self.mpc.model.X_EQ)[0, :].T
+            self.mpc.U_EQ = np.atleast_2d(self.mpc.model.U_EQ)[0, :].T 
         assert solver in ['qpoases', 'qrqp', 'sqpmethod', 'ipopt'], '[Error]. MPC Solver not supported.'
-        self.solver = solver
+        self.mpc.solver = solver
 
         # overwrite definitions in parent init function to fit flat model
-        self.Q = get_cost_weight_matrix(q_mpc, self.model.nx) 
-        self.R = get_cost_weight_matrix(r_mpc, self.model.nu)
+        self.mpc.Q = get_cost_weight_matrix(q_mpc, self.mpc.model.nx) 
+        self.mpc.R = get_cost_weight_matrix(r_mpc, self.mpc.model.nu)
         
-        # self.fs_obs = FlatStateObserver(self.env.INERTIAL_PROP, self.env.GRAVITY_ACC, self.dt, self.T)
-        self.fs_obs = FlatStateObserver(self.QUAD_TYPE, self.inertial_prop, self.env.GRAVITY_ACC, self.dt, self.T)
+        # remove all constraints from system
+        self.mpc.constraints = {}
+        self.mpc.state_constraints_sym = {}
+        self.mpc.input_constraints_sym = {} 
+
+        # setup flat state observer
+        self.fs_obs = FlatStateObserver(self.QUAD_TYPE, self.inertial_prop, self.mpc.env.GRAVITY_ACC, self.mpc.dt, self.mpc.T)
 
     # overwrite to input flat trajectory into reference and initialize flat state observer
     def reset(self):
         '''Prepares for training or evaluation.'''
-        # Setup reference input.
-        if self.env.TASK == Task.STABILIZATION:
-            self.mode = 'stabilization'
-            self.x_goal = self.transform_env_goal_to_flat_func(self.env.X_GOAL)            
+        self.mpc.reset()
+        # Setup reference input for the flat state spaces
+        if self.mpc.env.TASK == Task.STABILIZATION:
+            self.mpc.mode = 'stabilization'
+            self.mpc.x_goal = self.transform_env_goal_to_flat_func(self.mpc.env.X_GOAL)            
             x_ini = self.env.__dict__['init_x'.upper()]
             y_ini = self.env.__dict__.get('init_y'.upper(), 0)
             z_ini = self.env.__dict__['init_z'.upper()]
             self.fs_obs.set_initial_hovering(x_ini, y_ini, z_ini)
-        elif self.env.TASK == Task.TRAJ_TRACKING:
-            self.mode = 'tracking'
+        elif self.mpc.env.TASK == Task.TRAJ_TRACKING:
+            self.mpc.mode = 'tracking'
             if self.use_full_flat_reference:
-                self.traj = get_full_reference_trajectory_FMPC(self.QUAD_TYPE, self.env.TASK_INFO, self.env.EPISODE_LEN_SEC, self.dt).T
+                self.mpc.traj = get_full_reference_trajectory_FMPC(self.QUAD_TYPE, self.mpc.env.TASK_INFO, self.mpc.env.EPISODE_LEN_SEC, self.mpc.dt, self.mpc.T).T
             else:
-                self.traj = self.transform_env_goal_to_flat_func(self.env.X_GOAL.T)            
+                self.mpc.traj = self.transform_env_goal_to_flat_func(self.mpc.env.X_GOAL.T)            
             # Step along the reference.
-            self.traj_step = 0
+            self.mpc.traj_step = 0
             # initialize flat state observer in hovering
-            x_ini = self.env.__dict__['init_x'.upper()]
-            y_ini = self.env.__dict__.get('init_y'.upper(), 0)
-            z_ini = self.env.__dict__['init_z'.upper()]
+            x_ini = self.mpc.env.__dict__['init_x'.upper()]
+            y_ini = self.mpc.env.__dict__.get('init_y'.upper(), 0)
+            z_ini = self.mpc.env.__dict__['init_z'.upper()]
             self.fs_obs.set_initial_hovering(x_ini, y_ini, z_ini)
 
-        # Dynamics model.
-        self.set_dynamics_func()
-        # CasADi optimizer.
-        self.setup_optimizer()
-        # Previously solved states & inputs, useful for warm start.
-        self.x_prev = None
-        self.u_prev = None
+        # all set in super().reset()
+        # # Dynamics model.
+        # self.set_dynamics_func()
+        # # CasADi optimizer.
+        # self.setup_optimizer()
+        # # Previously solved states & inputs, useful for warm start.
+        # self.x_prev = None
+        # self.u_prev = None
 
-        self.setup_results_dict()
+        # self.setup_results_dict()
         
     def setup_results_dict(self):
         '''Setup the results dictionary to store run information.'''
@@ -207,15 +237,15 @@ class FlatMPC(LinearMPC):
         # get flat state estimation from observer
         z_obs = self.fs_obs.compute_observation(obs)
         
-        z_ref = self.get_references() # for debugging
+        # z_ref = self.get_references() # for debugging
 
         # run MPC controller 
-        v = super().select_action(z_obs) 
-        z_horizon = self.x_prev #8xN set in linearMPC
-        v_horizon = self.u_prev #2xN       
+        v = self.mpc.select_action(z_obs) 
+        z_horizon = self.mpc.x_prev #8xN set in linearMPC
+        v_horizon = self.mpc.u_prev #2xN       
         
         # flat input transformation: z and v to action u        
-        action = self.action_from_flat_states_func(z_horizon[:, 1], v_horizon[:, 0], self.inertial_prop, g=self.env.GRAVITY_ACC) 
+        action = self.action_from_flat_states_func(z_horizon[:, 1], v_horizon[:, 0], self.inertial_prop, g=self.mpc.env.GRAVITY_ACC) 
         
 
         # feed data into observer
@@ -236,11 +266,24 @@ class FlatMPC(LinearMPC):
         
         return action
     
+    def close(self):
+        '''Cleans up resources.'''
+        self.mpc.close()
     
 class FlatStateObserver():
-    def __init__(self,  QUAD_TYPE, inertial_prop, g, dt, horizon):
+    
+    def __init__(self,  QUAD_TYPE: QuadType, inertial_prop, g:float, dt: float, horizon:int):
+        '''Creates observer for flat state model
+
+        Args:
+            QUAD_TYPE (QuadType): Quadrotor type from enviroment (2D/3D, attitude model, etc.)
+            inertial_prop:        Inertial properties of the quadrotor model, other identified parameters, from env or config file
+            g : gravity acceleration constant
+            dt: time step size, 1/control frequency
+            horizon: FMPC horizon length
+        '''
         self.QUAD_TYPE = QUAD_TYPE
-        self.inertial_prop = inertial_prop # alpha beta of model from env (from config file)
+        self.inertial_prop = inertial_prop 
         self.GRAVITY = g
         self.dt = dt
         self.fmpc_horizon = horizon
@@ -252,7 +295,7 @@ class FlatStateObserver():
             self.action_from_flat_states_func = _get_u_from_flat_states_2D_att
             self.flat_states_from_reg_func = _get_z_from_regular_states_2D_att
         else:
-            raise NotImplementedError
+            raise NotImplementedError('FMPC flat state observer only implemented for 2D_attitude and 3D_attitude_10 model')
 
 
     def set_initial_hovering(self, x_pos, y_pos, z_pos):
@@ -276,11 +319,12 @@ class FlatStateObserver():
             z_ini[0] = x_pos
             z_ini[4] = z_pos           
         else: 
-            raise NotImplementedError
+            raise NotImplementedError('FMPC flat state observer initial hovering only implemented for 2D_attitude and 3D_attitude_10 model')
        
 
-        for i in range(self.fmpc_horizon+1): # TODO make nicer with matrix repetition
-            self.z_horizon[:, i] = z_ini
+        self.z_horizon = np.tile(z_ini.reshape(-1, 1), (1, self.fmpc_horizon + 1)) 
+
+        
 
         
     def input_FMPC_result(self, z_horizon, v_horizon, u):
@@ -292,12 +336,12 @@ class FlatStateObserver():
     def compute_observation(self, x_obs): 
         # estimate u_dot at current time step, based on z_horizon and v_horizon set in last time step
         u_comp_length = 3
-        if self.QUAD_TYPE == QuadType.THREE_D_ATTITUDE_10: #TODO: make nicer/faster
+        if self.QUAD_TYPE == QuadType.THREE_D_ATTITUDE_10:
             u_horizon = np.zeros([3, u_comp_length])
         elif self.QUAD_TYPE == QuadType.TWO_D_ATTITUDE:
             u_horizon = np.zeros([2, u_comp_length])
         else:
-            raise NotImplementedError
+            raise NotImplementedError('FMPC flat state observer compute observation only implemented for 2D_attitude and 3D_attitude_10 model')
         
         for i in range(u_comp_length):
             u_horizon[:, i] = self.action_from_flat_states_func(self.z_horizon[:,i], self.v_horizon[:,i], self.inertial_prop, self.GRAVITY)
@@ -315,10 +359,11 @@ class FlatStateObserver():
 ################################################################################################# 
 
 def _setup_flat_model_symbolic_3D_SI_10State(dt):
-        '''Creates symbolic (CasADi) models for dynamics, observation, and cost.
+        '''Generates linear flat model for 3D SI 10 State model
+        Integrator chain for x y and z 
 
         Args:
-            prior_prop (dict): specify the prior inertial prop to use in the symbolic model.
+            dt: time step size of controller, 1/control frequency
         ''' 
         nx, nu = 12, 3
       
@@ -474,10 +519,11 @@ def _transform_env_goal_to_flat_3D_SI_10State(x):
 ################################################################################################# 
 
 def _setup_flat_model_symbolic_2D_att(dt):
-    '''Creates symbolic (CasADi) models for dynamics, observation, and cost.
+    '''Generates linear flat model for 2D SI model
+    Integrator chain for x y and z 
 
     Args:
-        prior_prop (dict): specify the prior inertial prop to use in the symbolic model.
+        dt: time step size of controller, 1/control frequency
     ''' 
     nx, nu = 8, 2
     
@@ -597,10 +643,23 @@ def _transform_env_goal_to_flat_2D_att(x):
 ###################### Trajectory generation ####################################################
 ################################################################################################# 
 
-def get_full_reference_trajectory_FMPC(QUAD_TYPE, 
+def get_full_reference_trajectory_FMPC(QUAD_TYPE: QuadType, 
                                 task_info, 
                                 traj_length,
-                                sample_time=0.01):
+                                sample_time=0.01, 
+                                horizon=0):
+    """Generates a 2D trajectory with acceleration and jerk for a full flat reference
+
+    Args:
+        QUAD_TYPE: QuadType object specifying 2D/3D quad model
+        task_info: task information from environment (scale, cycles, offset, plane, type)
+        traj_legth: time duration of the whole trajectory
+        sample_time: time step size of reference, 1/controller_freq
+        horizon: FMPC horizon length in timesteps, to extend trajectory accordingly
+
+    Returns:
+        ndarray: array with full reference on flat state vector
+    """
     
     # task info parameters from yaml file
     scaling = task_info.trajectory_scale
@@ -609,7 +668,7 @@ def get_full_reference_trajectory_FMPC(QUAD_TYPE,
     traj_plane = task_info.trajectory_plane
     traj_type = task_info.trajectory_type
 
-    pos_ref_traj, vel_ref_traj, acc_ref_traj, jer_ref_traj = _generate_trajectory_FMPC(traj_type, traj_length, num_cycles, traj_plane, position_offset, scaling, sample_time)
+    pos_ref_traj, vel_ref_traj, acc_ref_traj, jer_ref_traj = _generate_trajectory_FMPC(traj_type, traj_length, num_cycles, traj_plane, position_offset, scaling, sample_time, horizon)
     num_times = np.shape(pos_ref_traj)[0]
     if QUAD_TYPE == QuadType.THREE_D_ATTITUDE_10:
         z_ref = np.zeros([num_times, 12])
@@ -636,7 +695,7 @@ def get_full_reference_trajectory_FMPC(QUAD_TYPE,
         z_ref[:,6] = acc_ref_traj[:, 2]
         z_ref[:,7] = jer_ref_traj[:, 2]
     else:
-        raise NotImplementedError
+        raise NotImplementedError('Flat reference not implemented for this quadrotor type, only for 2D_attitude and 3D_attitude_10')
     
     return z_ref
 
@@ -648,7 +707,8 @@ def _generate_trajectory_FMPC(traj_type='figure8',
                              traj_plane='xy',
                              position_offset=np.array([0, 0]),
                              scaling=1.0,
-                             sample_time=0.01
+                             sample_time=0.01, 
+                             horizon=0
                              ):
     """Generates a 2D trajectory.
 
@@ -660,6 +720,7 @@ def _generate_trajectory_FMPC(traj_type='figure8',
         position_offset (ndarray, optional): An initial position offset in the plane.
         scaling (float, optional): Scaling factor for the trajectory.
         sample_time (float, optional): The sampling timestep of the trajectory.
+        horizon(int, optional): FMPC horizon, trajectory gets extended such that at the final timestep there still is a full horizon in the reference
 
     Returns:
         ndarray: The positions in x, y, z of the trajectory sampled for its entire duration.
@@ -683,7 +744,7 @@ def _generate_trajectory_FMPC(traj_type='figure8',
     else:
         raise ValueError('Trajectory plane should be in form of ab, where a and b can be {x, y, z}.')
     # Generate time stamps.
-    times = np.arange(0, traj_length + sample_time, sample_time)  # sample time added to make reference one step longer than traj_length
+    times = np.arange(0, traj_length + sample_time*(1+horizon), sample_time)  # sample time added to make reference one step longer than traj_length
     pos_ref_traj = np.zeros((len(times), 3))
     vel_ref_traj = np.zeros((len(times), 3))
     acc_ref_traj = np.zeros((len(times), 3))
@@ -743,9 +804,9 @@ def _get_coordinates(t,
         coords_a, coords_b, coords_a_dot, coords_b_dot, coords_a_ddot, coords_b_ddot , coords_a_dddot, coords_b_dddot= _circle(
             t, traj_period, scaling)
     elif traj_type == 'square':
-        raise NotImplementedError
+        raise NotImplementedError('Square reference not implemented in FMPC full reference generation')
     elif traj_type == 'snap_figure8':
-        raise NotImplementedError
+        raise NotImplementedError('Snap_figure8 not implemented in FMPC full reference generation')
     # Initialize position and velocity references.
     pos_ref = np.zeros((3,))
     vel_ref = np.zeros((3,))
@@ -790,7 +851,6 @@ def _figure8(t,
     coords_b_dddot = scaling * traj_freq**3 * 4 * (np.sin(traj_freq * t)**2 - np.cos(traj_freq*t)**2)       
 
     return coords_a, coords_b, coords_a_dot, coords_b_dot, coords_a_ddot, coords_b_ddot, coords_a_dddot, coords_b_dddot
-
 
 
 def _circle(t,

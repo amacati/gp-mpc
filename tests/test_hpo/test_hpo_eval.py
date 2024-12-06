@@ -10,7 +10,7 @@ from safe_control_gym.hyperparameters.hpo_search_space import HYPERPARAMS_DICT
 
 @pytest.mark.parametrize('SYS', ['quadrotor_2D_attitude'])
 @pytest.mark.parametrize('TASK', ['tracking'])
-@pytest.mark.parametrize('ALGO', ['pid', 'lqr', 'ilqr', 'mpc_acados', 'gpmpc_acados_TP', 'ppo'])
+@pytest.mark.parametrize('ALGO', ['pid', 'lqr', 'ilqr', 'mpc_acados', 'gpmpc_acados_TP', 'ppo', 'fmpc'])
 @pytest.mark.parametrize('PRIOR', [''])
 @pytest.mark.parametrize('SAFETY_FILTER', ['', 'linear_mpsc'])
 def test_hpo_eval(SYS, TASK, ALGO, PRIOR, SAFETY_FILTER):
@@ -25,7 +25,7 @@ def test_hpo_eval(SYS, TASK, ALGO, PRIOR, SAFETY_FILTER):
 
     SYS_NAME = 'quadrotor' if SYS == 'quadrotor_2D' or SYS == 'quadrotor_2D_attitude' else SYS
 
-    if ALGO == 'pid' or ALGO == 'lqr' or ALGO == 'ilqr' or ALGO == 'gpmpc_acados' or ALGO == 'linear_mpc' or ALGO == 'mpc_acados' or ALGO == 'gpmpc_acados_TP':
+    if ALGO == 'fmpc' or ALGO == 'pid' or ALGO == 'lqr' or ALGO == 'ilqr' or ALGO == 'gpmpc_acados' or ALGO == 'linear_mpc' or ALGO == 'mpc_acados' or ALGO == 'gpmpc_acados_TP':
         PRIOR = '100'
     elif ALGO == 'gp_mpc':
         PRIOR = '200'

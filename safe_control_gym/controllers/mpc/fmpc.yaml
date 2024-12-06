@@ -8,6 +8,7 @@ use_prev_start: True
 prior_info: null
 solver: sqpmethod
 use_full_flat_reference: True
+use_acados: False
 # Runner args
 deque_size: 10
 eval_batch_size: 10
