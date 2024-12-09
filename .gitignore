@@ -7,10 +7,14 @@ examples/mpsc/unsafe_rl_temp_data/
 examples/pid/*data/
 #
 Results/
+#
+experiments/mpsc/results*
+experiments/mpsc/models/rl_models*
+#
 results/
 z_docstring.py
 TODOs.md
-# 
+#
 hpo_study*/
 hp_study*/
 comparisons/
@@ -155,10 +159,7 @@ dmypy.json
 .idea/
 
 *c_generated_code/
-acados_ocp_nlp.json
-gpmpc_acados_ocp_solver.json
+*acados_ocp*.json
 gpmpc_update/
 temp
 models/
-benchmarking_sim/quadrotor/acados_ocp.json
-acados_ocp.json

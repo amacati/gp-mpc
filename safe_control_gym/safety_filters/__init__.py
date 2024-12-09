@@ -6,6 +6,10 @@ register(idx='linear_mpsc',
          entry_point='safe_control_gym.safety_filters.mpsc.linear_mpsc:LINEAR_MPSC',
          config_entry_point='safe_control_gym.safety_filters.mpsc:mpsc.yaml')
 
+register(idx='nl_mpsc',
+         entry_point='safe_control_gym.safety_filters.mpsc.nl_mpsc:NL_MPSC',
+         config_entry_point='safe_control_gym.safety_filters.mpsc:mpsc.yaml')
+
 register(idx='cbf',
          entry_point='safe_control_gym.safety_filters.cbf.cbf:CBF',
          config_entry_point='safe_control_gym.safety_filters.cbf:cbf.yaml')

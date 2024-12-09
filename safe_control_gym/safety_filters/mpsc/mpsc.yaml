@@ -1,7 +1,7 @@
 # LQR controller parameters
-r_lin:
+r_mpc:
   - 1.
-q_lin:
+q_mpc:
   - 1.
 
 # MPC Parameters
@@ -10,19 +10,7 @@ warmstart: False
 integration_algo: rk4
 use_terminal_set: False
 
-# Prior info
-prior_info:
-  prior_prop: null
-  randomize_prior_prop: False
-  prior_prop_rand_info: null
-
-# Safe set calculation
-n_samples: 600
-n_samples_terminal_set: 10
-learn_terminal_set: False
-
-# Tau parameter for the calcuation of the RPI
-tau: 0.95
-
 # Cost function
 cost_function: one_step_cost
+mpsc_cost_horizon: 5
+decay_factor: 0.85

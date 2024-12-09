@@ -17,6 +17,7 @@ from safe_control_gym.controllers.lqr.lqr_utils import compute_lqr_gain
 from safe_control_gym.controllers.mpc.mpc_utils import get_cost_weight_matrix, reset_constraints
 from safe_control_gym.safety_filters.base_safety_filter import BaseSafetyFilter
 from safe_control_gym.safety_filters.mpsc.mpsc_cost_function.one_step_cost import ONE_STEP_COST
+from safe_control_gym.safety_filters.mpsc.mpsc_cost_function.precomputed_cost import PRECOMPUTED_COST
 from safe_control_gym.safety_filters.mpsc.mpsc_utils import Cost_Function, get_trajectory_on_horizon
 
 
@@ -26,13 +27,16 @@ class MPSC(BaseSafetyFilter, ABC):
     def __init__(self,
                  env_func,
                  horizon: int = 10,
-                 q_lin: list = None,
-                 r_lin: list = None,
+                 q_mpc: list = None,
+                 r_mpc: list = None,
                  integration_algo: str = 'rk4',
                  warmstart: bool = True,
                  additional_constraints: list = None,
                  use_terminal_set: bool = True,
                  cost_function: Cost_Function = Cost_Function.ONE_STEP_COST,
+                 mpsc_cost_horizon: int = 5,
+                 decay_factor: float = 0.85,
+                 use_acados: bool = False,
                  **kwargs
                  ):
         '''Initialize the MPSC.
@@ -40,13 +44,15 @@ class MPSC(BaseSafetyFilter, ABC):
         Args:
             env_func (partial BenchmarkEnv): Environment for the task.
             horizon (int): The MPC horizon.
-            q_lin, r_lin (list): Q and R gain matrices for linear controller.
+            q_mpc, r_mpc (list): Q and R gain matrices for linear controller.
             integration_algo (str): The algorithm used for integrating the dynamics,
                 either 'LTI', 'rk4', 'rk', or 'cvodes'.
             warmstart (bool): If the previous MPC soln should be used to warmstart the next mpc step.
             additional_constraints (list): List of additional constraints to consider.
             use_terminal_set (bool): Whether to use a terminal set constraint or not.
             cost_function (Cost_Function): A string (from Cost_Function) representing the cost function to be used.
+            mpsc_cost_horizon (int): How many steps forward to check for constraint violations.
+            decay_factor (float): How much to discount future costs.
         '''
 
         # Store all params/args.
@@ -62,15 +68,14 @@ class MPSC(BaseSafetyFilter, ABC):
         self.env = env_func(normalized_rl_action_space=False)
         self.training_env = env_func(randomized_init=True,
                                      init_state=None,
-                                     cost='quadratic',
                                      normalized_rl_action_space=False,
                                      )
 
         # Setup attributes.
         self.reset()
         self.dt = self.model.dt
-        self.Q = get_cost_weight_matrix(q_lin, self.model.nx)
-        self.R = get_cost_weight_matrix(r_lin, self.model.nu)
+        self.Q = get_cost_weight_matrix(q_mpc, self.model.nx)
+        self.R = get_cost_weight_matrix(r_mpc, self.model.nu)
 
         self.X_EQ = np.zeros(self.model.nx)
         self.U_EQ = self.model.U_EQ
@@ -79,6 +84,7 @@ class MPSC(BaseSafetyFilter, ABC):
         self.lqr_gain = -compute_lqr_gain(self.model, self.X_EQ, self.U_EQ, self.Q, self.R, discrete_dynamics=True)
 
         self.terminal_set = None
+        self.prev_action = self.U_EQ
 
         if self.additional_constraints is None:
             additional_constraints = []
@@ -87,6 +93,10 @@ class MPSC(BaseSafetyFilter, ABC):
 
         if cost_function == Cost_Function.ONE_STEP_COST:
             self.cost_function = ONE_STEP_COST()
+            self.mpsc_cost_horizon = 1
+            self.cost_function.mpsc_cost_horizon = 1
+        elif cost_function == Cost_Function.PRECOMPUTED_COST:
+            self.cost_function = PRECOMPUTED_COST(self.env, mpsc_cost_horizon, decay_factor, self.output_dir)
         else:
             raise NotImplementedError(f'The MPSC cost function {cost_function} has not been implemented')
 
@@ -95,9 +105,21 @@ class MPSC(BaseSafetyFilter, ABC):
         '''Compute the dynamics.'''
         raise NotImplementedError
 
-    @abstractmethod
     def setup_optimizer(self):
         '''Setup the certifying MPC problem.'''
+        if self.use_acados:
+            self.setup_acados_optimizer()
+        else:
+            self.setup_casadi_optimizer()
+
+    @abstractmethod
+    def setup_casadi_optimizer(self):
+        '''Setup the certifying MPC problem using CasADi.'''
+        raise NotImplementedError
+
+    @abstractmethod
+    def setup_acados_optimizer(self):
+        '''Setup the certifying MPC problem using ACADOS.'''
         raise NotImplementedError
 
     def before_optimization(self, obs):
@@ -125,6 +147,28 @@ class MPSC(BaseSafetyFilter, ABC):
             feasible (bool): Whether the safety filtering was feasible or not.
         '''
 
+        if self.use_acados:
+            action, feasible = self.solve_acados_optimization(obs, uncertified_action, iteration)
+        else:
+            action, feasible = self.solve_casadi_optimization(obs, uncertified_action, iteration)
+        return action, feasible
+
+    def solve_casadi_optimization(self,
+                                  obs,
+                                  uncertified_action,
+                                  iteration=None,
+                                  ):
+        '''Solve the MPC optimization problem for a given observation and uncertified input.
+
+        Args:
+            obs (ndarray): Current state/observation.
+            uncertified_action (ndarray): The uncertified_controller's action.
+            iteration (int): The current iteration, used for trajectory tracking.
+
+        Returns:
+            action (ndarray): The certified action.
+            feasible (bool): Whether the safety filtering was feasible or not.
+        '''
         opti_dict = self.opti_dict
         opti = opti_dict['opti']
         z_var = opti_dict['z_var']
@@ -153,6 +197,8 @@ class MPSC(BaseSafetyFilter, ABC):
         # Solve the optimization problem.
         try:
             sol = opti.solve()
+            self.cost_prev = sol.value(opti_dict['cost'])
+            self.slack_prev = sol.value(opti_dict['slack'])
             x_val, u_val, next_u_val = sol.value(z_var), sol.value(v_var), sol.value(next_u)
             self.z_prev = x_val
             self.v_prev = u_val.reshape((self.model.nu), self.horizon)
@@ -163,6 +209,56 @@ class MPSC(BaseSafetyFilter, ABC):
             feasible = True
         except Exception as e:
             print('Error Return Status:', opti.debug.return_status())
+            print(e)
+            feasible = False
+            action = None
+        return action, feasible
+
+    def solve_acados_optimization(self,
+                                  obs,
+                                  uncertified_action,
+                                  iteration=None,
+                                  ):
+        '''Solve the MPC optimization problem for a given observation and uncertified input.
+
+        Args:
+            obs (ndarray): Current state/observation.
+            uncertified_action (ndarray): The uncertified_controller's action.
+            iteration (int): The current iteration, used for trajectory tracking.
+
+        Returns:
+            action (ndarray): The certified action.
+            feasible (bool): Whether the safety filtering was feasible or not.
+        '''
+
+        ocp_solver = self.ocp_solver
+        ocp_solver.cost_set(0, 'yref', np.concatenate((np.zeros((self.model.nx)), np.atleast_1d(np.squeeze(uncertified_action)))))
+
+        if isinstance(self.cost_function, PRECOMPUTED_COST):
+            uncert_input_traj = self.cost_function.calculate_unsafe_path(obs, uncertified_action, iteration)
+
+            for stage in range(1, self.mpsc_cost_horizon):
+                ocp_solver.cost_set(stage, 'yref', np.concatenate((np.zeros((self.model.nx)), uncert_input_traj[:, stage])))
+
+        # Solve the optimization problem.
+        try:
+            action = ocp_solver.solve_for_x0(x0_bar=obs)
+            self.cost_prev = ocp_solver.get_cost()
+            self.slack_prev = np.zeros((self.horizon, self.model.nx + self.model.nu))
+            x_val = np.zeros((self.horizon + 1, self.model.nx))
+            u_val = np.zeros((self.horizon, self.model.nu))
+            for i in range(self.horizon):
+                # self.slack_prev[i, :] = ocp_solver.get(i, 'su')
+                x_val[i, :] = ocp_solver.get(i, 'x')
+                u_val[i, :] = ocp_solver.get(i, 'u')
+            x_val[self.horizon, :] = ocp_solver.get(self.horizon, 'x')
+            self.z_prev = x_val.T
+            self.v_prev = u_val.T
+            # Take the first one from solved action sequence.
+            self.prev_action = action
+            feasible = True
+        except Exception as e:
+            print('Error Return Status:', ocp_solver.status)
             print(e)
             feasible = False
             action = None
@@ -254,5 +350,6 @@ class MPSC(BaseSafetyFilter, ABC):
         '''
         self.z_prev = None
         self.v_prev = None
+        self.slack_prev = 0
         self.kinf = self.horizon - 1
         self.setup_results_dict()
