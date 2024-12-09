@@ -55,7 +55,8 @@ do
         --overrides \
             ./config_overrides/${SYS}/${ALGO}_${SYS}.yaml \
             ./config_overrides/${SYS}/${SYS}_${TASK}.yaml \
-        --output_dir ./Results/${EXP_NAME}/${SYS}_${ALGO}_data/${SEED}/ \
+        --output_dir ./Results/${EXP_NAME} \
+        --tag ${SYS}_${ALGO}_data \
         --seed ${SEED} \
         --use_gpu \
         --kv_overrides \

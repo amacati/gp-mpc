@@ -25,9 +25,8 @@ def train():
     config.algo_config['training'] = True
     # print(config)
 
-    shutil.rmtree(config.output_dir, ignore_errors=True)
-
     set_dir_from_config(config)
+    shutil.rmtree(config.output_dir, ignore_errors=True)
     set_seed_from_config(config)
     set_device_from_config(config)
 
