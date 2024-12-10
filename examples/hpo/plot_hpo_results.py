@@ -9,7 +9,7 @@ import ast
 
 # Define the base directory
 base_dir = 'examples/hpo/hpo'  # Change this if needed
-algorithms = ['pid', 'lqr', 'ilqr', 'linear_mpc', 'mpc_acados', 'gpmpc_acados_TP', 'ppo', 'sac', 'dppo']  # List your algorithms here
+algorithms = ['pid', 'lqr', 'ilqr', 'linear_mpc', 'mpc_acados', 'fmpc', 'gpmpc_acados_TP', 'ppo', 'sac', 'dppo']  # List your algorithms here
 trials = 40  # Number of trials for HPO
 
 # Function to get the seed folder with the smallest seed number
