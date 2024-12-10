@@ -17,7 +17,8 @@ from optuna.trial import FrozenTrial, TrialState
 from optuna.visualization.matplotlib import plot_optimization_history, plot_param_importances
 
 from safe_control_gym.hyperparameters.base_hpo import BaseHPO
-from safe_control_gym.hyperparameters.optuna.hpo_optuna_utils import HYPERPARAMS_SAMPLER
+from safe_control_gym.hyperparameters.optuna.hpo_optuna_utils import HYPERPARAMS_SAMPLER, get_distributions
+from safe_control_gym.hyperparameters.hpo_search_space import HYPERPARAMS_DICT
 
 
 class HPO_Optuna(BaseHPO):
@@ -70,11 +71,7 @@ class HPO_Optuna(BaseHPO):
         self.logger.info('Trial number: {}'.format(trial.number))
 
         returns = self.evaluate(sampled_hyperparams)
-        if trial.number == 0:
-            self.warmstart_trial_value = returns
-            tag = 'warmstart'
-        else:
-            tag = f'trial_{trial.number}'
+        tag = f'trial_{trial.number}'
         if returns != self.none_handler():
             trajs_data_list = self.trajs_data_list
             metrics_list = self.metrics_list
@@ -144,7 +141,25 @@ class HPO_Optuna(BaseHPO):
             params (dict): Specified hyperparameters to be evaluated.
         """
         if hasattr(self, 'study'):
-            self.study.enqueue_trial(params, skip_if_exists=True)
+            # self.study.enqueue_trial(params, skip_if_exists=True)
+            res = self.evaluate(params)
+            if res != self.none_handler():
+                trajs_data_list = self.trajs_data_list
+                metrics_list = self.metrics_list
+                try:
+                    self.plot_results(trajs_data_list, metrics_list, self.output_dir, '(warmstart)')
+                except Exception as e:
+                    self.logger.info('Error plotting results: {}'.format(e))
+                    self.logger.std_out_logger.logger.exception('Full exception traceback')
+            objective_values = [np.mean(res[obj]) for obj in self.hpo_config.objective]
+            self.study.add_trial(
+                optuna.create_trial(
+                    params=params,
+                    distributions=get_distributions(HYPERPARAMS_DICT[self.search_space_key], self.hps_config),
+                    values=objective_values,
+                )
+            )
+            self.warmstart_trial_value = res
 
     def checkpoint(self):
         """

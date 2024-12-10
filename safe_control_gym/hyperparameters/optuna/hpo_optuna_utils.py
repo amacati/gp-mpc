@@ -545,6 +545,48 @@ def pid_sampler(trial: optuna.Trial, state_dim: int, action_dim: int) -> Dict[st
 
     return hps_suggestion
 
+def get_distributions(hyperparameter_dict, hps_config):
+    """
+    Generalized function to create a mapping of Optuna distributions based on a hyperparameter dictionary.
+
+    Args:
+        hyperparameter_dict (dict): Dictionary containing hyperparameter definitions.
+        hps_config (dict): Dictionary containing warmup hyperparameter configurations.
+
+    Returns:
+        dict: A dictionary mapping hyperparameter names to their respective Optuna distributions.
+    """
+    distributions = {}
+
+    for hp_name, hp_info in hyperparameter_dict.items():
+        hp_values = hp_info['values']
+        scale = hp_info['scale']
+        is_list = hp_info['type'] == list
+        cat = hp_info['cat']
+
+        if cat == 'float':
+            if scale == 'uniform':
+                if is_list:
+                    for i in range(len(hps_config[hp_name])):
+                        distributions[f'{hp_name}_{i}'] = optuna.distributions.UniformDistribution(hp_values[0], hp_values[1])
+                else:
+                    distributions[hp_name] = optuna.distributions.UniformDistribution(hp_values[0], hp_values[1])
+            elif scale == 'log':
+                if is_list:
+                    for i in range(len(hps_config[hp_name])):
+                        distributions[f'{hp_name}_{i}'] = optuna.distributions.LogUniformDistribution(hp_values[0], hp_values[1])
+                else:
+                    distributions[hp_name] = optuna.distributions.LogUniformDistribution(hp_values[0], hp_values[1])
+            else:
+                raise ValueError('Invalid scale')
+
+        elif cat == 'discrete' or cat == 'categorical':
+            distributions[hp_name] = optuna.distributions.CategoricalDistribution(hp_values)
+        else:
+            raise ValueError('Invalid hyperparameter category')
+    
+    return distributions
+
 
 HYPERPARAMS_SAMPLER = {
     'ppo': ppo_sampler,
