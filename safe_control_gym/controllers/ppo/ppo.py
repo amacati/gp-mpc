@@ -40,6 +40,9 @@ class PPO(BaseController):
                  use_gpu=False,
                  seed=0,
                  **kwargs):
+        self.filter_train_actions = False
+        self.penalize_sf_diff = False
+        self.sf_penalty = 1
         super().__init__(env_func, training, checkpoint_path, output_dir, use_gpu, seed, **kwargs)
 
         # Task.
@@ -49,6 +52,7 @@ class PPO(BaseController):
             self.env = VecRecordEpisodeStatistics(self.env, self.deque_size)
             self.eval_env = env_func(seed=seed * 111)
             self.eval_env = RecordEpisodeStatistics(self.eval_env, self.deque_size)
+            self.model = self.get_prior(self.eval_env, self.prior_info)
         else:
             # Testing only.
             self.env = env_func()
@@ -84,6 +88,9 @@ class PPO(BaseController):
             use_tensorboard = False
         self.logger = ExperimentLogger(output_dir, log_file_out=log_file_out, use_tensorboard=use_tensorboard)
 
+        # Adding safety filter
+        self.safety_filter = None
+
     def reset(self):
         """Do initializations for training or evaluation."""
         if self.training:
@@ -94,7 +101,8 @@ class PPO(BaseController):
             self.eval_env.add_tracker('mse', 0, mode='queue')
 
             self.total_steps = 0
-            obs, _ = self.env.reset()
+            obs, info = self.env.reset()
+            self.info = info['n'][0]
             self.obs = self.obs_normalizer(obs)
         else:
             # Add episodic stats to be tracked.
@@ -152,15 +160,6 @@ class PPO(BaseController):
               **kwargs
               ):
         """Performs learning (pre-training, training, fine-tuning, etc.)."""
-
-        # Initial Evaluation.
-        eval_results = self.run(env=self.eval_env, n_episodes=self.eval_batch_size)
-        self.logger.info('Eval | ep_lengths {:.2f} +/- {:.2f} | ep_return {:.3f} +/- {:.3f}'.format(
-            eval_results['ep_lengths'].mean(),
-            eval_results['ep_lengths'].std(),
-            eval_results['ep_returns'].mean(),
-            eval_results['ep_returns'].std()))
-
         if self.num_checkpoints > 0:
             step_interval = np.linspace(0, self.max_env_steps, self.num_checkpoints)
             interval_save = np.zeros_like(step_interval, dtype=bool)
@@ -224,11 +223,30 @@ class PPO(BaseController):
         self.obs_normalizer.unset_read_only()
         rollouts = PPOBuffer(self.env.observation_space, self.env.action_space, self.rollout_steps, self.rollout_batch_size)
         obs = self.obs
+        info = self.info
         start = time.time()
         for _ in range(self.rollout_steps):
             with torch.no_grad():
-                act, v, logp = self.agent.ac.step(torch.FloatTensor(obs).to(self.device))
-            next_obs, rew, done, info = self.env.step(act)
+                action, v, logp = self.agent.ac.step(torch.FloatTensor(obs).to(self.device))
+                unsafe_action = action
+
+            # Adding safety filter
+            success = False
+            if self.safety_filter is not None and (self.filter_train_actions is True or self.penalize_sf_diff is True):
+                physical_action = self.env.envs[0].denormalize_action(action)
+                unextended_obs = np.squeeze(obs)[:self.env.envs[0].symbolic.nx]
+                certified_action, success = self.safety_filter.certify_action(unextended_obs, physical_action, info)
+                if success and self.filter_train_actions is True:
+                    action = self.env.envs[0].normalize_action(certified_action)
+                else:
+                    self.safety_filter.ocp_solver.reset()
+
+            action = np.atleast_2d(np.squeeze([action]))
+            next_obs, rew, done, info = self.env.step(action)
+            if self.penalize_sf_diff and success:
+                rew = np.log(rew)
+                rew -= self.sf_penalty * np.linalg.norm(physical_action - certified_action)
+                rew = np.exp(rew)
             next_obs = self.obs_normalizer(next_obs)
             rew = self.reward_normalizer(rew, done)
             mask = 1 - done.astype(float)
@@ -243,9 +261,11 @@ class PPO(BaseController):
                     terminal_obs_tensor = torch.FloatTensor(terminal_obs).unsqueeze(0).to(self.device)
                     terminal_val = self.agent.ac.critic(terminal_obs_tensor).squeeze().detach().cpu().numpy()
                     terminal_v[idx] = terminal_val
-            rollouts.push({'obs': obs, 'act': act, 'rew': rew, 'mask': mask, 'v': v, 'logp': logp, 'terminal_v': terminal_v})
+            rollouts.push({'obs': obs, 'act': unsafe_action, 'rew': rew, 'mask': mask, 'v': v, 'logp': logp, 'terminal_v': terminal_v})
             obs = next_obs
+            info = info['n'][0]
         self.obs = obs
+        self.info = info
         self.total_steps += self.rollout_batch_size * self.rollout_steps
         # Learn from rollout batch.
         last_val = self.agent.ac.critic(torch.FloatTensor(obs).to(self.device)).detach().cpu().numpy()
@@ -267,7 +287,7 @@ class PPO(BaseController):
     def run(self,
             env=None,
             render=False,
-            n_episodes=1,
+            n_episodes=10,
             verbose=False,
             ):
         """Runs evaluation with current policy."""
@@ -290,6 +310,19 @@ class PPO(BaseController):
         mse, ep_rmse = [], []
         while len(ep_returns) < n_episodes:
             action = self.select_action(obs=obs, info=info)
+
+            # Adding safety filter
+            if self.safety_filter is not None:
+                success = False
+                physical_action = env.denormalize_action(action)
+                unextended_obs = np.squeeze(obs)[:env.symbolic.nx]
+                certified_action, success = self.safety_filter.certify_action(unextended_obs, physical_action, info)
+                if success:
+                    action = env.normalize_action(certified_action)
+                else:
+                    self.safety_filter.ocp_solver.reset()
+
+            action = np.atleast_2d(np.squeeze([action]))
             obs, _, done, info = env.step(action)
             mse.append(info['mse'])
             if render:
@@ -341,7 +374,7 @@ class PPO(BaseController):
             },
             step,
             prefix='loss')
-        
+
         try:
             # Performance stats.
             ep_lengths = np.asarray(self.env.length_queue)

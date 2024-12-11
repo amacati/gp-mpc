@@ -235,7 +235,7 @@ class Quadrotor(BaseAviary):
                     (self.QUAD_TYPE == QuadType.TWO_D_ATTITUDE_5S and len(info_mse_metric_state_weight) == 5) or \
                     (self.QUAD_TYPE == QuadType.THREE_D_ATTITUDE and len(info_mse_metric_state_weight) == 12) or \
                     (self.QUAD_TYPE == QuadType.THREE_D_ATTITUDE_10 and len(info_mse_metric_state_weight) == 10):
-            
+
                 self.info_mse_metric_state_weight = np.array(info_mse_metric_state_weight, ndmin=1, dtype=float)
             else:
                 raise ValueError('[ERROR] in Quadrotor.__init__(), wrong info_mse_metric_state_weight argument size.')
@@ -283,8 +283,8 @@ class Quadrotor(BaseAviary):
             self.INERTIAL_PROP_RAND_INFO.pop('Izz', None)
         elif self.QUAD_TYPE == QuadType.TWO_D or \
                 self.QUAD_TYPE == QuadType.TWO_D_ATTITUDE or \
-                self.QUAD_TYPE == QuadType.TWO_D_ATTITUDE_5S \
-                    or self.QUAD_TYPE == QuadType.TWO_D_ATTITUDE_BODY:
+                self.QUAD_TYPE == QuadType.TWO_D_ATTITUDE_5S or \
+                self.QUAD_TYPE == QuadType.TWO_D_ATTITUDE_BODY:
             # Only randomize Iyy for the 2D quadrotor.
             self.INERTIAL_PROP_RAND_INFO.pop('Ixx', None)
             self.INERTIAL_PROP_RAND_INFO.pop('Izz', None)
@@ -691,7 +691,7 @@ class Quadrotor(BaseAviary):
             # Define observation.
             Y = cs.vertcat(x, x_dot, z, z_dot, theta, theta_dot)
         elif self.QUAD_TYPE == QuadType.TWO_D_ATTITUDE:
-                # identified parameters for the 2D attitude interface
+            # identified parameters for the 2D attitude interface
             # NOTE: these parameters are not set in the prior_prop dict
             # since they are specific to the 2D attitude model
             self.beta_1 = prior_prop.get('beta_1', 18.112984649321753)
@@ -739,7 +739,7 @@ class Quadrotor(BaseAviary):
             P_mapping = self.alpha_1 * (theta + self.pitch_bias) + self.alpha_2 * theta_dot + self.alpha_3 * P
             self.T_mapping_func = cs.Function('T_mapping', [T], [T_mapping])
             self.P_mapping_func = cs.Function('P_mapping', [theta, theta_dot, P], [P_mapping])
-        
+
         elif self.QUAD_TYPE == QuadType.TWO_D_ATTITUDE_BODY:
             nx, nu = 6, 2
             # Define states.
@@ -758,18 +758,18 @@ class Quadrotor(BaseAviary):
             # With the formulat F_desired = b_F * T + a_F
 
             # Define dynamics equations.
-            X_dot = cs.vertcat(vx *cs.cos(theta) - vz * cs.sin(theta),
+            X_dot = cs.vertcat(vx * cs.cos(theta) - vz * cs.sin(theta),
                                vz * theta_dot - g * cs.sin(theta),
                                vx * cs.sin(theta) + vz * cs.cos(theta),
-                               -vx * theta_dot - g * cs.cos(theta) + (beta_1 * T + beta_2),
+                               -vx * theta_dot - g * cs.cos(theta) + (self.beta_1 * T + self.beta_2),
                                -theta_dot,
-                               alpha_1 * (-theta + pitch_bias) + alpha_2 * -theta_dot + alpha_3 * P)
+                               self.alpha_1 * (-theta + self.pitch_bias) + self.alpha_2 * -theta_dot + self.alpha_3 * P)
             # Define observation.
             x_dot = vx * cs.cos(theta) + vz * cs.sin(theta)
             z_dot = -vx * cs.sin(theta) + vz * cs.cos(theta)
             # Y = cs.vertcat(x, x_dot, z, z_dot, theta, theta_dot)
             Y = cs.vertcat(x, vx, z, vz, theta, theta_dot)
-            T_mapping = beta_1 * T + beta_2
+            T_mapping = self.beta_1 * T + self.beta_2
             self.T_mapping_func = cs.Function('T_mapping', [T], [T_mapping])
 
         elif self.QUAD_TYPE == QuadType.TWO_D_ATTITUDE_5S:
@@ -878,10 +878,10 @@ class Quadrotor(BaseAviary):
             # TODO: create a parameter for the new quad model
             X_dot = cs.vertcat(x_dot,
                                (params_acc[0] * T + params_acc[1]) * (
-                                           cs.cos(phi) * cs.sin(theta) * cs.cos(psi) + cs.sin(phi) * cs.sin(psi)),
+                                   cs.cos(phi) * cs.sin(theta) * cs.cos(psi) + cs.sin(phi) * cs.sin(psi)),
                                y_dot,
                                (params_acc[0] * T + params_acc[1]) * (
-                                           cs.cos(phi) * cs.sin(theta) * cs.sin(psi) - cs.sin(phi) * cs.cos(psi)),
+                                   cs.cos(phi) * cs.sin(theta) * cs.sin(psi) - cs.sin(phi) * cs.cos(psi)),
                                z_dot,
                                (params_acc[0] * T + params_acc[1]) * cs.cos(phi) * cs.cos(theta) - g,
                                phi_dot,
@@ -892,7 +892,7 @@ class Quadrotor(BaseAviary):
                                params_yaw_rate[0] * psi + params_yaw_rate[1] * psi_dot + params_yaw_rate[2] * Y)
             # Define observation.
             Y = cs.vertcat(x, x_dot, y, y_dot, z, z_dot, phi, theta, psi, phi_dot, theta_dot, psi_dot)
-        
+
         elif self.QUAD_TYPE == QuadType.THREE_D_ATTITUDE_10:
             nx, nu = 10, 3
             # Define states.
@@ -1179,10 +1179,10 @@ class Quadrotor(BaseAviary):
                 self.phi_dot_threshold_radians, self.theta_dot_threshold_radians
             ])
             self.STATE_LABELS = ['x', 'x_dot', 'y', 'y_dot', 'z', 'z_dot',
-                                    'phi', 'theta', 'phi_dot', 'theta_dot']
+                                 'phi', 'theta', 'phi_dot', 'theta_dot']
             self.STATE_UNITS = ['m', 'm/s', 'm', 'm/s', 'm', 'm/s',
                                 'rad', 'rad', 'rad/s', 'rad/s']
-            
+
         # Define the state space for the dynamics.
         self.state_space = spaces.Box(low=low, high=high, dtype=np.float32)
 
@@ -1511,9 +1511,9 @@ class Quadrotor(BaseAviary):
         # Filter only relevant dimensions.
         state_error = state_error * self.info_mse_metric_state_weight
         info['mse'] = np.sum(state_error ** 2)
-        # if self.constraints is not None:
-        #     info['constraint_values'] = self.constraints.get_values(self)
-        #     info['constraint_violations'] = self.constraints.get_violations(self)
+        if self.constraints is not None:
+            info['constraint_values'] = self.constraints.get_values(self)
+            info['constraint_violations'] = self.constraints.get_violations(self)
         return info
 
     def _get_reset_info(self):
