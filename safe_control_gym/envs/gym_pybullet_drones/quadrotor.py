@@ -312,6 +312,19 @@ class Quadrotor(BaseAviary):
         else:
             raise ValueError('[ERROR] in Quadrotor.__init__(), inertial_prop incorrect format.')
 
+        # Set goals for current task
+        self.set_goals()
+
+        # Set attitude controller if quadtype is QuadType.TWO_D_ATTITUDE
+        # if self.QUAD_TYPE in [QuadType.TWO_D_ATTITUDE, QuadType.TWO_D_ATTITUDE_5S, QuadType.THREE_D_ATTITUDE]:
+        if self.QUAD_TYPE in [QuadType.TWO_D_ATTITUDE, QuadType.TWO_D_ATTITUDE_5S, QuadType.TWO_D_ATTITUDE_BODY,
+                              QuadType.THREE_D_ATTITUDE, QuadType.THREE_D_ATTITUDE_10]:
+            self.attitude_control = AttitudeControl(self.CTRL_TIMESTEP, self.PYB_TIMESTEP)
+
+        # Set prior/symbolic info.
+        self._setup_symbolic()
+
+    def set_goals(self):
         # Create X_GOAL and U_GOAL references for the assigned task.
         # if self.QUAD_TYPE == QuadType.TWO_D_ATTITUDE or self.QUAD_TYPE == QuadType.TWO_D_ATTITUDE_5S:
         if self.QUAD_TYPE in [QuadType.TWO_D_ATTITUDE, QuadType.TWO_D_ATTITUDE_5S, QuadType.TWO_D_ATTITUDE_BODY]:
@@ -359,8 +372,13 @@ class Quadrotor(BaseAviary):
                     [traj_data['obs'][0][:, 1], 0 * traj_data['obs'][0][:, 1], traj_data['obs'][0][:, 3]]).T
             else:
                 waypoints = self.TASK_INFO['waypoints'] if 'waypoints' in self.TASK_INFO else None
+                if isinstance(self.EPISODE_LEN_SEC, list):
+                    self.episode_len = self.np_random.choice(self.EPISODE_LEN_SEC)
+                else:
+                    self.episode_len = self.EPISODE_LEN_SEC
+                print(self.episode_len)
                 POS_REF, VEL_REF, _ = self._generate_trajectory(traj_type=self.TASK_INFO['trajectory_type'],
-                                                                traj_length=self.EPISODE_LEN_SEC,
+                                                                traj_length=self.episode_len,
                                                                 num_cycles=self.TASK_INFO['num_cycles'],
                                                                 traj_plane=self.TASK_INFO['trajectory_plane'],
                                                                 position_offset=self.TASK_INFO[
@@ -460,15 +478,6 @@ class Quadrotor(BaseAviary):
                     np.zeros(VEL_REF.shape[0])
                 ]).transpose()
 
-        # Set attitude controller if quadtype is QuadType.TWO_D_ATTITUDE
-        # if self.QUAD_TYPE in [QuadType.TWO_D_ATTITUDE, QuadType.TWO_D_ATTITUDE_5S, QuadType.THREE_D_ATTITUDE]:
-        if self.QUAD_TYPE in [QuadType.TWO_D_ATTITUDE, QuadType.TWO_D_ATTITUDE_5S, QuadType.TWO_D_ATTITUDE_BODY,
-                              QuadType.THREE_D_ATTITUDE, QuadType.THREE_D_ATTITUDE_10]:
-            self.attitude_control = AttitudeControl(self.CTRL_TIMESTEP, self.PYB_TIMESTEP)
-
-        # Set prior/symbolic info.
-        self._setup_symbolic()
-
     def reset(self, seed=None):
         """(Re-)initializes the environment to start an episode.
 
@@ -548,6 +557,9 @@ class Quadrotor(BaseAviary):
         self._update_and_store_kinematic_information()
         obs, info = self._get_observation(), self._get_reset_info()
         obs, info = super().after_reset(obs, info)
+
+        # Update task goals
+        self.set_goals()
 
         # Return either an observation and dictionary or just the observation.
         if self.INFO_IN_RESET:
