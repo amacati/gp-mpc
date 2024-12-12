@@ -12,9 +12,9 @@ algo_config:
   #   - 0.5
   #   - 0.001
   
-  horizon: 25
-  q_mpc: [18, 0.1, 18, 0.5, 0.5, 0.0001]
-  r_mpc: [3., 3.]
+  horizon: 40
+  q_mpc: [18, 0.1, 18, 0.1, 0.5, 0.01]
+  r_mpc: [5., 5.]
   
   # Prior info
   prior_info:
@@ -31,4 +31,5 @@ algo_config:
     prior_prop_rand_info: null
   warmstart: True
   solver: qrqp
+  # solver: sqpmethod
   output_dir: ./linear_mpc/results

@@ -1,8 +1,8 @@
 algo: linear_mpc_acados
 algo_config:
-  horizon: 25
+  horizon: 40
   q_mpc: [18, 0.1, 18, 0.1, 0.5, 0.01]
-  r_mpc: [15., 5.]
+  r_mpc: [5., 5.]
   
   # Prior info
   prior_info:
