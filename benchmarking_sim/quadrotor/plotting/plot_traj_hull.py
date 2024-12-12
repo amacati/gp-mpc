@@ -284,12 +284,13 @@ print(gpmpc_traj_data.shape)  # (10, 541, 6) seed, time_step, obs
 # else:
 #     ppo_data_path = '/home/mingxuan/Repositories/scg_tsung/benchmarking_sim/quadrotor/data/gen_traj_results_ppo.npy'
 # ppo_data_path = '/home/mingxuan/Repositories/scg_tsung/examples/rl/Data/traj_results_ppo_15.npy'
-if additional == '11':
-    ppo_data_path = '/home/mingxuan/Repositories/scg_tsung/examples/rl/Data/traj_results_ppo_11.npy'
-elif additional == '9':
-    ppo_data_path = '/home/mingxuan/Repositories/scg_tsung/examples/rl/Data/traj_results_ppo_9.npy'
-elif additional == '15':
-    ppo_data_path = '/home/mingxuan/Repositories/scg_tsung/examples/rl/Data/traj_results_ppo_15.npy'
+# if additional == '11':
+#     ppo_data_path = '/home/mingxuan/Repositories/scg_tsung/examples/rl/Data/traj_results_ppo_11.npy'
+# elif additional == '9':
+#     ppo_data_path = '/home/mingxuan/Repositories/scg_tsung/examples/rl/Data/traj_results_ppo_9.npy'
+# elif additional == '15':
+#     ppo_data_path = '/home/mingxuan/Repositories/scg_tsung/examples/rl/Data/traj_results_ppo_15.npy'
+ppo_data_path = f'/home/mingxuan/Repositories/scg_tsung/benchmarking_sim/quadrotor/data/traj_results_ppo_{additional}.npy'
 ppo_data = np.load(ppo_data_path, allow_pickle=True).item()
 print(ppo_data.keys())  # (x, 541, 6) seed, time_step, obs
 print(ppo_data['obs'][0].shape)
@@ -301,12 +302,13 @@ print(ppo_traj_data.shape)  # (10, 541, 6) seed, time_step, obs
 # else:
 #     sac_data_path = '/home/mingxuan/Repositories/scg_tsung/benchmarking_sim/quadrotor/data/gen_traj_results_sac.npy'
 # sac_data_path = '/home/mingxuan/Repositories/scg_tsung/examples/rl/Data/traj_results_sac_15.npy'
-if additional == '11':
-    sac_data_path = '/home/mingxuan/Repositories/scg_tsung/examples/rl/Data/traj_results_sac_11.npy'
-elif additional == '9':
-    sac_data_path = '/home/mingxuan/Repositories/scg_tsung/examples/rl/Data/traj_results_sac_9.npy'
-elif additional == '15':
-    sac_data_path = '/home/mingxuan/Repositories/scg_tsung/examples/rl/Data/traj_results_sac_15.npy'
+# if additional == '11':
+#     sac_data_path = '/home/mingxuan/Repositories/scg_tsung/examples/rl/Data/traj_results_sac_11.npy'
+# elif additional == '9':
+#     sac_data_path = '/home/mingxuan/Repositories/scg_tsung/examples/rl/Data/traj_results_sac_9.npy'
+# elif additional == '15':
+#     sac_data_path = '/home/mingxuan/Repositories/scg_tsung/examples/rl/Data/traj_results_sac_15.npy'
+sac_data_path = f'/home/mingxuan/Repositories/scg_tsung/examples/rl/Data/traj_results_sac_{additional}.npy'
 sac_data = np.load(sac_data_path, allow_pickle=True).item()
 print(sac_data.keys())  # (x, 541, 6) seed, time_step, obs
 print(sac_data['obs'][0].shape)
@@ -318,12 +320,13 @@ print(sac_traj_data.shape)  # (10, 541, 6) seed, time_step, obs
 # else:
 #     dppo_data_path = '/home/mingxuan/Repositories/scg_tsung/benchmarking_sim/quadrotor/data/gen_traj_results_dppo.npy'
 # dppo_data_path = '/home/mingxuan/Repositories/scg_tsung/examples/rl/Data/traj_results_dppo_15.npy'
-if additional == '11':
-    dppo_data_path = '/home/mingxuan/Repositories/scg_tsung/examples/rl/Data/traj_results_dppo_11.npy'
-elif additional == '9':
-    dppo_data_path = '/home/mingxuan/Repositories/scg_tsung/examples/rl/Data/traj_results_dppo_9.npy'
-elif additional == '15':
-    dppo_data_path = '/home/mingxuan/Repositories/scg_tsung/examples/rl/Data/traj_results_dppo_15.npy'
+# if additional == '11':
+#     dppo_data_path = '/home/mingxuan/Repositories/scg_tsung/examples/rl/Data/traj_results_dppo_11.npy'
+# elif additional == '9':
+#     dppo_data_path = '/home/mingxuan/Repositories/scg_tsung/examples/rl/Data/traj_results_dppo_9.npy'
+# elif additional == '15':
+#     dppo_data_path = '/home/mingxuan/Repositories/scg_tsung/examples/rl/Data/traj_results_dppo_15.npy'
+dppo_data_path = f'/home/mingxuan/Repositories/scg_tsung/examples/rl/Data/traj_results_dppo_{additional}.npy'
 dppo_data = np.load(dppo_data_path, allow_pickle=True).item()
 print(dppo_data.keys())  # (x, 541, 6) seed, time_step, obs
 print(dppo_data['obs'][0].shape)
@@ -490,17 +493,17 @@ ax.set_ylim(-0.05, 0.4)
 
 fig.tight_layout()
 # plt.show()
-plt_name = f'tracking_error_{plot_name}_{additional}'
+file_name = f'tracking_error_{plot_name}_{additional}'
 if not generalization:
-    fig.savefig(os.path.join(script_path, plt_name)+".pdf", bbox_inches='tight')
-    print(f'Saved at {os.path.join(script_path, plt_name)}.pdf')
-    fig.savefig(os.path.join(script_path, f'{plot_name}_{plt_name}'+".png"), bbox_inches='tight')
-    print(f'Saved at {os.path.join(script_path, f"{plot_name}_{plt_name}"+".png")}')
+    fig.savefig(os.path.join(script_path, file_name)+".pdf", bbox_inches='tight')
+    print(f'Saved at {os.path.join(script_path, file_name)}.pdf')
+    fig.savefig(os.path.join(script_path, f'{file_name}'+".png"), bbox_inches='tight')
+    print(f'Saved at {os.path.join(script_path, f"{file_name}"+".png")}')
 else:
-    fig.savefig(os.path.join(script_path, f'{plot_name}_{plt_name}'+".pdf"), bbox_inches='tight')
-    print(f'Saved at {os.path.join(script_path, f"{plot_name}_{plt_name}"+".pdf")}')
-    fig.savefig(os.path.join(script_path, f'{plot_name}_{plt_name}'+".png"), bbox_inches='tight')
-    print(f'Saved at {os.path.join(script_path, f"{plot_name}_{plt_name}"+".png")}')
+    fig.savefig(os.path.join(script_path, f'{file_name}'+".pdf"), bbox_inches='tight')
+    print(f'Saved at {os.path.join(script_path, f"{file_name}"+".pdf")}')
+    fig.savefig(os.path.join(script_path, f'{file_name}'+".png"), bbox_inches='tight')
+    print(f'Saved at {os.path.join(script_path, f"{file_name}"+".png")}')
 # exit()
 
 
@@ -529,7 +532,7 @@ if plot_name == 'RL':
                                  linewidth=2.0, alpha=alpha, padding_factor=k)
     plot_xz_trajectory_with_hull(ax, dppo_traj_data, label='DPPO',
                                  traj_color=plot_colors['DPPO'], hull_color=plot_colors['DPPO'],
-                                 linewidth=2.0, linestyle='--', alpha=alpha, padding_factor=k)
+                                 linewidth=2.0, alpha=alpha, padding_factor=k)
 elif plot_name == 'Control-oriented':
     plot_xz_trajectory_with_hull(ax, pid_traj_data, label='PID',
                                     traj_color=plot_colors['PID'], hull_color=plot_colors['PID'],
