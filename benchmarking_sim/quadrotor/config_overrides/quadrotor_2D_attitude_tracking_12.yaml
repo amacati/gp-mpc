@@ -75,8 +75,6 @@ task_config:
     #   lower_bounds: [-0.1, -0.1, -0.1, -0.1, -0.1, -0.1]
     - constraint_form: default_constraint
       constrained_variable: input
-      upper_bounds: [0.58212, 0.7]
-      lower_bounds: [0.09702, -0.7]
 
   done_on_out_of_bound: True
   done_on_violation: False
