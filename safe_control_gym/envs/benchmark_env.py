@@ -580,14 +580,16 @@ class BenchmarkEnv(gym.Env, ABC):
             polys = generate_trajectory(
                 waypoints,
                 degree=6,  # Polynomial degree
-                idx_minimized_orders=2,  # Minimize derivatives in these orders (>= 2)
+                idx_minimized_orders=4,  # Minimize derivatives in these orders (>= 2)
                 num_continuous_orders=3,  # Constrain continuity of derivatives up to order (>= 3)
                 algorithm='closed-form'   # "closed-form" Or "constrained"
+                # algorithm='constrained'   
             )
+            # return information up to velocity (2nd derivative)
             pva = compute_trajectory_derivatives(polys, times, 2)
             pos_ref_traj = pva[0, :, :]
             vel_ref_traj = pva[1, :, :]
-            speed_traj = np.linalg.norm(vel_ref_traj, axis=0)
+            speed_traj = np.linalg.norm(vel_ref_traj, axis=1)
 
         elif traj_type == 'snap_custom':
             if waypoint_list is None:
@@ -596,14 +598,14 @@ class BenchmarkEnv(gym.Env, ABC):
             polys = generate_trajectory(
                 waypoints,
                 degree=6,  # Polynomial degree
-                idx_minimized_orders=2,  # Minimize derivatives in these orders (>= 2)
+                idx_minimized_orders=4,  # Minimize derivatives in these orders (>= 2)
                 num_continuous_orders=3,  # Constrain continuity of derivatives up to order (>= 3)
                 algorithm='constrained'   # "closed-form" Or "constrained"
             )
             pva = compute_trajectory_derivatives(polys, times, 2)
             pos_ref_traj = pva[0, :, :]
             vel_ref_traj = pva[1, :, :]
-            speed_traj = np.linalg.norm(vel_ref_traj, axis=0)
+            speed_traj = np.linalg.norm(vel_ref_traj, axis=1)
 
         else:
             # Compute trajectory points.
@@ -623,6 +625,13 @@ class BenchmarkEnv(gym.Env, ABC):
         if 'z' not in traj_plane:
             pos_ref_traj[:, 2] = 1.0
             vel_ref_traj[:, 2] = 0.0
+
+        # # calculate the maximul acceleration and velocity
+        # max_vel = np.max(speed_traj)
+        # max_acc = np.max(np.diff(speed_traj) / sample_time)
+        # print(colored(f"Max velocity: {max_vel}, Max acceleration: {max_acc}", 'green'))
+        # if max_acc > 1.8 * 9.81 or max_acc < 0.3 * 9.81:
+        #     raise ValueError(f"Max acceleration is not in the range of 0.3g to 1.8g")
             
         return pos_ref_traj, vel_ref_traj, speed_traj
 
