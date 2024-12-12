@@ -521,7 +521,8 @@ class BenchmarkEnv(gym.Env, ABC):
 
         # Terminate when reaching time limit,
         # but distinguish between done due to true termination or time limit reached
-        if self.ctrl_step_counter >= self.CTRL_STEPS:
+        # if self.ctrl_step_counter >= self.CTRL_STEPS:
+        if self.ctrl_step_counter >= self.episode_len * self.CTRL_FREQ:
             info['TimeLimit.truncated'] = not done
             done = True
         return obs, rew, done, info
