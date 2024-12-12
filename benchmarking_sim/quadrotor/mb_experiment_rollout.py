@@ -17,6 +17,7 @@ from safe_control_gym.utils.registration import make
 from safe_control_gym.utils.utils import mkdirs, set_dir_from_config, timing
 from safe_control_gym.envs.gym_pybullet_drones.quadrotor import Quadrotor
 from safe_control_gym.utils.gpmpc_plotting import make_quad_plots
+from benchmarking_sim.quadrotor.mb_experiment import plot_quad_eval
 
 script_path = os.path.dirname(os.path.realpath(__file__))
 gp_model_path = '/home/mingxuan/Repositories/scg_tsung/benchmarking_sim/quadrotor/gpmpc_acados/results/200_300_aggresive'
@@ -25,7 +26,9 @@ gp_model_dirs = [d for d in os.listdir(gp_model_path) if os.path.isdir(os.path.j
 gp_model_dirs = [os.path.join(gp_model_path, d) for d in gp_model_dirs]
 
 @timing
-def run(gui=False, n_episodes=1, n_steps=None, save_data=True, seed=2, Additional='', ALGO='gpmpc_acados'):
+def run(gui=False, n_episodes=1, n_steps=None, save_data=True, 
+        seed=2, Additional='', ALGO='pid', SYS='quadrotor_2D_attitude',
+        noise_factor=1, eval_task=None):
     '''The main function running experiments for model-based methods.
 
     Args:
@@ -44,7 +47,7 @@ def run(gui=False, n_episodes=1, n_steps=None, save_data=True, seed=2, Additiona
     # ALGO = 'lqr'
     # ALGO = 'lqr_c'
     # ALGO = 'pid'
-    SYS = 'quadrotor_2D_attitude'
+    SYS = SYS
     TASK = 'tracking'
     # PRIOR = '200'
     PRIOR = '100'
@@ -89,20 +92,32 @@ def run(gui=False, n_episodes=1, n_steps=None, save_data=True, seed=2, Additiona
     fac.add_argument('--n_episodes', type=int, default=1, help='number of episodes to run.')
     # merge config and create output directory
     config = fac.merge()
-    if ALGO in ['gpmpc_acados', 'gp_mpc']:
+    if ALGO in ['gpmpc_acados', 'gp_mpc', 'gpmpc_acados_TP']:
         num_data_max = config.algo_config.num_epochs * config.algo_config.num_samples
         config.output_dir = os.path.join(config.output_dir, PRIOR + '_' + repr(num_data_max) + f'_rollout{ADDITIONAL}')
+        if seed%10 == 0:
+            config.algo_config.gp_model_path = gp_model_dirs[10-1]
+        else:
+            config.algo_config.gp_model_path = gp_model_dirs[seed%10-1]
     else:
-        config.output_dir = config.output_dir + f'_rollout{ADDITIONAL}'
+        if eval_task == 'rollout':
+            config.output_dir = config.output_dir + f'_rollout{ADDITIONAL}'
+        elif eval_task == 'noise':
+            config.output_dir = config.output_dir + '_noise/' + f'seed_{seed}'
+        else:
+            raise ValueError('eval_task not recognized')
+        
     print('output_dir',  config.algo_config.output_dir)
     set_dir_from_config(config)
     config.algo_config.output_dir = config.output_dir
     mkdirs(config.output_dir)
-    if seed%10 == 0:
-        config.algo_config.gp_model_path = gp_model_dirs[10-1] if ALGO == 'gpmpc_acados' else None
-    else:
-        config.algo_config.gp_model_path = gp_model_dirs[seed%10-1] if ALGO == 'gpmpc_acados' else None
-    
+
+    config.algo_config.gp_model_path = gp_model_dirs[seed-1] if ALGO == 'gpmpc_acados' else None
+    # amplify the observation noise std with a factor 
+    default_noise_std = config.task_config.disturbances.observation[0]['std']
+    print(f'Original observation noise std: {default_noise_std}')
+    config.task_config.disturbances.observation[0]['std'] = [noise_factor * default_noise_std[i] for i in range(len(default_noise_std))]
+    print(f'Amplified observation noise std: {config.task_config.disturbances.observation[0]["std"]}')
 
     # Create an environment
     env_func = partial(make,
@@ -194,6 +209,7 @@ def run(gui=False, n_episodes=1, n_steps=None, save_data=True, seed=2, Additiona
     ctrl.close()
     random_env.close()
     metrics = experiment.compute_metrics(all_trajs)
+    metrics['noise_factor'] = noise_factor
     all_trajs = dict(all_trajs)
 
     if save_data:
@@ -209,87 +225,8 @@ def run(gui=False, n_episodes=1, n_steps=None, save_data=True, seed=2, Additiona
 
     print('FINAL METRICS - ' + ', '.join([f'{key}: {value}' for key, value in metrics.items()]))
 
-
-def plot_quad_eval(state_stack, input_stack, env, save_path=None):
-    '''Plots the input and states to determine iLQR's success.
-
-    Args:
-        state_stack (ndarray): The list of observations of iLQR in the latest run.
-        input_stack (ndarray): The list of inputs of iLQR in the latest run.
-    '''
-    model = env.symbolic
-    stepsize = model.dt
-
-    plot_length = np.min([np.shape(input_stack)[0], np.shape(state_stack)[0]])
-    times = np.linspace(0, stepsize * plot_length, plot_length)
-
-    reference = env.X_GOAL
-    if env.TASK == Task.STABILIZATION:
-        reference = np.tile(reference.reshape(1, model.nx), (plot_length, 1))
-
-    # Plot states
-    fig, axs = plt.subplots(model.nx)
-    for k in range(model.nx):
-        axs[k].plot(times, np.array(state_stack).transpose()[k, 0:plot_length], label='actual')
-        axs[k].plot(times, reference.transpose()[k, 0:plot_length], color='r', label='desired')
-        axs[k].set(ylabel=env.STATE_LABELS[k] + f'\n[{env.STATE_UNITS[k]}]')
-        axs[k].yaxis.set_major_formatter(FormatStrFormatter('%.1f'))
-        if k != model.nx - 1:
-            axs[k].set_xticks([])
-    axs[0].set_title('State Trajectories')
-    axs[-1].legend(ncol=3, bbox_transform=fig.transFigure, bbox_to_anchor=(1, 0), loc='lower right')
-    axs[-1].set(xlabel='time (sec)')
-
-    if save_path is not None:
-        plt.savefig(os.path.join(save_path, 'state_trajectories.png'))
-
-    # Plot inputs
-    _, axs = plt.subplots(model.nu)
-    if model.nu == 1:
-        axs = [axs]
-    for k in range(model.nu):
-        axs[k].plot(times, np.array(input_stack).transpose()[k, 0:plot_length])
-        axs[k].set(ylabel=f'input {k}')
-        axs[k].set(ylabel=env.ACTION_LABELS[k] + f'\n[{env.ACTION_UNITS[k]}]')
-        axs[k].yaxis.set_major_formatter(FormatStrFormatter('%.1f'))
-    axs[0].set_title('Input Trajectories')
-    axs[-1].set(xlabel='time (sec)')
-
-    if save_path is not None:
-        plt.savefig(os.path.join(save_path, 'input_trajectories.png'))
-
-    # plot the figure-eight
-    _, axs = plt.subplots(1)
-    axs.plot(np.array(state_stack).transpose()[0, 0:plot_length], 
-             np.array(state_stack).transpose()[2, 0:plot_length], label='actual')
-    axs.plot(reference.transpose()[0, 0:plot_length], 
-             reference.transpose()[2, 0:plot_length], color='r', label='desired')
-    axs.set_xlabel('x [m]')
-    axs.set_ylabel('z [m]')
-    axs.set_title('State path in x-z plane')
-    axs.legend()
-    
-    if save_path is not None:
-        plt.savefig(os.path.join(save_path, 'state_path.png'))
-        print(f'Plots saved to {save_path}')
-
-
-def wrap2pi_vec(angle_vec):
-    '''Wraps a vector of angles between -pi and pi.
-
-    Args:
-        angle_vec (ndarray): A vector of angles.
-    '''
-    for k, angle in enumerate(angle_vec):
-        while angle > np.pi:
-            angle -= np.pi
-        while angle <= -np.pi:
-            angle += np.pi
-        angle_vec[k] = angle
-    return angle_vec
-
-
 if __name__ == '__main__':
+
     if len(sys.argv) > 1:
         start_seed = int(sys.argv[1])
         num_seed = int(sys.argv[2])
