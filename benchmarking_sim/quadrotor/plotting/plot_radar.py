@@ -27,9 +27,12 @@ plot_colors = {
     'PPO': 'darkorange',
     'SAC': 'red',
     'DPPO': 'tab:pink',
-    'iLQR': 'darkgray',
+    'PID': 'darkgray',
     'Linear MPC': 'green',
     'Nonlinear MPC': 'cadetblue',
+    'F-MPC': 'darkblue',
+    "iLQR": "slateblue",
+    'LQR': 'blueviolet',
     'MAX': 'none',
     'MIN': 'none',
 }
@@ -81,8 +84,9 @@ def spider(df, *, id_column, title=None, subtitle=None, max_values=None, padding
             ax.scatter(angles, values, facecolor=plot_colors[model_name], )
             ax.fill(angles, values, alpha=0.15, color=plot_colors[model_name], )
         for _x, _y, t in zip(angles, values, actual_values):
-            if _x == angles[2]:
-                t = f'{t:.4f}' if isinstance(t, float) else str(t)
+            if _x == angles[2]: # inference time
+                t = f'{t:.1E}' if isinstance(t, float) else str(t)
+                # t = f'{np.format_float_scientific(t, precision=1)}' if isinstance(t, float) else str(t)
             elif _x == angles[4]:  # sampling complexity
                 if t == int(1):
                     # _y = 0.01
@@ -141,7 +145,7 @@ def spider(df, *, id_column, title=None, subtitle=None, max_values=None, padding
     # ax.legend(loc='upper right', bbox_to_anchor=(0.1, 0.2), fontsize=text_fontsize)
     if title is not None: plt.suptitle(title, fontsize=supertitle_fontsize)
     if subtitle is not None: plt.title(subtitle, fontsize=subtitle_fontsize)
-    plt.show()
+    # plt.show()
     fig_save_path = os.path.join(script_dir, f'{plt_name}_radar.pdf')
     fig.savefig(fig_save_path, dpi=300, bbox_inches='tight')
     print(f'figure saved as {fig_save_path}')
@@ -151,44 +155,71 @@ radar = spider
 
 num_axis = 6
 gen_performance = [0.07240253210609013, 0.031425261835490235,  # GP-MPC
-                   0.10363015782869267, 0.03574250675445726,  # Linear-MPC
+                   0.09475888182425916, 0.034306490036127714,  # Linear-MPC
                    0.06669989755434953, 0.023313325828377546,  # MPC
-                   0.049631400535807925, 0.047894774207991445,  # PPO
-                   0.12754716185055215, 0.08743083392874743,  # SAC
-                   0.050426782816096215, 0.04861203156962396,  # DPPO
+                   0.07809048366149708, 0.03448930158456177, # F-MPC
+                   0.09449988, 0.09940848,  # PPO
+                   0.13622967, 0.0933615,  # SAC
+                   0.08832988, 0.08935109,  # DPPO
+                   0.175546733464246, 0.06473299142106152, # PID
+                   0.48860034297750127, 0.026522666742796974, # iLQR
+                   0.21703079983074353, 0.044875452075620124, # LQR
                    ]
 performance = [0.049872511450839645, 0.049872511450839645,  # GP-MPC
-               0.06556989411791102, 0.06556989411791102,  # Linear-MPC
+               0.06284182159429033, 0.06284182159429033,  # Linear-MPC
                0.04421752503119518, 0.04421752503119518,  # MPC
-               0.01746153113470009, 0.01746153113470009,  # PPO
-               0.0764178745409007, 0.0764178745409007,  # SAC
-               0.01931011838369746, 0.01931011838369746,  # DPPO
+               0.05599325343755744, 0.05599325343755744,  # F-MPC
+               0.038755992462007574, 0.038755992462007574,  # PPO
+               0.07543519125158074, 0.07543519125158074,  # SAC
+               0.03779299107037847, 0.03779299107037847,  # DPPO
+               0.1128442698191488, 0.1128442698191488, # PID
+               0.0492655107844662, 0.04752121868080676, # iLQR
+               0.12846739566058812, 0.12846739566058812, # LQR
                ]
-inference_time = [0.0090775150246974736, 0.0090775150246974736,
-                  0.0011251235, 0.0011251235,
-                  0.0061547613, 0.0061547613,
-                  0.00020738168999000832, 0.00020738168999000832,
-                  0.00024354409288477016, 0.00024354409288477016,
-                  0.0001976909460844817, 0.0001976909460844817,
+inference_time = [0.0090775150246974736, 0.0090775150246974736, # GP-MPC
+                  0.00159305, 0.00159305, # Linear-MPC
+                  0.0061547613, 0.0061547613, # MPC
+                  0.0054, 0.0054, # F-MPC
+                  0.00020738168999000832, 0.00020738168999000832, # PPO
+                  0.00024354409288477016, 0.00024354409288477016, # SAC
+                  0.0001976909460844817, 0.0001976909460844817, # DPPO
+                  0.0003089414, 0.0003089414, # PID
+                  3.943804538999999e-06, 3.943804538999999e-06, # iLQR
+                  4.951303655e-06, 4.951303655e-06, # LQR
                   ]
-model_complexity = [80, 80,
-                    40, 40,
-                    80, 80,
-                    1, 1,
-                    1, 1,
-                    1, 1]
+model_complexity = [80, 80, # GP-MPC
+                    40, 40, # Linear-MPC
+                    80, 80, # MPC
+                    80, 80, # F-MPC
+                    1, 1, # PPO
+                    1, 1, # SAC
+                    1, 1, # DPPO
+                    1, 1, # PID
+                    80, 80, # iLQR
+                    40, 40, # LQR 
+                    ]
 sampling_complexity = [int(660), int(660),
                        int(1), int(1),
                        int(1), int(1),
-                       int(2.8 * 1e5), int(2.8 * 1e5),
-                       int(2 * 1e5), int(2 * 1e5),
-                       int(2.5 * 1e5), int(2.5 * 1e5)]
+                       int(1), int(1),
+                       int(4 * 1e5), int(4 * 1e5), # PPO
+                       int(2 * 1e5), int(2 * 1e5), # SAC
+                       int(5 * 1e5), int(5 * 1e5), # DPPO
+                       int(1), int(1),
+                       int(1), int(1),
+                       int(1), int(1),
+                       ]
 robustness = [120, 120,
               90, 90,
               90, 90,
+              100, 100,
               10, 10,
               30, 30,
-              20, 20]
+              20, 20,
+              110, 110,
+              40, 40,
+              100, 100,
+              ]
 data = [gen_performance, performance, inference_time, model_complexity, sampling_complexity, robustness]
 max_values = [0.01, 0.01, 1e-5, 1, 1, 120]
 min_values = [0.2, 0.2, 1e-2, 80, 3.e5, 1]
@@ -201,9 +232,13 @@ for i, d in enumerate(data):
 algos = ['GP-MPC', 'GP-MPC',
          'Linear MPC', 'Linear MPC',
          'Nonlinear MPC', 'Nonlinear MPC',
+         'F-MPC', 'F-MPC',
          'PPO', 'PPO',
          'SAC', 'SAC',
          'DPPO', 'DPPO',
+         'PID', 'PID',
+         'iLQR', 'iLQR',
+         'LQR', 'LQR',
          'MAX', 'MIN']
 
 # read the argv
@@ -212,7 +247,18 @@ if len(sys.argv) > 1:
     masks_algo.append(6)
     masks_algo.append(7)
 else:
-    masks_algo = [8, 9, -2, -1]
+    # masks_algo = [8, 9, -2, -1]
+    # masks_algo = [18, 19, -2, -1] # LQR
+    # masks_algo = [16, 17, -2, -1] # iLQR
+    # masks_algo = [14, 15, -2, -1] # PID
+    # masks_algo = [12, 13, -2, -1] # DPPO
+    # masks_algo = [10, 11, -2, -1] # SAC
+    # masks_algo = [8, 9, -2, -1] # PPO
+    # masks_algo = [6, 7, -2, -1] # F-MPC
+    # masks_algo = [4, 5, -2, -1] # Nonlinear MPC
+    # masks_algo = [2, 3, -2, -1] # Linear MPC
+    # masks_algo = [0, 1, -2, -1] # GP-MPC
+    masks_algo = [6, 7, -2, -1] # F-MPC
 data = np.array(data)[:, masks_algo]
 data = data.tolist()
 algos = [algos[i] for i in masks_algo]
