@@ -9,8 +9,8 @@ SYS='quadrotor_2D_attitude'
 TASK='track'
 
 ALGO='ppo'
-# ALGO='sac'
-# ALGO='td3'
+#ALGO='sac'
+#ALGO='dppo'
 # ALGO='safe_explorer_ppo'
 
 if [ "$SYS" == 'cartpole' ]; then
@@ -20,25 +20,31 @@ else
 fi
 
 NS=1
+T=11
+
 # RL Experiment
-#for NS in {0,1,10,20,30,40,50,60,70,80,90,100,110,120,130,140,150,160,170,180,190,200}
-#do
-for SEED in {0..0}
+#for N in {1}:
+for NS in {0,1,5,10,15,20,25}
+#for T in {9,10,11,12,13,14,15}
 do
-  python3 ./rl_experiment.py \
+  for SEED in {0..0}
+  do
+    python3 ./rl_experiment.py \
       --task ${SYS_NAME} \
       --algo ${ALGO} \
       --use_gpu \
       --overrides \
           ./config_overrides/${SYS}/${SYS}_${TASK}.yaml \
           ./config_overrides/${SYS}/${ALGO}_${SYS}.yaml \
+      --experiment_type 'performance' \
+      --seed ${SEED} \
       --kv_overrides \
           algo_config.training=False \
+          task_config.normalized_rl_action_space=False \
           task_config.randomized_init=True \
           task_config.task_info.num_cycles=2 \
-          task_config.task_info.ilqr_ref=False \
-          task_config.task_info.ilqr_traj_data='../lqr/ilqr_ref_traj.npy' \
-          task_config.noise_scale=${NS}
-#      --pretrain_path ./Results/Benchmark_data/ilqr_ref/${SYS}_${ALGO}_data/${SEED}
+          task_config.episode_len_sec=${T} \
+          task_config.noise_scale=${NS} \
+      --pretrain_path ./Results/New_batch/default_param/${SYS}_${ALGO}_data4/seed${SEED}_*/
+  done
 done
-#done

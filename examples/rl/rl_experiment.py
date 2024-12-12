@@ -38,8 +38,16 @@ def run(gui=False, plot=True, n_episodes=10, n_steps=None, curr_path='.'):
         system = f'quadrotor_{str(config.task_config.quad_type)}D'
     else:
         system = config.task
-    # config.task_config.disturbances.observation[0].std = [config.task_config.noise_scale*i
-    #                                                       for i in config.task_config.disturbances.observation[0].std]
+
+    # Experiment settings
+    if config.experiment_type == 'robustness':
+        config.task_config.disturbances.observation[0].std = [
+            config.task_config.noise_scale*i for i in config.task_config.disturbances.observation[0].std
+        ]
+    elif config.experiment_type == 'robustness_ps':
+        config.task_config.disturbances.dynamics[0].std = (
+            config.task_config.noise_scale * config.task_config.disturbances.dynamics[0].std
+        )
 
     env_func = partial(make,
                        config.task,
@@ -56,8 +64,8 @@ def run(gui=False, plot=True, n_episodes=10, n_steps=None, curr_path='.'):
     # ctrl.load(f'{curr_path}/models/{config.algo}/{config.algo}_model_{system}_{task}.pt')
     # ctrl.load(f'{curr_path}/models/{config.algo}/model_latest.pt')
     if 'pretrain_path' in config.keys():
-        # ctrl.load(config.pretrain_path + "/model_latest.pt")
-        ctrl.load(config.pretrain_path + "/model_best.pt")
+        # ctrl.load(config.pretrain_path + "model_latest.pt")
+        ctrl.load(config.pretrain_path + "model_best.pt")
     else:
         ctrl.load(f'{curr_path}/models/{config.algo}/model_latest.pt')
 
@@ -70,17 +78,36 @@ def run(gui=False, plot=True, n_episodes=10, n_steps=None, curr_path='.'):
     ctrl.close()
 
     ### Housekeeping
-    # temp = "./gen_traj_results_ppo.npy"
-    # np.save(temp, results, allow_pickle=True)
+    if config.experiment_type == "performance":
+        temp = config.pretrain_path+"/perf_metric.npy"
+        np.save(temp, metrics, allow_pickle=True)
+    elif config.experiment_type == "generalization":
+        metrics['episode_len_sec'] = config.task_config.episode_len_sec
+        temp = config.pretrain_path+"/transfer_metric_"+str(config.task_config.episode_len_sec)+".npy"
+        np.save(temp, metrics, allow_pickle=True)
+    elif config.experiment_type == "robustness":
+        metrics['noise_scale'] = config.task_config.noise_scale
+        temp = config.pretrain_path+"/robust_metric_"+str(config.task_config.noise_scale)+".npy"
+        np.save(temp, metrics, allow_pickle=True)
+    elif config.experiment_type == "robustness_ps":
+        metrics['noise_scale'] = config.task_config.noise_scale
+        temp = config.pretrain_path+"/robust_metric_ps_"+str(config.task_config.noise_scale)+".npy"
+        np.save(temp, metrics, allow_pickle=True)
+    elif config.experiment_type == "traj_data":
+        temp = f"./traj_results_{config.algo}_{config.task_config.episode_len_sec}.npy"
+        if config.seed == 0:  # os.path.isfile(temp):
+            data = {'n_rollouts': n_episodes,
+                    'obs': np.array(results['obs']),
+                    'timestamp': np.array(results['timestamp'])}
+        else:
+            data = np.load(temp, allow_pickle=True).item()
+            data['n_rollouts'] += n_episodes
+            data['obs'] = np.concatenate((data['obs'], np.array(results['obs'])), axis=0)
+            data['timestamp'] = np.concatenate((data['timestamp'], np.array(results['timestamp'])), axis=0)
+        np.save(temp, data, allow_pickle=True)
+    print(metrics)
 
-    # temp = config.pretrain_path+"/perf_metric.npy"
-    # temp = config.pretrain_path+"/transfer_metric.npy"
-    # metrics['noise_scale'] = config.task_config.noise_scale
-    # temp = config.pretrain_path+"/robust_metric_"+str(config.task_config.noise_scale)+".npy"
-    # np.save(temp, metrics, allow_pickle=True)
-    # print(metrics)
-
-    if plot is True:
+    if plot is False:
         if system == Environment.CARTPOLE:
             graph1_1 = 2
             graph1_2 = 3
