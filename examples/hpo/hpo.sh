@@ -9,8 +9,6 @@
 # 5. If you want to kill them, run pkill -f "python ./.py".
 #####################
 
-cd ~/safe-control-gym
-
 experiment_name=$1
 seed1=$2
 parallel_jobs=$3 # Number of parallel jobs
@@ -24,20 +22,25 @@ safety_filter=$9 # True or False
 task=${10} # stab, or tracking
 resume=${11} # True or False
 
-
 # activate the environment
 if [ "$localOrHost" == 'local' ]; then
     source /home/tsung/anaconda3/etc/profile.d/conda.sh
+    conda activate safe
+    cd ~/safe-control-gym
 elif [ "$localOrHost" == 'host0' ]; then
     source /home/tueilsy-st01/anaconda3/etc/profile.d/conda.sh
+    conda activate safe
+    cd ~/safe-control-gym
 elif [ "$localOrHost" == 'hostx' ]; then
     source /home/tsung/miniconda3/etc/profile.d/conda.sh
+    conda activate safe
+    cd ~/safe-control-gym
+elif [ "$localOrHost" == 'cluster' ]; then
+    echo "Doing experiment in cluster..."
 else
     echo "Please specify the machine to run the experiment."
     exit 1
 fi
-
-conda activate safe
 
 # echo config path
 echo "task config path: ./examples/hpo/${sys_name}/config_overrides/${sys}_${task}_eval.yaml"

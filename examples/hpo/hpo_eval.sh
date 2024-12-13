@@ -16,16 +16,19 @@ OUTPUT_DIR=(${FOLDER})
 # activate the environment
 if [ "$localOrHost" == 'local' ]; then
     source /home/tsung/anaconda3/etc/profile.d/conda.sh
+    conda activate safe
 elif [ "$localOrHost" == 'host0' ]; then
     source /home/tueilsy-st01/anaconda3/etc/profile.d/conda.sh
+    conda activate safe
 elif [ "$localOrHost" == 'hostx' ]; then
     source /home/tsung/miniconda3/etc/profile.d/conda.sh
+    conda activate safe
+elif [ "$localOrHost" == 'cluster' ]; then
+    echo "Doing experiment in cluster..."
 else
     echo "Please specify the machine to run the experiment."
     exit 1
 fi
-
-conda activate safe
 
 # echo config path
 echo "task config path: ./examples/hpo/${sys_name}/config_overrides/${sys}_${task}_eval.yaml"
