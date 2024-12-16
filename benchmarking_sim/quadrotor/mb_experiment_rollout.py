@@ -95,10 +95,10 @@ def run(gui=False, n_episodes=1, n_steps=None, save_data=True,
     if ALGO in ['gpmpc_acados', 'gp_mpc', 'gpmpc_acados_TP']:
         num_data_max = config.algo_config.num_epochs * config.algo_config.num_samples
         config.output_dir = os.path.join(config.output_dir, PRIOR + '_' + repr(num_data_max) + f'_rollout{ADDITIONAL}')
-        if seed%10 == 0:
-            config.algo_config.gp_model_path = gp_model_dirs[10-1]
-        else:
-            config.algo_config.gp_model_path = gp_model_dirs[seed%10-1]
+        # if seed%10 == 0:
+        #     config.algo_config.gp_model_path = gp_model_dirs[10-1]
+        # else:
+        #     config.algo_config.gp_model_path = gp_model_dirs[seed%10-1]
     else:
         if eval_task == 'rollout':
             config.output_dir = config.output_dir + f'_rollout{ADDITIONAL}'
@@ -112,7 +112,7 @@ def run(gui=False, n_episodes=1, n_steps=None, save_data=True,
     config.algo_config.output_dir = config.output_dir
     mkdirs(config.output_dir)
 
-    config.algo_config.gp_model_path = gp_model_dirs[seed-1] if ALGO == 'gpmpc_acados' else None
+    # config.algo_config.gp_model_path = gp_model_dirs[seed-1] if ALGO == 'gpmpc_acados' else None
     # amplify the observation noise std with a factor 
     default_noise_std = config.task_config.disturbances.observation[0]['std']
     print(f'Original observation noise std: {default_noise_std}')
@@ -159,7 +159,7 @@ def run(gui=False, n_episodes=1, n_steps=None, save_data=True,
 
         # Create experiment, train, and run evaluation
         if SAFETY_FILTER is None:  
-            if ALGO in ['gpmpc_acados', 'gp_mpc'] :
+            if ALGO in ['gpmpc_acados', 'gp_mpc', 'gpmpc_acados_TP']:
                 experiment = BaseExperiment(env=static_env, ctrl=ctrl, train_env=static_train_env)
                 if config.algo_config.num_epochs == 1:
                     print('Evaluating prior controller')
@@ -187,7 +187,7 @@ def run(gui=False, n_episodes=1, n_steps=None, save_data=True,
 
         # plotting training and evaluation results
         # training
-        if ALGO in ['gpmpc_acados', 'gp_mpc'] and \
+        if ALGO in ['gpmpc_acados', 'gp_mpc', 'gpmpc_acados_TP'] and \
            config.algo_config.gp_model_path is None and \
            config.algo_config.num_epochs > 1:
                 if isinstance(static_env, Quadrotor):

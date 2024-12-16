@@ -13,7 +13,7 @@ from matplotlib.ticker import FormatStrFormatter
 
 from safe_control_gym.envs.benchmark_env import Task
 from safe_control_gym.experiments.base_experiment import BaseExperiment
-from safe_control_gym.experiments.epoch_experiments import EpochExperiment
+# from safe_control_gym.experiments.epoch_experiments import EpochExperiment
 from safe_control_gym.utils.configuration import ConfigFactory
 from safe_control_gym.utils.registration import make
 from safe_control_gym.utils.utils import mkdirs, set_dir_from_config
@@ -31,17 +31,18 @@ def run(gui=False, n_episodes=1, n_steps=None, save_data=False):
         n_steps (int): The total number of steps to execute.
         save_data (bool): Whether to save the collected experiment data.
     '''
-    ALGO = 'ilqr'
+    # ALGO = 'ilqr'
     # ALGO = 'gp_mpc'
     # ALGO = 'gpmpc_acados'
+    ALGO = 'mpc_acados'
     SYS = 'cartpole'
     TASK = 'stab'
     # TASK = 'track'
     PRIOR = '200'
     # PRIOR = '100'
     agent = 'quadrotor' if SYS == 'quadrotor_2D' or SYS == 'quadrotor_2D_attitude' else SYS
-    # SAFETY_FILTER = None
-    SAFETY_FILTER='linear_mpsc'
+    SAFETY_FILTER = None
+    # SAFETY_FILTER='linear_mpsc'
 
     
     # check if the config file exists

@@ -158,14 +158,14 @@ def run(gui=False, n_episodes=1, n_steps=None, save_data=True, seed=2):
 
         # plotting training and evaluation results
         # training
-        if ALGO in ['gpmpc_acados', 'gp_mpc'] and \
-           config.algo_config.gp_model_path is None and \
-           config.algo_config.num_epochs > 1:
-                if isinstance(static_env, Quadrotor):
-                    make_quad_plots(test_runs=test_runs, 
-                                    train_runs=train_runs, 
-                                    trajectory=ctrl.traj.T,
-                                    dir=ctrl.output_dir)
+        # if ALGO in ['gpmpc_acados', 'gp_mpc'] and \
+        #    config.algo_config.gp_model_path is None and \
+        #    config.algo_config.num_epochs > 1:
+        #         if isinstance(static_env, Quadrotor):
+        #             make_quad_plots(test_runs=test_runs, 
+        #                             train_runs=train_runs, 
+        #                             trajectory=ctrl.traj.T,
+        #                             dir=ctrl.output_dir)
         plot_quad_eval(trajs_data['obs'][0], trajs_data['action'][0], ctrl.env, config.output_dir)
 
 
@@ -194,6 +194,7 @@ def run(gui=False, n_episodes=1, n_steps=None, save_data=True, seed=2):
             print(f'Metrics saved to ./{config.output_dir}/metrics.txt')
 
     print('FINAL METRICS - ' + ', '.join([f'{key}: {value}' for key, value in metrics.items()]))
+    # print(f'pyb_client: {ctrl.env.PYB_CLIENT}')
 
 
 def plot_quad_eval(state_stack, input_stack, env, save_path=None):

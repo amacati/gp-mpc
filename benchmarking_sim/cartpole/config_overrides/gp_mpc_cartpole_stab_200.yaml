@@ -4,9 +4,9 @@ algo_config:
   deque_size: 10
   eval_batch_size: 10
   gp_approx: mean_eq
-  # gp_model_path: ./gp_mpc/results/ 
-  gp_model_path: null
-  horizon: 20
+  # gp_model_path: null
+  # gp_model_path: /home/mingxuan/Repositories/scg_tsung/benchmarking_sim/cartpole/gp_mpc/results/temp/seed2_Aug-05-17-42-21_cd0065a
+  horizon: 35
   prior_info:
     prior_prop:
       cart_mass: 1.0
@@ -23,23 +23,23 @@ algo_config:
   normalize_training_data: false
   online_learning: false
   optimization_iterations:
-  - 3000
-  - 3000
-  - 3000
-  - 3000
+  - 3200
+  - 3200
+  - 3200
+  - 3200
   overwrite_saved_data: false
-  prior_param_coeff: 2.0
+  prior_param_coeff: 1.5
   prob: 0.95
   q_mpc:
-  - 1
-  - 0.1
-  - 1
-  - 0.1
+  - 19.735156685080188
+  - 0.06058692069695525
+  - 19.735156685080188
+  - 0.06058692069695525
   r_mpc:
-  - 0.1
+  - 1.997682207790995
   kernel: Matern
-  sparse_gp: true
-  n_ind_points: 40
+  sparse_gp: True
+  n_ind_points: 50
   inducing_point_selection_method: 'kmeans'
   recalc_inducing_points_at_every_step: false
   soft_constraints:
@@ -52,7 +52,7 @@ algo_config:
   test_data_ratio: 0.2
   warmstart: true
   num_epochs: 2
-  num_samples: 50
+  num_samples: 40
   num_test_episodes_per_epoch: 1
   num_train_episodes_per_epoch: 1
   same_test_initial_state: true
@@ -60,8 +60,9 @@ algo_config:
   rand_data_selection: false
   terminate_train_on_done: True
   terminate_test_on_done: False
-  # parallel: False 
   parallel: True
+  use_linear_prior: False
+  # use_linear_prior: True
 
 device: cuda
 restore: null

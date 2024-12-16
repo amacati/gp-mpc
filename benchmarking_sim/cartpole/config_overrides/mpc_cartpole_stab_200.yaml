@@ -1,0 +1,22 @@
+algo: mpc
+algo_config:
+  horizon: 35
+  prior_info:
+    prior_prop:
+      # cart_mass: 1.0
+      # pole_length: 0.5
+      # pole_mass: 0.1
+      cart_mass: 1.5
+      pole_length: 0.75
+      pole_mass: 0.15
+  q_mpc:
+  - 19.735156685080188
+  - 0.06058692069695525
+  - 19.735156685080188
+  - 0.06058692069695525
+  r_mpc:
+  - 1.997682207790995
+  compute_ipopt_initial_guess: true
+  soft_constraints: true
+
+

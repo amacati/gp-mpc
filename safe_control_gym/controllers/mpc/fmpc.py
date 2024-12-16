@@ -105,7 +105,8 @@ class FlatMPC(BaseController):
                             additional_constraints=additional_constraints,
                             **kwargs
                         )
-                        
+            
+        self.env = env_func()
 
         self.QUAD_TYPE = self.mpc.env.QUAD_TYPE
         if self.QUAD_TYPE == QuadType.THREE_D_ATTITUDE_10:

@@ -1045,6 +1045,8 @@ class Quadrotor(BaseAviary):
         # Defining physical bounds for actions
         max_roll_deg = 25
         max_pitch_deg = 25
+        # max_roll_deg = 57
+        # max_pitch_deg = 57
         max_yaw_deg = 25
         max_roll_rad = max_roll_deg * math.pi / 180
         max_pitch_rad = max_pitch_deg * math.pi / 180

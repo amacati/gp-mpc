@@ -19,7 +19,7 @@ from safe_control_gym.envs.gym_pybullet_drones.quadrotor import Quadrotor
 from safe_control_gym.utils.gpmpc_plotting import make_quad_plots
 
 script_path = os.path.dirname(os.path.realpath(__file__))
-gp_model_path = '/home/mingxuan/Repositories/scg_tsung/benchmarking_sim/quadrotor/gpmpc_acados/results/200_300_rti/temp'
+gp_model_path = '/home/mingxuan/Repositories/scg_tsung/benchmarking_sim/quadrotor/gpmpc_acados/results/200_300_aggresive'
 # get all directories in the gp_model_path
 gp_model_dirs = [d for d in os.listdir(gp_model_path) if os.path.isdir(os.path.join(gp_model_path, d))]
 gp_model_dirs = [os.path.join(gp_model_path, d) for d in gp_model_dirs]
@@ -27,7 +27,8 @@ gp_model_dirs = [os.path.join(gp_model_path, d) for d in gp_model_dirs]
 gp_model_dirs = sorted(gp_model_dirs, key=lambda x: int(x.split('seed')[1].split('_')[0]))
 
 @timing
-def run(gui=False, n_episodes=1, n_steps=None, save_data=True, seed=2):
+# def run(gui=False, n_episodes=1, n_steps=None, save_data=True, seed=2):
+def run(gui=False, n_episodes=1, n_steps=None, save_data=True, seed=2, noise_factor=1, ALGO='pid'):
     '''The main function running experiments for model-based methods.
 
     Args:
@@ -38,22 +39,23 @@ def run(gui=False, n_episodes=1, n_steps=None, save_data=True, seed=2):
     '''
     # read the additional arguments
     # if len(sys.argv) > 1:
-    noise_factor = eval(sys.argv[1])
-    seed = eval(sys.argv[2])
+    # noise_factor = eval(sys.argv[1])
+    # seed = eval(sys.argv[2])
     # ALGO = 'ilqr'
     # ALGO = 'gp_mpc'
-    ALGO = 'gpmpc_acados'
+    # ALGO = 'gpmpc_acados'
     # ALGO = 'mpc'
     # ALGO = 'mpc_acados'
     # ALGO = 'linear_mpc'
+    ALGO = ALGO
     # ALGO = 'lqr'
     # ALGO = 'lqr_c'
     # ALGO = 'pid'
     SYS = 'quadrotor_2D_attitude'
     TASK = 'tracking'
-    PRIOR = '200'
+    # PRIOR = '200'
     # PRIOR = '150'
-    # PRIOR = '100'
+    PRIOR = '100'
     agent = 'quadrotor' if SYS == 'quadrotor_2D' or SYS == 'quadrotor_2D_attitude' else SYS
     SAFETY_FILTER = None
     # SAFETY_FILTER='linear_mpsc'
@@ -96,7 +98,7 @@ def run(gui=False, n_episodes=1, n_steps=None, save_data=True, seed=2):
         num_data_max = config.algo_config.num_epochs * config.algo_config.num_samples
         config.output_dir = os.path.join(config.output_dir, PRIOR + '_' + repr(num_data_max) + '_noise/' + f'seed_{seed}')
     else:
-        config.output_dir = config.output_dir + '_rollout'
+        config.output_dir = config.output_dir + 'aggresive_noise/' + f'seed_{seed}'
     print('output_dir',  config.algo_config.output_dir)
     set_dir_from_config(config)
     config.algo_config.output_dir = config.output_dir
@@ -281,22 +283,6 @@ def plot_quad_eval(state_stack, input_stack, env, save_path=None):
     if save_path is not None:
         plt.savefig(os.path.join(save_path, 'state_path.png'))
         print(f'Plots saved to {save_path}')
-
-
-def wrap2pi_vec(angle_vec):
-    '''Wraps a vector of angles between -pi and pi.
-
-    Args:
-        angle_vec (ndarray): A vector of angles.
-    '''
-    for k, angle in enumerate(angle_vec):
-        while angle > np.pi:
-            angle -= np.pi
-        while angle <= -np.pi:
-            angle += np.pi
-        angle_vec[k] = angle
-    return angle_vec
-
 
 if __name__ == '__main__':
     run()

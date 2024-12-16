@@ -76,6 +76,7 @@ def run(gui=True, n_episodes=1, n_steps=None, save_data=False):
     random_env.close()
     metrics = experiment.compute_metrics(all_trajs)
     all_trajs = dict(all_trajs)
+    np.save('./mpc_ref_traj.npy', all_trajs, allow_pickle=True)
 
     if save_data:
         results = {'trajs_data': all_trajs, 'metrics': metrics}

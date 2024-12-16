@@ -153,7 +153,7 @@ print(mean_traj_data.shape) # (mean_541, 6)
 
 ### plot the ilqr data
 if not generalization:
-    ilqr_data_path = '/home/mingxuan/Repositories/scg_tsung/benchmarking_sim/quadrotor/ilqr/results/temp'
+    ilqr_data_path = '/home/mingxuan/Repositories/scg_tsung/benchmarking_sim/quadrotor/ilqr/results_rollout_11/temp'
 if generalization:
     ilqr_data_path = '/home/mingxuan/Repositories/scg_tsung/benchmarking_sim/quadrotor/ilqr/results_rollout/temp'
 

@@ -34,8 +34,17 @@ class LinearModel:
         return self.model.coef_
     
     def predict(self, input_data):
+        if len(input_data.shape) == 0:
+            input_data = input_data.reshape(1, 1)
         feature_data = np.array([self.feature(input_data[i]) \
                                  for i in range(input_data.shape[0])]).squeeze()
+        if len(feature_data.shape) == 1:
+            feature_data = feature_data.reshape(1, -1)
+        return self.model.predict(feature_data)
+    
+    def predict_single(self, input_data):
+        feature_data = self.feature(input_data).full().squeeze()
+        feature_data = feature_data.reshape(1, -1)
         return self.model.predict(feature_data)
     
 

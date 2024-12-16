@@ -361,7 +361,7 @@ class MPC(BaseController):
             x_guess = deepcopy(self.x_prev)
             u_guess = deepcopy(self.u_prev)
             x_guess[:, :-1] = x_guess[:, 1:]
-            u_guess[:-1] = u_guess[1:]
+            u_guess[:, :-1] = u_guess[:, 1:]
             opti.set_initial(x_var, x_guess)
             opti.set_initial(u_var, u_guess)
 

@@ -1,21 +1,26 @@
 algo: mpc
 algo_config:
-  horizon: 30
+  horizon: 25
   r_mpc:
-    - 1.0
-    - 1.0
+    - 0.8
+    - 0.8
   q_mpc:
     - 5.0
     - 0.1
     - 5.0
     - 0.1
     - 0.5
-    # - 0.5
+    - 0.001
   # Prior info
+  # prior_info:
+  #   prior_prop: null
+  #   randomize_prior_prop: False
+  #   prior_prop_rand_info: null
   prior_info:
-    prior_prop: null
-    randomize_prior_prop: False
-    prior_prop_rand_info: null
+    prior_prop:
+      M: 0.027 # Must be capitcal M
+      Iyy: 1.4e-05
   warmstart: True
+  output_dir: ./mpc/results
 
 

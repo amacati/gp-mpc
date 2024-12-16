@@ -1,7 +1,7 @@
 # SEED='1'
 # NOISE_FACTOR='10'
 
-for SEED in `seq 2 1 10`
+for SEED in `seq 1 1 10`
 # for SEED in '1'
 do
     # for NOISE_FACTOR in '10'

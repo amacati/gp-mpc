@@ -1,27 +1,32 @@
 task_config:
-  seed: 42
+  # info_in_reset: false
   info_in_reset: true
   ctrl_freq: 15
   pyb_freq: 750
   physics: pyb
   
-  init_state_randomization_info:
-    init_x:
-      distrib: uniform
-      high: 1.0
-      low:  1.0
-    init_x_dot:
-      distrib: uniform
-      high: 0.05
-      low: -0.05
-    init_theta:
-      distrib: uniform
-      high: 0.05
-      low:  -0.05
-    init_theta_dot:
-      distrib: uniform
-      high: 0.05
-      low: -0.05
+  init_state:
+    init_x: 1.0
+    init_x_dot: 0.0
+    init_theta: 0.0
+    init_theta_dot: 0.0
+  # init_state_randomization_info:
+  #   init_x:
+  #     distrib: uniform
+  #     high: 1.0
+  #     low:  1.0
+  #   init_x_dot:
+  #     distrib: uniform
+  #     high: 0.05
+  #     low: -0.05
+  #   init_theta:
+  #     distrib: uniform
+  #     high: 0.05
+  #     low:  -0.05
+  #   init_theta_dot:
+  #     distrib: uniform
+  #     high: 0.05
+  #     low: -0.05
   # disturbances:
   #   observation:
   #     - disturbance_func: white_noise
@@ -48,21 +53,28 @@ task_config:
   done_on_violation: false
   done_on_out_of_bound: false
 
-  obs_goal_horizon: 1
+  # obs_goal_horizon: 1
 
-  # RL Reward
-  rew_state_weight: [1, 1, 1, 1]
-  rew_act_weight: 0.1
-  rew_exponential: True
+  # # RL Reward
+  # rew_state_weight: [1, 1, 1, 1]
+  # rew_act_weight: 0.1
+  # rew_exponential: True
 
   constraints:
     - constraint_form: default_constraint
       constrained_variable: input
-      upper_bounds: [3.0]
-      lower_bounds: [-3.0]
+      # upper_bounds: [3.0]
+      # lower_bounds: [-3.0]
     - constraint_form: default_constraint
       constrained_variable: state
       # upper_bounds: [1.5, 0.45, 0.1, 0.3]
       # lower_bounds: [-1.5, -0.45, -0.1, -0.3]
-      upper_bounds: [1.5, 0.45, 0.5, 0.5]
-      lower_bounds: [-1.5, -0.45, -0.5, -0.5]
+      # upper_bounds: [1.5, 0.45, 0.5, 0.5]
+      # lower_bounds: [-1.5, -0.45, -0.5, -0.5]
+    
+  disturbances:
+    dynamics:
+      - disturbance_func: uniform
+        low:  0.5
+        high: 0.5
+        mask: [1, 0,]

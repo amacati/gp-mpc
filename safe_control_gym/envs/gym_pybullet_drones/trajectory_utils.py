@@ -29,6 +29,9 @@ from scipy import optimize
 
 
 class Waypoint(dict):
+    """This class holds a waypoint consisting of position and optionally velocity,
+    acceleration, etc. values that defines a piecewise polynomial trajectory.
+    """
     def __init__(
             self, time, position, velocity=None, acceleration=None, jerk=None, snap=None
     ):
@@ -119,6 +122,45 @@ def generate_trajectory(
         algorithm='closed-form',
         optimize_options=None,
 ):
+    """Plans a piecewise-polynomial trajectory
+
+    Details
+    -------
+    Take usual precautions in reasoning about zero-based indices (ordinal numbers) and
+    cardinal numbers when specifying `idx_minimized_orders` and `num_continuous_orders`.
+
+    Parameters
+    ----------
+    references : Sequence[Waypoint]
+        A sequence of waypoints defining the trajectory
+    degree : int
+        The degree of the piecewise polynomial
+    idx_minimized_orders : Union[int, Sequence[int]], optional
+        Index/indices of derivatives of position to be minimized, by default 4 (minimum
+        snap)
+    num_continuous_orders : int, optional
+        The number of orders of derivatives constrained to be continuous, by default 3
+        (continuous position, velocity and acceleration)
+    algorithm : Literal["closed-form", "constrained"], optional
+        The algorithm to use, either:
+
+            closed-form: Optimize end-derivatives per Bry and Roy, making for an
+            unconstrained optimization problem that can be solved in closed form
+
+            constrained: Directly optimize polynomial coefficients per Mellinger and
+            Kumar, requiring a numerical solver
+
+        default "closed-form"
+    optimize_options : Optional[Dict[str, Any]], optional
+        Options to pass to scipy.optimize.minimize; if the closed-form algorithm is
+        used, this argument is ignored, by default None
+
+    Returns
+    -------
+    PiecewisePolynomialTrajectory
+        A namedtuple holding the waypoint timestamps, the duration for transit between
+        waypoints, and the piecewise polynomial coefficients
+    """
     if degree < 2:
         raise ValueError('Polynomial degree too low')
 
@@ -177,6 +219,15 @@ def generate_trajectory(
 
 
 def _parse_references(references, r_cts):
+    '''
+    Returns a tuple of timestamps and a 3D array of references
+
+    Parameters
+    ----------
+    references : Sequence[Waypoint]
+        A sequence of waypoints
+    r_cts : num_of_continuous_orders
+    '''
     len_traj = len(references)
 
     t_ref = []
@@ -285,31 +336,57 @@ def _solve_constrained(
         r_cts,
         optimize_options,
 ):
+    '''
+    Solve the trajectory generation problem using a numerical solver
+
+    Parameters
+    ----------
+    refs : NDArray
+        The reference waypoints
+    durations : NDArray
+        The durations between waypoints
+    poly_dim : PolynomialSize
+        The polynomial dimensions
+    derivative_weights : NDArray    
+        The weights for the derivatives (for snap minimization)
+    r_cts : int
+        The number of continuous orders (3 by default, for continous acceleration)
+    optimize_options : Dict[str, Any]
+        The options for the optimizer
+
+    Returns
+    -------
+    NDArray
+        The polynomial coefficients
+    '''
     opts = {'method': 'SLSQP', 'tol': 1e-10}
     if optimize_options is not None:
         opts.update(optimize_options)
-    n_vars = poly_dim.n_poly * poly_dim.n_cfs
+    n_vars = poly_dim.n_poly * poly_dim.n_cfs # (num of reference-1) * (degree of poly+1)
     Q = np.zeros((n_vars, n_vars))
     for r, c_r in enumerate(derivative_weights):
         Q += c_r * la.block_diag(*_compute_Q(poly_dim.n_cfs, r, durations))
 
     poly_coeffs = np.zeros(poly_dim)
     Aeq_1, beq_1 = _compute_continuity_constraints(poly_dim, durations, r_cts)
-    for d in range(poly_dim.dim):
+    for d in range(poly_dim.dim): # number of continuous orders, here 3
         Aeq_0, beq_0 = _compute_dynamical_constraints(
             poly_dim, refs[:, :, d], durations
         )
 
+        # equality constraints (enforcing continuity and dynamics)
         Aeq = np.vstack([Aeq_0, Aeq_1])
         beq = np.concatenate([beq_0, beq_1])
 
+        # inequality constraints (enforcing acceleration limits)
         constr = optimize.LinearConstraint(Aeq, beq, beq)  # type: ignore
+        
         soln = optimize.minimize(
-            lambda x: (x @ Q @ x) / 2,
-            np.zeros(n_vars),
+            lambda x: (x @ Q @ x) / 2, # objective function
+            np.zeros(n_vars), # initial guess
             constraints=constr,
             jac=lambda x: Q @ x,
-            **opts,
+            **opts, # solver options
         )
         coeffs = soln.x.reshape(poly_dim[0:2])
         poly_coeffs[:, :, d] = (1.0 / durations[..., None]) ** np.arange(
@@ -319,21 +396,35 @@ def _solve_constrained(
 
 
 def _compute_continuity_constraints(poly_dim, durations, r_cts):
-    n_vars = poly_dim.n_poly * poly_dim.n_cfs
-    Aeq = np.zeros(((poly_dim.n_poly - 1) * r_cts, n_vars))
+    '''
+    Ensure the trajecotry is continous upt to a specific derivative order
+    at the boundaries between polynomial segments.
+
+    Parameters
+    ----------
+    poly_dim : PolynomialSize
+        The polynomial dimensions
+    durations : NDArray
+        The durations between waypoints
+    r_cts : int
+        The number of continuous orders (3 by default, for continous acceleration)
+    '''
+
+    n_vars = poly_dim.n_poly * poly_dim.n_cfs # (num of reference segment-1) * (degree of poly+1)
+    Aeq = np.zeros(((poly_dim.n_poly - 1) * r_cts, n_vars)) 
     beq = np.zeros((poly_dim.n_poly - 1) * r_cts)
-    for i in range(poly_dim.n_poly - 1):
-        s = np.s_[poly_dim.n_cfs * i: poly_dim.n_cfs * (i + 2)]
-        for r in range(r_cts):
-            tvec_l = _compute_tvec(poly_dim.n_cfs, r, 1) / durations[i] ** r
+    for i in range(poly_dim.n_poly - 1): # loop over each polinomial segment (except the last one)
+        s = np.s_[poly_dim.n_cfs * i: poly_dim.n_cfs * (i + 2)] # slice for the current segment
+        for r in range(r_cts): # loop over each derivative order
+            tvec_l = _compute_tvec(poly_dim.n_cfs, r, 1) / durations[i] ** r 
             tvec_r = _compute_tvec(poly_dim.n_cfs, r, 0) / durations[i + 1] ** r
             Aeq[r_cts * i + r, s] = np.concatenate([tvec_l, -tvec_r])
     return Aeq, beq
 
 
 def _compute_dynamical_constraints(poly_dim, refs, durations):
-    n_vars = poly_dim.n_poly * poly_dim.n_cfs
-    n_constrain_orders = np.count_nonzero(~np.isnan(refs), axis=1)
+    n_vars = poly_dim.n_poly * poly_dim.n_cfs # (num of reference segment-1) * (degree of poly+1)
+    n_constrain_orders = np.count_nonzero(~np.isnan(refs), axis=1) # number of non-nan values
     Aeq = np.zeros((n_constrain_orders.sum(), n_vars))
     beq = np.zeros(n_constrain_orders.sum())
 
@@ -362,6 +453,18 @@ def _compute_Q(n_cfs, r, tau):  # pylint: disable=C0103
 
 
 def _compute_tvec(n_cfs, r, tau):
+    '''
+    Compute the tvec for a given polynomial segment
+    
+    Parameters
+    ----------
+    n_cfs : int
+        The number of coefficients
+    r : int
+        The derivative order
+    tau : float
+        The time duration
+    '''
     tvec = np.zeros(n_cfs)
     n_seq = np.arange(r, n_cfs)
     r_seq = np.arange(0, r)[:, None]
@@ -370,6 +473,24 @@ def _compute_tvec(n_cfs, r, tau):
 
 
 def compute_trajectory_derivatives(polys, t_sample, order):
+    """Samples a piecewise polynomial trajectory at given times to give concrete
+    trajectory derivatives, i.e. position/velocity/acceleration/etc...
+
+    Parameters
+    ----------
+    polys : PiecewisePolynomialTrajectory
+        A piecewise polynomial created by `generate_trajectory`
+    t_sample : ArrayLike
+        An array of sample times
+    order : int
+        The order of trajectory derivatives to complete
+
+    Returns
+    -------
+    NDArray
+        Trajectory derivatives stacked for each requested order along the first axis,
+        making for an array with size order x len(time_sample) x dimension of polynomial
+    """
     t_sample = np.asarray(t_sample)
     t_ref, _, coeffs = polys
 

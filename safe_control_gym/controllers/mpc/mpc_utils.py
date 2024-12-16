@@ -115,36 +115,50 @@ def set_acados_constraint_bound(constraint,
     return bound_value * np.ones(constraint.shape)
 
 
-def plot_open_loop_sol(ctrl):
+def plot_open_loop_sol(ctrl_list, 
+                       save_path=None, 
+                       label=None, 
+                       title=None,
+                       state_label=None,
+                       action_label=None):
     ''' Plot the open loop predction of the MPC controller.
 
     Args:
         ctrl (MPC): MPC controller object.
     '''
-    if ctrl.x_prev is not None and ctrl.u_prev is not None:
-        nx = ctrl.x_prev.shape[0]  # state dim
-        nu = ctrl.u_prev.shape[0]  # input dim
-        steps = ctrl.T  # prediction horizon
-        dt = ctrl.dt  # ctrl frequency
-        x = ctrl.x_prev  # open loop state (nx, steps + 1)
-        u = ctrl.u_prev  # open loop input (nu, steps)
-
-        # get the reference trajectory
-        goal_states = ctrl.get_references()
-
-        # Plot the open loop prediction
-        fig, axs = plt.subplots(nx + nu, 1, figsize=(5, 8))
-        fig.tight_layout()
-        for i in range(nx):
-            axs[i].plot(np.arange(steps + 1) * dt, x[i, :], 'b', label='pred')
-            axs[i].plot(np.arange(steps + 1) * dt, goal_states[i, :], 'r--', label='ref', )
-            axs[i].set_ylabel(f'$x_{i}$')
-            axs[i].legend()
-        for i in range(nu):
-            axs[nx + i].plot(np.arange(steps) * dt, u[i, :], 'b', label='pred')
-            axs[nx + i].set_ylabel(f'$u_{i}$')
-
+    # Plot the open loop prediction
+    nx = ctrl_list[0].x_prev.shape[0]  # state dim
+    nu = ctrl_list[0].u_prev.shape[0]  # input dim
+    fig, axs = plt.subplots(nx + nu, 1, figsize=(5, 8))
+    for ctrl_idx, ctrl in enumerate(ctrl_list):  
+        if ctrl.x_prev is not None and ctrl.u_prev is not None:
+            steps = ctrl.T  # prediction horizon
+            dt = ctrl.dt  # ctrl frequency
+            x = ctrl.x_prev  # open loop state (nx, steps + 1)
+            u = ctrl.u_prev  # open loop input (nu, steps)
+            # get the reference trajectory
+            goal_states = ctrl.get_references()
+            for i in range(nx):
+                sol_label = f'{ctrl_idx} pred' if label is None else f'{label[ctrl_idx]} pred'
+                ref_label = f'{ctrl_idx} ref' if label is None else f'{label[ctrl_idx]} ref'
+                axs[i].plot(np.arange(steps + 1) * dt, x[i, :], label=sol_label)
+                axs[i].plot(np.arange(steps + 1) * dt, goal_states[i, :], 'k--', label=ref_label)
+                y_label = state_label[i] if state_label is not None else f'$x_{i}$'
+                axs[i].set_ylabel(y_label)
+            # put the legend to the right of the plot
+            # axs[i].legend(ncol=2, loc='lower center', bbox_to_anchor=(0.5, -4.0))
+            for i in range(nu):
+                sol_label = f'{ctrl_idx} pred' if label is None else f'{label[ctrl_idx]} pred'
+                axs[nx + i].plot(np.arange(steps) * dt, u[i, :], label=sol_label)
+                y_label = action_label[i] if action_label is not None else f'$u_{i}$'
+                axs[nx + i].set_ylabel(y_label)
+            axs[nx+i].legend(ncol=2, loc='lower center', bbox_to_anchor=(0.5, -1.6))
+        else:
+            print(colored('[Warning] No open loop solution to plot.', 'yellow'))
         plt.xlabel('Time [s]')
-        plt.show()
-    else:
-        print(colored('[Warning] No open loop solution to plot.', 'yellow'))
+        fig.suptitle(f'Open Loop Prediction {title}')
+        fig.tight_layout()
+        if save_path is not None:
+            plt.savefig(save_path)
+        else:
+            plt.show()

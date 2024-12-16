@@ -8,8 +8,10 @@ task_config:
 
   init_state:
     init_x: 0
+    # init_x_dot: 1.0
     init_x_dot: 0
     init_z: 1.0
+    # init_z_dot: 1.0
     init_z_dot: 0
     init_theta: 0
     init_theta_dot: 0
@@ -18,27 +20,27 @@ task_config:
 
   init_state_randomization_info:
     init_x:
-      distrib: 'uniform'
+      distrib: 'normal'
       low: -0.05
       high: 0.05
     init_x_dot:
-      distrib: 'uniform'
+      distrib: 'normal'
       low: -0.05
       high: 0.05
     init_z:
-      distrib: 'uniform'
+      distrib: 'normal'
       low: -0.05
       high: 0.05
     init_z_dot:
-      distrib: 'uniform'
+      distrib: 'normal'
       low: -0.05
       high: 0.05
     init_theta:
-      distrib: 'uniform'
+      distrib: 'normal'
       low: -0.05
       high: 0.05
     init_theta_dot:
-      distrib: 'uniform'
+      distrib: 'normal'
       low: -0.05
       high: 0.05
 
