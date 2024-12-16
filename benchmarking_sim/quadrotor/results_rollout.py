@@ -30,7 +30,6 @@ task_description = munch.munchify({
     'algo': algo,
     'eval_task': 'rollout',
     'start_seed': start_seed,
-    'num_seed': 1,
     })
 run_rollouts(task_description)
 

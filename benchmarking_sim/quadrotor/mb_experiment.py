@@ -39,9 +39,9 @@ def run(gui=False, n_episodes=1, n_steps=None, save_data=True):
         # ALGO = 'gp_mpc'
         # ALGO = 'gpmpc_acados'
         # ALGO = 'gpmpc_acados_TP'
-        # ALGO = 'gpmpc_acados_TRP'
+        ALGO = 'gpmpc_acados_TRP'
         # ALGO = 'mpc'
-        ALGO = 'mpc_acados'
+        # ALGO = 'mpc_acados'
         # ALGO = 'linear_mpc_acados'
         # ALGO = 'linear_mpc'
         # ALGO = 'lqr'
@@ -53,10 +53,9 @@ def run(gui=False, n_episodes=1, n_steps=None, save_data=True):
     # TASK = 'stab'
     # PRIOR = '200'
     # PRIOR = '150'
-    ADDITIONAL = ''
+    # ADDITIONAL = ''
     # ADDITIONAL = '_9'
-    # ADDITIONAL = '_11'
-    # ADDITIONAL = '_15'
+    ADDITIONAL = '_11'
     # ADDITIONAL='_snap'
     PRIOR = '100'
     agent = 'quadrotor' if SYS in ['quadrotor_2D', 'quadrotor_2D_attitude', 'quadrotor_3D_attitude'] else SYS
@@ -72,7 +71,7 @@ def run(gui=False, n_episodes=1, n_steps=None, save_data=True):
                         '--overrides',
                             f'./config_overrides/{SYS}_{TASK}{ADDITIONAL}.yaml',
                             f'./config_overrides/{ALGO}_{SYS}_{TASK}_{PRIOR}.yaml',
-                        '--seed', '5',
+                        '--seed', '1',
                         '--use_gpu', 'True',
                         '--output_dir', f'./{ALGO}/results',
                             ]
@@ -223,8 +222,7 @@ def plot_quad_eval(state_stack, input_stack, env, save_path=None):
         input_stack (ndarray): The list of inputs of in the latest run.
     '''
     model = env.symbolic
-    # if env.QUAD_TYPE == QuadType.TWO_D_ATTITUDE:
-    if env.QUAD_TYPE in [QuadType.TWO_D_ATTITUDE, QuadType.TWO_D]:
+    if env.QUAD_TYPE == QuadType.TWO_D_ATTITUDE:
         x_idx, z_idx = 0, 2
     # elif env.QUAD_TYPE == QuadType.THREE_D_ATTITUDE:
     elif env.QUAD_TYPE in [QuadType.THREE_D_ATTITUDE, QuadType.THREE_D_ATTITUDE_10]:
@@ -257,7 +255,7 @@ def plot_quad_eval(state_stack, input_stack, env, save_path=None):
         plt.savefig(os.path.join(save_path, 'state_trajectories.png'))
 
     # Plot inputs
-    _, axs = plt.subplots(model.nu, figsize=(8, model.nu*2))
+    _, axs = plt.subplots(model.nu, figsize=(8, model.nu*1))
     if model.nu == 1:
         axs = [axs]
     for k in range(model.nu):

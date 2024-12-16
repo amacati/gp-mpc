@@ -163,9 +163,3 @@ dmypy.json
 gpmpc_update/
 temp
 models/
-
-results*/
-noiseless
-noisy
-data/
-Data/

@@ -91,7 +91,6 @@ class SymbolicModel():
         self.x_eval = cs.MX.sym('x_eval', self.nx, 1)
         self.u_eval = cs.MX.sym('u_eval', self.nu, 1)
         # Linearized dynamics model.
-        # TODO: this look weird
         self.x_dot_linear = self.x_dot + self.dfdx @ (
             self.x_eval - self.x_sym) + self.dfdu @ (self.u_eval - self.u_sym)
         self.fc_linear_func = cs.Function(

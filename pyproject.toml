@@ -6,7 +6,7 @@ authors = ["Your Name <you@example.com>"]
 license = "MIT"
 
 [tool.poetry.dependencies]
-python = "^3.8"
+python = "^3.10"
 matplotlib = "^3.5.1"
 munch = "^2.5.0"
 PyYAML = "^6.0"
@@ -31,6 +31,9 @@ pre-commit = "^3.3.2"
 optuna = "^3.0"
 optuna-dashboard = "^0.9"
 pandas = "^1.4.0"
+google-vizier = {version = "0.1.18", extras = ["jax"]}
+jax = "==0.4.33"
+jaxlib = "==0.4.33"
 
 [tool.poetry.dev-dependencies]
 
