@@ -376,7 +376,6 @@ class Quadrotor(BaseAviary):
                     self.episode_len = self.np_random.choice(self.EPISODE_LEN_SEC)
                 else:
                     self.episode_len = self.EPISODE_LEN_SEC
-                print(self.episode_len)
                 POS_REF, VEL_REF, _ = self._generate_trajectory(traj_type=self.TASK_INFO['trajectory_type'],
                                                                 traj_length=self.episode_len,
                                                                 num_cycles=self.TASK_INFO['num_cycles'],
