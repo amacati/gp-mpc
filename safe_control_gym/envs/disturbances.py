@@ -309,11 +309,14 @@ class Downwash:
     Downwash model fitted with Gaussian distribution.
     '''
     def __init__(self,
+                 init_pos = np.array([0, 0, 0]), 
                  rho=2267.18,
                  prop_radius=23.1348e-3,
                  rho1=-0.16,
                  rho2=-0.11                  
                  ):
+        # position of the quadrotor
+        self.pos = init_pos
         # alpha model   
         self.rho, self.prop_radius = rho, prop_radius
         # beta model
@@ -339,15 +342,27 @@ class Downwash:
         gaussian = alpha * np.exp(-0.5 * ratio**2)
         return gaussian
     
-    def get_force_vec(self, relative_z, relative_x):
+    def update_pos(self, pos):
+        '''
+        update the position of the quadrotor.
+        '''
+        self.pos = pos
+    
+    def get_force_vec(self, z, x, mode='relative'):
         '''
         return the 3D force vector of the downwash force.
 
         Args:
         relative_z: relative height the perturbed quadrotor to the target point.
         relative_x: relative distance of the propeller to the target point.
+        mode (str): 'relative' or 'absolute'. 
         '''
+        assert mode in ['relative', 'absolute'], 'mode should be either relative or absolute.'
+        relative_z = z - self.pos[2] if mode == 'absolute' else z
+        relative_x = x - self.pos[0] if mode == 'absolute' else x
+
         assert relative_z < 0, 'relative_z should be negative.'
+
         downwash_force = self.gaussian_pdf(relative_x, 
                                            self.interp_alpha_func(relative_z),
                                            self.interp_beta_func(relative_z))
