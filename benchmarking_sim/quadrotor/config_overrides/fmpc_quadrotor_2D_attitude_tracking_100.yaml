@@ -1,0 +1,25 @@
+algo: fmpc
+algo_config:
+  horizon: 50
+  r_mpc:
+    - 1.0e-6
+    - 1.0e-6
+  q_mpc: 
+    - 50
+    - 0.0001
+    - 0.0001
+    - 0.0001
+    - 50
+    - 0.0001
+    - 0.0001
+    - 0.0001
+  # Prior info
+  prior_info:
+    prior_prop: null
+    randomize_prior_prop: False
+    prior_prop_rand_info: null
+  warmstart: True
+  solver: qrqp
+  use_full_flat_reference: True
+  use_acados: True
+  output_dir: ./fmpc/results

@@ -106,6 +106,7 @@ class FlatMPC(BaseController):
                             **kwargs
                         )
                         
+        self.env = self.mpc.env # just for debugging, running Mingxuans eval scripts, not used in code below
 
         self.QUAD_TYPE = self.mpc.env.QUAD_TYPE
         if self.QUAD_TYPE == QuadType.THREE_D_ATTITUDE_10:
@@ -233,7 +234,7 @@ class FlatMPC(BaseController):
         Returns:
             action (ndarray): Input/action to the task/env.
         '''
-        ts = time.time()    
+        # ts = time.time()    
         # get flat state estimation from observer
         z_obs = self.fs_obs.compute_observation(obs)
         
@@ -251,18 +252,18 @@ class FlatMPC(BaseController):
         # feed data into observer
         self.fs_obs.input_FMPC_result(z_horizon, v_horizon, action)
 
-        # log execution time                
-        te = time.time()
+        # # log execution time                
+        # te = time.time()
 
-        # data logging
-        self.results_dict['obs_x'].append(obs)
-        self.results_dict['obs_z'].append(z_obs)
-        self.results_dict['v'].append(v)
-        self.results_dict['u'].append(action)
-        self.results_dict['horizon_v'].append(v_horizon)
-        self.results_dict['horizon_z'].append(z_horizon)
+        # # data logging
+        # self.results_dict['obs_x'].append(obs)
+        # self.results_dict['obs_z'].append(z_obs)
+        # self.results_dict['v'].append(v)
+        # self.results_dict['u'].append(action)
+        # self.results_dict['horizon_v'].append(v_horizon)
+        # self.results_dict['horizon_z'].append(z_horizon)
 
-        self.results_dict['ctrl_run_time'].append(te-ts)
+        # self.results_dict['ctrl_run_time'].append(te-ts)
         
         return action
     
