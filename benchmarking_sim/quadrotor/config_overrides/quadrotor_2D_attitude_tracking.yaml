@@ -18,29 +18,23 @@ task_config:
 
   init_state_randomization_info:
     init_x:
-      distrib: 'uniform'
-      low: -0.05
-      high: 0.05
+      distrib: 'normal'
+      scale: 0.0011629923113331312
     init_x_dot:
-      distrib: 'uniform'
-      low: -0.05
-      high: 0.05
+      distrib: 'normal'
+      scale: 0.003635597781389117
     init_z:
-      distrib: 'uniform'
-      low: -0.05
-      high: 0.05
+      distrib: 'normal'
+      scale: 0.0024990695232428458
     init_z_dot:
-      distrib: 'uniform'
-      low: -0.05
-      high: 0.05
+      distrib: 'normal'
+      scale: 0.010193088084183025
     init_theta:
-      distrib: 'uniform'
-      low: -0.05
-      high: 0.05
+      distrib: 'normal'
+      scale: 0.0024088251667187467
     init_theta_dot:
-      distrib: 'uniform'
-      low: -0.05
-      high: 0.05
+      distrib: 'normal'
+      scale: 0.02387283406599296
 
   task: traj_tracking
   task_info:
@@ -49,9 +43,12 @@ task_config:
     trajectory_plane: 'xz'
     trajectory_position_offset: [0, 1.]
     trajectory_scale: 1.0
-    # ilqr_ref: True
-    # ilqr_traj_data: /home/mingxuan/Repositories/scg_tsung/examples/lqr/ilqr_ref_traj.npy
-
+    ilqr_ref: True
+    # pitch_ref: True
+    pitch_ref: False
+    # ilqr_traj_data: /home/mingxuan/Repositories/scg_tsung/benchmarking_sim/quadrotor/data/ilqr_ref_traj.npy
+    ilqr_traj_data: /home/mingxuan/Repositories/scg_tsung/benchmarking_sim/quadrotor/data/mpc_acados_ref_traj.npy
+  
   inertial_prop:
     M: 0.033
     Iyy: 1.4e-05
@@ -85,12 +82,12 @@ task_config:
     observation:
       - disturbance_func: white_noise
         std: [5.6e-05, 1.5e-02, 2.9e-05, 8.0e-03, 1.3e-03, 3.5e-03]
-    downwash:
-      - disturbance_func: uniform
-        low:  1.
-        high: 1.
-        mode: fix
-        # mode: track
-        pos: [0, 0, 1.5] 
+    # downwash:
+    #   - disturbance_func: uniform
+    #     low:  1.
+    #     high: 1.
+    #     mode: fix
+    #     # mode: track
+    #     pos: [0, 0, 1.5] 
         # pos in track mode is the relative position to the quadrotor
         # pos in fix mode is the absolute position in the world frame

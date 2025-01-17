@@ -374,18 +374,19 @@ class Quadrotor(BaseAviary):
                     0.0, 0.0, 0.0, 0.0, 0.0, 0.0
                 ])  # x = {x, x_dot, y, y_dot, z, z_dot, phi, theta, psi, p_body, q_body, r_body}.
         elif self.TASK == Task.TRAJ_TRACKING:
+            if isinstance(self.EPISODE_LEN_SEC, list):
+                self.episode_len = self.np_random.choice(self.EPISODE_LEN_SEC)
+            else:
+                self.episode_len = self.EPISODE_LEN_SEC
             if 'ilqr_ref' in self.TASK_INFO.keys() and self.TASK_INFO['ilqr_ref']:
                 traj_data = np.load(self.TASK_INFO['ilqr_traj_data'], allow_pickle=True).item()
                 POS_REF = np.array(
                     [traj_data['obs'][0][:, 0], 0 * traj_data['obs'][0][:, 0], traj_data['obs'][0][:, 2]]).T
                 VEL_REF = np.array(
                     [traj_data['obs'][0][:, 1], 0 * traj_data['obs'][0][:, 1], traj_data['obs'][0][:, 3]]).T
+                PITCH_REF = np.array([traj_data['obs'][0][:, 4], traj_data['obs'][0][:, 5]]).T
             else:
                 waypoints = self.TASK_INFO['waypoints'] if 'waypoints' in self.TASK_INFO else None
-                if isinstance(self.EPISODE_LEN_SEC, list):
-                    self.episode_len = self.np_random.choice(self.EPISODE_LEN_SEC)
-                else:
-                    self.episode_len = self.EPISODE_LEN_SEC
                 POS_REF, VEL_REF, _ = self._generate_trajectory(traj_type=self.TASK_INFO['trajectory_type'],
                                                                 traj_length=self.episode_len,
                                                                 num_cycles=self.TASK_INFO['num_cycles'],
@@ -412,14 +413,24 @@ class Quadrotor(BaseAviary):
                     np.zeros(VEL_REF.shape[0])
                 ]).transpose()
             elif self.QUAD_TYPE == QuadType.TWO_D_ATTITUDE:
-                self.X_GOAL = np.vstack([
-                    POS_REF[:, 0],  # x
-                    VEL_REF[:, 0],  # x_dot
-                    POS_REF[:, 2],  # z
-                    VEL_REF[:, 2],  # z_dot
-                    np.zeros(POS_REF.shape[0]),  # zeros
-                    np.zeros(VEL_REF.shape[0])
-                ]).transpose()
+                if 'ilqr_ref' in self.TASK_INFO.keys() and self.TASK_INFO['pitch_ref']:
+                    self.X_GOAL = np.vstack([
+                        POS_REF[:, 0],  # x
+                        VEL_REF[:, 0],  # x_dot
+                        POS_REF[:, 2],  # z
+                        VEL_REF[:, 2],  # z_dot
+                        PITCH_REF[:, 0],  # theta
+                        PITCH_REF[:, 1],  # theta_dot
+                    ]).transpose()
+                else:
+                    self.X_GOAL = np.vstack([
+                        POS_REF[:, 0],  # x
+                        VEL_REF[:, 0],  # x_dot
+                        POS_REF[:, 2],  # z
+                        VEL_REF[:, 2],  # z_dot
+                        np.zeros(POS_REF.shape[0]),  # zeros
+                        np.zeros(VEL_REF.shape[0])
+                    ]).transpose()
             elif self.QUAD_TYPE == QuadType.TWO_D_ATTITUDE_BODY:
                 self.X_GOAL = np.vstack([
                     POS_REF[:, 0],  # x
