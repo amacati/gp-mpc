@@ -157,7 +157,7 @@ class PPO_MPC_Agent:
                         temp2 @= (theta[:, self.ac.actor.pi_net.param_dict['l'].shape[0]:].unsqueeze(2))
                         # temp3 = action_th.grad.unsqueeze(1) @ torch.FloatTensor(np.array(nabla_pi_ref))
                         # temp3 @= (theta[:, self.ac.actor.pi_net.param_dict['l'].shape[0]:].unsqueeze(2))
-                        (temp1.mean() - temp2.mean()).backward()
+                        (temp1.mean() + temp2.mean()).backward()
                         self.actor_opt.step()
 
                         # temp1 = np.matmul(action_th.grad.unsqueeze(1).numpy(), nabla_pi_cost).squeeze(1).mean(axis=0)

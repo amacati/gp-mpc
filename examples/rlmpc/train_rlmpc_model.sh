@@ -13,7 +13,7 @@ TASK='track'
 ALGO='ppo_mpc'
 #ALGO='mpc_lstdq'
 
-EXP_NAME='exp4'
+EXP_NAME='ppo_mpc'
 
 if [ "$SYS" == 'cartpole' ]; then
     SYS_NAME=$SYS
@@ -30,8 +30,9 @@ do
         --overrides \
             ./config_overrides/${SYS}/${ALGO}_${SYS}.yaml \
             ./config_overrides/${SYS}/${SYS}_${TASK}.yaml \
-        --output_dir ./Results/${SYS}_${ALGO}_data/${EXP_NAME}/${SEED}_0/ \
-        --seed "${SEED}" \
+        --output_dir ./Results/${EXP_NAME} \
+        --tag ${SYS}_${ALGO}_data \
+        --seed ${SEED} \
         --kv_overrides \
             task_config.randomized_init=True
 done

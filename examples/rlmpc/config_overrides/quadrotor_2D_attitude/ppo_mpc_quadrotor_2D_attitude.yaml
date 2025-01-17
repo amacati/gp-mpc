@@ -26,21 +26,21 @@ algo_config:
   entropy_coef: 0.002
 
   # optim args
-  opt_epochs: 1
+  opt_epochs: 10
   mini_batch_size: 128
-  actor_lr: 0.001
+  actor_lr: 0.003
   critic_lr: 0.003
 
   # runner args
-  max_env_steps: 21600
+  max_env_steps: 52800
   rollout_batch_size: 4
-  rollout_steps: 540
-  eval_batch_size: 1
+  rollout_steps: 660
+  eval_batch_size: 5
 
   # misc
-  log_interval: 2160
+  log_interval: 2640
   save_interval: 540000
   num_checkpoints: 0
-  eval_interval: 2160
+  eval_interval: 2640
   eval_save_best: True
   tensorboard: False
