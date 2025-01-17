@@ -136,6 +136,12 @@ class MPC(BaseController):
         elif self.env.TASK == Task.TRAJ_TRACKING:
             self.mode = 'tracking'
             self.traj = self.env.X_GOAL.T
+            # if the task is to track a periodic trajectory (circle, square, figure 8)
+            # append the T+1 states of the trajectory to the goal_states 
+            # such that the vel states won't drop at the end of an episode
+            if self.env.TASK_INFO['trajectory_type'] in ['circle', 'square', 'figure8']:
+                self.extended_ref_traj = deepcopy(self.traj)
+                self.extended_ref_traj = np.concatenate([self.extended_ref_traj, self.extended_ref_traj[:, :self.T+1]], axis=1)
             # Step along the reference.
             self.traj_step = 0
         # Dynamics model.
@@ -410,19 +416,13 @@ class MPC(BaseController):
         self.prev_action = action
         return action
     @timing
+
     def get_references(self):
         '''Constructs reference states along mpc horizon.(nx, T+1).'''
-
-        # if the task is to track a periodic trajectory (circle, square, figure 8)
-        # append the T+1 states of the trajectory to the goal_states 
-        # such that the vel states won't drop at the end of an episode
         if self.env.TASK == Task.STABILIZATION:
             # Repeat goal state for horizon steps.
             goal_states = np.tile(self.env.X_GOAL.reshape(-1, 1), (1, self.T + 1))
         elif self.env.TASK == Task.TRAJ_TRACKING:
-            self.extended_ref_traj = deepcopy(self.traj)
-            if self.env.TASK_INFO['trajectory_type'] in ['circle', 'square', 'figure8']:
-                self.extended_ref_traj = np.concatenate([self.extended_ref_traj, self.extended_ref_traj[:, :self.T+1]], axis=1)
             # Slice trajectory for horizon steps, if not long enough, repeat last state.
             start = min(self.traj_step, self.extended_ref_traj.shape[-1])
             end = min(self.traj_step + self.T + 1, self.extended_ref_traj.shape[-1])
@@ -431,7 +431,7 @@ class MPC(BaseController):
             TODO: if using the extended reference trajectory, 
             variable remain will always be 0. Consider removing it.
             '''
-            print('start:', start, 'end:', end, 'remain:', remain)
+            # print('start:', start, 'end:', end, 'remain:', remain)
             goal_states = np.concatenate([
                 self.extended_ref_traj[:, start:end],
                 np.tile(self.extended_ref_traj[:, -1:], (1, remain))
