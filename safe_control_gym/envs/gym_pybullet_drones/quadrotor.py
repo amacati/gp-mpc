@@ -20,7 +20,7 @@ from safe_control_gym.envs.gym_pybullet_drones.quadrotor_utils import (AttitudeC
 from safe_control_gym.math_and_models.symbolic_systems import SymbolicModel
 from safe_control_gym.math_and_models.transformations import (csRotXYZ, get_quaternion_from_euler,
                                                               transform_trajectory)
-
+from safe_control_gym.envs.disturbances import Downwash
 
 class Quadrotor(BaseAviary):
     """1D, 2D, and 3D quadrotor environment task.
@@ -40,6 +40,9 @@ class Quadrotor(BaseAviary):
             'dim': -1
         },
         'dynamics': {
+            'dim': -1
+        },
+        'downwash': {
             'dim': -1
         }
     }
@@ -324,6 +327,13 @@ class Quadrotor(BaseAviary):
         # Set prior/symbolic info.
         self._setup_symbolic()
 
+        # initialize disturbance model
+        if 'downwash' in self.disturbances:
+            if self.DISTURBANCES['downwash'][0]['mode'] == 'fix':
+                self.dw_model = Downwash(init_pos=self.DISTURBANCES['downwash'][0]['pos'])
+            elif self.DISTURBANCES['downwash'][0]['mode'] == 'track':
+                self.dw_model = Downwash() # update the position later
+
     def set_goals(self):
         # Create X_GOAL and U_GOAL references for the assigned task.
         # if self.QUAD_TYPE == QuadType.TWO_D_ATTITUDE or self.QUAD_TYPE == QuadType.TWO_D_ATTITUDE_5S:
@@ -589,6 +599,8 @@ class Quadrotor(BaseAviary):
         disturb_force = None
         passive_disturb = 'dynamics' in self.disturbances
         adv_disturb = self.adversary_disturbance == 'dynamics'
+        if 'downwash' in self.disturbances:
+            disturb_force = np.zeros(self.DISTURBANCE_MODES['dynamics']['dim'])
         if passive_disturb or adv_disturb:
             disturb_force = np.zeros(self.DISTURBANCE_MODES['dynamics']['dim'])
         if passive_disturb:
@@ -621,6 +633,31 @@ class Quadrotor(BaseAviary):
                 disturb_force = np.asarray(disturb_force).flatten()
             elif self.QUAD_TYPE == QuadType.THREE_D_ATTITUDE_10:
                 disturb_force = np.asarray(disturb_force).flatten()
+            
+        # handle downwash force
+        if 'downwash' in self.disturbances:
+            assert self.QUAD_TYPE in [QuadType.TWO_D_ATTITUDE, QuadType.TWO_D_ATTITUDE_5S, QuadType.TWO_D_ATTITUDE_BODY\
+                            , QuadType.THREE_D_ATTITUDE, QuadType.THREE_D_ATTITUDE_10], '[ERROR] in Quadrotor.step(), downwash model is only available for identified model.'
+            # get the current observation
+            obs = self._get_observation()
+            # if self.DISTURBANCES['downwash'][0]['mode'] == 'track':
+            #     # update the position of the downwash model
+            #     self.dw_model.update_pos(pos=np.array([obs[0], 0, obs[2]]))
+            # get the downwash force
+            if self.QUAD_TYPE not in [QuadType.TWO_D_ATTITUDE]:
+                raise ValueError('[ERROR] in Quadrotor.step(), downwash force is only available for 2D attitude model.')
+            if self.QUAD_TYPE in [QuadType.TWO_D_ATTITUDE, QuadType.TWO_D_ATTITUDE_BODY, QuadType.TWO_D_ATTITUDE_5S]:
+                pos = np.array([obs[0], 0, obs[2]])
+            elif self.QUAD_TYPE in [QuadType.THREE_D_ATTITUDE, QuadType.THREE_D_ATTITUDE_10]:
+                pos = np.array([obs[0], obs[2], obs[4]])
+            
+            if self.DISTURBANCES['downwash'][0]['mode'] == 'track':
+                # update the position of the downwash model
+                self.dw_model.update_pos(pos=pos+self.DISTURBANCES['downwash'][0]['pos'])
+            dw_force_mag = self.dw_model.get_dw_force_mag(target_pos=pos, mode='absolute')
+            
+            print(f'dw_force_mag: {dw_force_mag:2f} [N]')
+            disturb_force[-1] += -dw_force_mag
 
         # Advance the simulation.
         super()._advance_simulation(action, disturb_force)
@@ -1217,7 +1254,12 @@ class Quadrotor(BaseAviary):
         # Custom disturbance info.
         self.DISTURBANCE_MODES['observation']['dim'] = self.obs_dim
         self.DISTURBANCE_MODES['action']['dim'] = self.action_dim
-        self.DISTURBANCE_MODES['dynamics']['dim'] = int(self.QUAD_TYPE)
+        self.DISTURBANCE_MODES['dynamics']['dim'] = int(self.QUAD_TYPE) 
+        if self.QUAD_TYPE in [QuadType.TWO_D_ATTITUDE, QuadType.TWO_D_ATTITUDE_5S, QuadType.TWO_D_ATTITUDE_BODY]:
+            self.DISTURBANCE_MODES['dynamics']['dim'] = 2
+        elif self.QUAD_TYPE in [QuadType.THREE_D_ATTITUDE, QuadType.THREE_D_ATTITUDE_10]:
+            self.DISTURBANCE_MODES['dynamics']['dim'] = 3
+        self.DISTURBANCE_MODES['downwash']['dim'] = 3
         super()._setup_disturbances()
 
     # noinspection PyUnreachableCode
