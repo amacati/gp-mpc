@@ -21,6 +21,7 @@ class BaseExperiment:
                  ctrl,
                  train_env=None,
                  safety_filter=None,
+                 learn_safety_filter=False,
                  verbose: bool = False,
                  ):
         '''Creates a generic experiment class to run evaluations and collect standard metrics.
@@ -45,6 +46,7 @@ class BaseExperiment:
         if train_env is not None and not is_wrapped(self.train_env, RecordDataWrapper):
             self.train_env = RecordDataWrapper(self.train_env)
         self.safety_filter = safety_filter
+        self.learn_safety_filter = learn_safety_filter
 
         self.reset()
 
@@ -221,7 +223,7 @@ class BaseExperiment:
         self.reset()
         self.ctrl.learn(env=self.train_env, **kwargs)
 
-        if self.safety_filter:
+        if self.safety_filter and self.learn_safety_filter:
             self.safety_filter.learn(env=self.train_env, **kwargs)
 
         print('Training done.')

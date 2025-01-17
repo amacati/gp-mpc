@@ -81,7 +81,16 @@ task_config:
     #   - disturbance_func: uniform
     #     low:  1.
     #     high: 1.
-    #     mask: [1, 0, 0, 0]
+    #     mask: [1, 0]
     observation:
       - disturbance_func: white_noise
         std: [5.6e-05, 1.5e-02, 2.9e-05, 8.0e-03, 1.3e-03, 3.5e-03]
+    downwash:
+      - disturbance_func: uniform
+        low:  1.
+        high: 1.
+        mode: fix
+        # mode: track
+        pos: [0, 0, 1.5] 
+        # pos in track mode is the relative position to the quadrotor
+        # pos in fix mode is the absolute position in the world frame

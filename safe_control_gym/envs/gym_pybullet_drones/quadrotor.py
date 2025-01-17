@@ -656,7 +656,7 @@ class Quadrotor(BaseAviary):
                 self.dw_model.update_pos(pos=pos+self.DISTURBANCES['downwash'][0]['pos'])
             dw_force_mag = self.dw_model.get_dw_force_mag(target_pos=pos, mode='absolute')
             
-            print(f'dw_force_mag: {dw_force_mag:2f} [N]')
+            # print(f'dw_force_mag: {dw_force_mag:2f} [N]')
             disturb_force[-1] += -dw_force_mag
 
         # Advance the simulation.
