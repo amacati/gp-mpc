@@ -163,6 +163,8 @@ dmypy.json
 gpmpc_update/
 temp
 models/
+
+examples/rl/Data/
 benchmarking_sim/quadrotor/data/traj*
 benchmarking_sim/quadrotor/data/gen*
 benchmarking_sim/quadrotor/data/*results*
