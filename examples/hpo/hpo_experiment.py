@@ -25,6 +25,14 @@ def hpo(config):
                 config.task_config.disturbances.observation[0]['std'] += [0, 0, 0, 0, 0, 0]
         config.algo_config.log_interval = 10000000
         config.algo_config.eval_interval = 10000000
+        if config.algo == 'ppo' and config.safety_filter == 'nl_mpsc':
+            config.sf_config.cost_function='one_step_cost'
+            config.sf_config.soften_constraints = True
+            config.algo_config.rollout_batch_size = 1
+            config.algo_config.filter_train_actions = False
+            config.algo_config.penalize_sf_diff = False
+            config.algo_config.sf_penalty = 0.03
+            # config.algo_config.training = True
     elif config.algo == 'fmpc' or config.algo == 'gp_mpc' or config.algo == 'gpmpc_acados' or config.algo == 'gpmpc_acados_TP' or config.algo == 'linear_mpc' or config.algo == 'mpc_acados':
         pass
     elif config.algo == 'pid' or config.algo == 'lqr' or config.algo == 'ilqr':
@@ -89,6 +97,14 @@ def eval(config):
                 config.task_config.disturbances.observation[0]['std'] += [0, 0, 0, 0, 0, 0]
         config.algo_config.log_interval = 10000000
         config.algo_config.eval_interval = 10000000
+        if config.algo == 'ppo' and config.safety_filter == 'nl_mpsc':
+            config.sf_config.cost_function='one_step_cost'
+            config.sf_config.soften_constraints = True
+            config.algo_config.rollout_batch_size = 1
+            config.algo_config.filter_train_actions = False
+            config.algo_config.penalize_sf_diff = False
+            config.algo_config.sf_penalty = 0.03
+            # config.algo_config.training = True
     elif config.algo == 'fmpc' or config.algo == 'gp_mpc' or config.algo == 'gpmpc_acados' or config.algo == 'gpmpc_acados_TP' or config.algo == 'linear_mpc' or config.algo == 'mpc_acados':
         pass
     elif config.algo == 'pid' or config.algo == 'lqr' or config.algo == 'ilqr':

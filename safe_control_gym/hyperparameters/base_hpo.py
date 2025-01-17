@@ -12,6 +12,7 @@ import colorsys
 
 from safe_control_gym.experiments.base_experiment import BaseExperiment
 from safe_control_gym.hyperparameters.hpo_search_space import HYPERPARAMS_DICT
+from safe_control_gym.safety_filters.mpsc.mpsc_utils import Cost_Function
 from safe_control_gym.utils.logging import ExperimentLogger
 from safe_control_gym.utils.registration import make
 from safe_control_gym.utils.utils import mkdirs
@@ -78,7 +79,12 @@ class BaseHPO(ABC):
         self.safety_filter = safety_filter
         self.sf_config = sf_config
         assert self.safety_filter is None or self.sf_config is not None, 'Safety filter config must be provided if safety filter is not None'
-        self.search_space_key = 'ilqr_sf' if self.safety_filter == 'linear_mpsc' and self.algo == 'ilqr' else self.algo
+        if self.safety_filter == 'linear_mpsc' and self.algo == 'ilqr':
+            self.search_space_key = 'ilqr_sf'
+        elif self.safety_filter == 'nl_mpsc' and self.algo == 'ppo':
+            self.search_space_key = 'ppo_sf'
+        else:
+            self.search_space_key = self.algo
         self.logger = ExperimentLogger(output_dir)
         self.load_study = load_study
         self.study_name = algo + '_hpo'
@@ -353,18 +359,19 @@ class BaseHPO(ABC):
                                          env_func_filter,
                                          **self.sf_config)
                     safety_filter.reset()
-                    try:
-                        safety_filter.learn()
-                    except Exception as e:
-                        self.logger.info(f'Exception occurs when constructing safety filter: {e}')
-                        self.logger.info('Safety filter config: {}'.format(self.sf_config))
-                        self.logger.std_out_logger.logger.exception('Full exception traceback')
-                        self.agent.close()
-                        del self.agent
-                        del self.env_func
-                        return self.none_handler()
-                    mkdirs(f'{self.output_dir}/models/')
-                    safety_filter.save(path=f'{self.output_dir}/models/{self.safety_filter}.pkl')
+                    # try:
+                    #     safety_filter.learn()
+                    # except Exception as e:
+                    #     self.logger.info(f'Exception occurs when constructing safety filter: {e}')
+                    #     self.logger.info('Safety filter config: {}'.format(self.sf_config))
+                    #     self.logger.std_out_logger.logger.exception('Full exception traceback')
+                    #     self.agent.close()
+                    #     del self.agent
+                    #     del self.env_func
+                    #     return self.none_handler()
+                    # mkdirs(f'{self.output_dir}/models/')
+                    # safety_filter.save(path=f'{self.output_dir}/models/{self.safety_filter}.pkl')
+                    self.agent.safety_filter = safety_filter
                     experiment = BaseExperiment(eval_env, self.agent, safety_filter=safety_filter)
                 else:
                     experiment = BaseExperiment(eval_env, self.agent)
@@ -396,7 +403,43 @@ class BaseHPO(ABC):
 
             # TODO: add n_episondes to the config
             try:
-                trajs_data, metrics = experiment.run_evaluation(n_episodes=self.n_episodes, n_steps=None, done_on_max_steps=True)
+                if self.algo == 'ppo' and self.safety_filter == 'nl_mpsc':
+                    self.sf_config.cost_function = 'precomputed_cost'
+                    self.sf_config.mpsc_cost_horizon = 25
+                    self.sf_config.decay_factor = 1
+                    self.sf_config.max_w = 0.0
+                    self.sf_config.slack_cost = 1000.0
+                    self.task_config.done_on_violation = False
+                    self.task_config.randomized_init = False
+                    env_func = partial(make, self.task, output_dir=self.output_dir, **self.task_config)
+                    env = env_func()
+                    self.task_config.constraints[0].upper_bounds = [0.899, 1.99, 1.449, 1.99, 0.749, 2.99]
+                    self.task_config.constraints[0].lower_bounds = [-0.899, -1.99, 0.551, -1.99, -0.749, -2.99]
+                    self.task_config.constraints[1].upper_bounds = [0.59, 0.436]
+                    self.task_config.constraints[1].lower_bounds = [0.113, -0.436]
+                    env_func = partial(make, self.task, output_dir=self.output_dir, **self.task_config)
+                    agent = make(self.algo,
+                                  env_func,
+                                  training=False,
+                                  checkpoint_path=os.path.join(self.output_dir, 'model_latest.pt'),
+                                  output_dir=os.path.join(self.output_dir, 'hpo'),
+                                  use_gpu=self.hpo_config.use_gpu,
+                                  seed=seed,
+                                  **deepcopy(self.algo_config))
+                    agent.load(os.path.join(self.output_dir, 'model_latest.pt'))
+                    sf = make(self.safety_filter,
+                                        env_func,
+                                        **self.sf_config)
+                    sf.reset()
+                    if self.sf_config.cost_function == Cost_Function.PRECOMPUTED_COST:
+                        sf.cost_function.uncertified_controller = self.agent
+                        sf.cost_function.output_dir = '.'
+                    exp = BaseExperiment(env, agent, safety_filter=sf)
+                    trajs_data, metrics = exp.run_evaluation(n_episodes=self.n_episodes, n_steps=None, done_on_max_steps=True)
+                    exp.close()
+                    sf.close()
+                else:
+                    trajs_data, metrics = experiment.run_evaluation(n_episodes=self.n_episodes, n_steps=None, done_on_max_steps=True)
             except Exception as e:
                 self.agent.close()
                 # delete instances

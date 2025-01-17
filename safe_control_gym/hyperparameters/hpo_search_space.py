@@ -20,6 +20,29 @@ PPO_dict = {
     'rew_act_weight': {'values': [0.0001, 15], 'scale': 'uniform', 'type': list, 'cat': 'float'},
 }
 
+PPO_SF_dict = {
+    # ppo related
+    'hidden_dim': {'values': [8, 16, 32, 64, 128, 256, 512], 'scale': 'uniform', 'type': int, 'cat': 'discrete'},
+    'gamma': {'values': [0.9, 0.95, 0.98, 0.99, 0.995, 0.999, 0.9999], 'scale': 'uniform', 'type': float, 'cat': 'discrete'},
+    'gae_lambda': {'values': [0.8, 0.9, 0.92, 0.95, 0.98, 0.99, 1.0], 'scale': 'uniform', 'type': float, 'cat': 'discrete'},
+    'clip_param': {'values': [0.1, 0.2, 0.3, 0.4], 'scale': 'uniform', 'type': float, 'cat': 'discrete'},
+    'opt_epochs': {'values': [1, 5, 10, 20, 25], 'scale': 'uniform', 'type': int, 'cat': 'discrete'},
+    'mini_batch_size': {'values': [32, 64, 128, 256], 'scale': 'uniform', 'type': int, 'cat': 'discrete'},
+    'max_env_steps': {'values': [30000, 72000, 114000, 156000, 216000, 276000, 336000, 396000], 'scale': 'uniform', 'type': int, 'cat': 'discrete'},
+    'activation': {'values': ['tanh', 'relu', 'leaky_relu'], 'scale': 'uniform', 'type': str, 'cat': 'categorical'},
+    'target_kl': {'values': [0.00000001, 0.8], 'scale': 'uniform', 'type': float, 'cat': 'float'},
+    'entropy_coef': {'values': [0.00000001, 0.1], 'scale': 'log', 'type': float, 'cat': 'float'},  # log-scaled
+    'actor_lr': {'values': [1e-5, 1e-2], 'scale': 'log', 'type': float, 'cat': 'float'},  # log-scaled
+    'critic_lr': {'values': [1e-5, 1e-2], 'scale': 'log', 'type': float, 'cat': 'float'},  # log-scaled
+    'rew_state_weight': {'values': [0.0001, 15], 'scale': 'uniform', 'type': list, 'cat': 'float'},
+    'rew_act_weight': {'values': [0.0001, 15], 'scale': 'uniform', 'type': list, 'cat': 'float'},
+    'sf_penalty': {'values': [0.001, 10.0], 'scale': 'uniform', 'type': float, 'cat': 'float'},
+    # mpc related
+    'horizon': {'values': [15, 20, 25, 30, 35, 40, 45, 50], 'scale': 'uniform', 'type': int, 'cat': 'discrete'},
+	'slack_cost': {'values': [10.0, 1000.0], 'scale': 'uniform', 'type': float, 'cat': 'float'},
+	'max_w': {'values': [0.0, 0.01], 'scale': 'uniform', 'type': float, 'cat': 'float'}
+}
+
 SAC_dict = {
     'hidden_dim': {'values': [8, 16, 32, 64, 128, 256, 512], 'scale': 'uniform', 'type': int, 'cat': 'discrete'},
     'gamma': {'values': [0.9, 0.95, 0.98, 0.99, 0.995, 0.999, 0.9999], 'scale': 'uniform', 'type': float, 'cat': 'discrete'},
@@ -138,6 +161,7 @@ PID_dict = {
 
 HYPERPARAMS_DICT = {
     'ppo': PPO_dict,
+    'ppo_sf': PPO_SF_dict,
     'dppo': DPPO_dict,
     'sac': SAC_dict,
     'gp_mpc': GPMPC_dict,
