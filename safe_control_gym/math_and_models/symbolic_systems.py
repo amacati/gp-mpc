@@ -3,7 +3,7 @@
 import casadi as cs
 
 
-class SymbolicModel():
+class SymbolicModel:
     '''Implements the dynamics model with symbolic variables.
 
     x_dot = f(x,u), y = g(x,u), with other pre-defined, symbolic functions
@@ -26,7 +26,9 @@ class SymbolicModel():
         # Setup for dynamics.
         self.x_sym = dynamics['vars']['X']
         self.u_sym = dynamics['vars']['U']
+        self.p_sym = dynamics['vars']['P']
         self.x_dot = dynamics['dyn_eqn']
+        self.param_x_dot = dynamics['param_dyn_eqn']
         if dynamics['obs_eqn'] is None:
             self.y_sym = self.x_sym
         else:
@@ -49,6 +51,7 @@ class SymbolicModel():
         # Variable dimensions.
         self.nx = self.x_sym.shape[0]
         self.nu = self.u_sym.shape[0]
+        self.npl = self.p_sym.shape[0]
         self.ny = self.y_sym.shape[0]
         # Setup cost function.
         self.cost_func = cost['cost_func']
@@ -66,11 +69,15 @@ class SymbolicModel():
         '''Exposes functions to evaluate the model.'''
         # Continuous time dynamics.
         self.fc_func = cs.Function('fc', [self.x_sym, self.u_sym], [self.x_dot], ['x', 'u'], ['f'])
+
+        # Parameterized continuous time dynamics
+        self.param_fc_func = cs.Function('fc_param', [self.x_sym, self.u_sym, self.p_sym], [self.param_x_dot],
+                                         ['x', 'u', 'p'], ['f'])
+
         # Discrete time dynamics.
-        self.fd_func = cs.integrator('fd', self.integration_algo, {'x': self.x_sym,
-                                                                   'p': self.u_sym,
-                                                                   'ode': self.x_dot}, {'tf': self.dt}
-                                     )
+        self.fd_func = cs.integrator('fd', self.integration_algo,
+                                     {'x': self.x_sym, 'p': self.u_sym, 'ode': self.x_dot}, 0.0, self.dt)
+
         # Observation model.
         self.g_func = cs.Function('g', [self.x_sym, self.u_sym], [self.y_sym], ['x', 'u'], ['g'])
 
@@ -101,7 +108,7 @@ class SymbolicModel():
                 'x': self.x_eval,
                 'p': cs.vertcat(self.u_eval, self.x_sym, self.u_sym),
                 'ode': self.x_dot_linear
-            }, {'tf': self.dt})
+            }, 0.0, self.dt)
         # Linearized observation model.
         self.y_linear = self.y_sym + self.dgdx @ (
             self.x_eval - self.x_sym) + self.dgdu @ (self.u_eval - self.u_sym)

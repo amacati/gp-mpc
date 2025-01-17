@@ -788,6 +788,17 @@ class Quadrotor(BaseAviary):
             self.T_mapping_func = cs.Function('T_mapping', [T], [T_mapping])
             self.P_mapping_func = cs.Function('P_mapping', [theta, theta_dot, P], [P_mapping])
 
+            mp = [18.112984649321753, 3.6800, 0.0, 140.8, 13.4, 124.8, 0.0]
+            lr_param = cs.MX.sym('learnable_param', 6)
+            parameterized_X_dot = cs.vertcat(
+                x_dot,
+                (lr_param[0] * mp[0] * T + lr_param[1] * mp[1]) * cs.sin(theta) + lr_param[2] * mp[2],
+                z_dot,
+                (lr_param[0] * mp[0] * T + lr_param[1] * mp[1]) * cs.cos(theta) - g,
+                theta_dot,
+                -lr_param[3] * mp[3] * theta - lr_param[4] * mp[4] * theta_dot + lr_param[5] * mp[5] * P
+            )
+
         elif self.QUAD_TYPE == QuadType.TWO_D_ATTITUDE_BODY:
             nx, nu = 6, 2
             # Define states.
@@ -1016,7 +1027,12 @@ class Quadrotor(BaseAviary):
         Ur = cs.MX.sym('Ur', nu, 1)
         cost_func = 0.5 * (X - Xr).T @ Q @ (X - Xr) + 0.5 * (U - Ur).T @ R @ (U - Ur)
         # Define dynamics and cost dictionaries.
-        dynamics = {'dyn_eqn': X_dot, 'obs_eqn': Y, 'vars': {'X': X, 'U': U}}
+        dynamics = {
+            'dyn_eqn': X_dot,
+            'param_dyn_eqn': parameterized_X_dot,
+            'obs_eqn': Y,
+            'vars': {'X': X, 'U': U, 'P': lr_param}
+        }
         cost = {
             'cost_func': cost_func,
             'vars': {

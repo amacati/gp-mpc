@@ -97,3 +97,7 @@ register(idx='gpmpc_acados_TRP',
 register(idx='fmpc',
          entry_point='safe_control_gym.controllers.mpc.fmpc:FlatMPC',
          config_entry_point='safe_control_gym.controllers.mpc:fmpc.yaml')
+
+register(idx='ppo_mpc',
+         entry_point='safe_control_gym.controllers.rlmpc.ppo_mpc:PPO_MPC',
+         config_entry_point='safe_control_gym.controllers.rlmpc:ppo_mpc.yaml')
