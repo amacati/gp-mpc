@@ -18,45 +18,35 @@ task_config:
 
   init_state_randomization_info:
     init_x:
-      distrib: 'uniform'
-      low: -0.01
-      high: 0.01
+      distrib: 'normal'
+      scale: 0.0011629923113331312
     init_x_dot:
-      distrib: 'uniform'
-      low: -0.01
-      high: 0.01
+      distrib: 'normal'
+      scale: 0.003635597781389117
     init_y:
-      distrib: 'uniform'
-      low: -0.01
-      high: 0.01
+      distrib: 'normal'
+      scale: 0.001670549279531124
     init_y_dot:
-      distrib: 'uniform'
-      low: -0.01
-      high: 0.01
+      distrib: 'normal'
+      scale: 0.004965500657569368
     init_z:
-      distrib: 'uniform'
-      low: -0.01
-      high: 0.01
+      distrib: 'normal'
+      scale: 0.0024990695232428458
     init_z_dot:
-      distrib: 'uniform'
-      low: -0.01
-      high: 0.01
+      distrib: 'normal'
+      scale: 0.010193088084183025
     init_phi:
-      distrib: 'uniform'
-      low: -0.02
-      high: 0.02
+      distrib: 'normal'
+      scale: 0.0026984744060397532
     init_theta:
-      distrib: 'uniform'
-      low: -0.02
-      high: 0.02
+      distrib: 'normal'
+      scale: 0.0024088251667187467
     init_p:
-      distrib: 'uniform'
-      low: -0.02
-      high: 0.02
+      distrib: 'normal'
+      scale: 0.03452115832640752
     init_q:
-      distrib: 'uniform'
-      low: -0.02
-      high: 0.02
+      distrib: 'normal'
+      scale: 0.02387283406599296
 
   task: traj_tracking
   task_info:
@@ -79,7 +69,7 @@ task_config:
   #   alpha_3: 124.8
   #   pitch_bias: 0.0 # in radian
 
-  episode_len_sec: 11
+  episode_len_sec: 9
   cost: quadratic
 
   constraints:
