@@ -82,7 +82,7 @@ def run(gui=False, n_episodes=1, n_steps=None, save_data=True, seed=2):
     fac.add_argument('--n_episodes', type=int, default=1, help='number of episodes to run.')
     # merge config and create output directory
     config = fac.merge()
-    if ALGO in ['gpmpc_acados', 'gp_mpc']:
+    if ALGO in ['gpmpc_acados', 'gp_mpc', 'gpmpc_acados_TP', 'gpmpc_acados_TPR']:
         num_data_max = config.algo_config.num_epochs * config.algo_config.num_samples
         config.output_dir = os.path.join(config.output_dir, PRIOR + '_' + repr(num_data_max))
     print('output_dir',  config.algo_config.output_dir)
@@ -130,7 +130,7 @@ def run(gui=False, n_episodes=1, n_steps=None, save_data=True, seed=2):
 
         # Create experiment, train, and run evaluation
         if SAFETY_FILTER is None:  
-            if ALGO in ['gpmpc_acados', 'gp_mpc'] :
+            if ALGO in ['gpmpc_acados', 'gp_mpc', 'gpmpc_acados_TP', 'gpmpc_acados_TPR']:
                 experiment = BaseExperiment(env=static_env, ctrl=ctrl, train_env=static_train_env)
                 if config.algo_config.num_epochs == 1:
                     print('Evaluating prior controller')
@@ -158,7 +158,7 @@ def run(gui=False, n_episodes=1, n_steps=None, save_data=True, seed=2):
 
         # plotting training and evaluation results
         # training
-        if ALGO in ['gpmpc_acados', 'gp_mpc'] and \
+        if ALGO in ['gpmpc_acados', 'gp_mpc', 'gpmpc_acados_TP', 'gpmpc_acados_TPR'] and \
            config.algo_config.gp_model_path is None and \
            config.algo_config.num_epochs > 1:
                 if isinstance(static_env, Quadrotor):
@@ -287,11 +287,14 @@ if __name__ == '__main__':
     #       {np.mean(runtime_list):.3f} sec')
 
     runtime_list = []
-    num_seed = 10
+    num_seed = 50
     start_seed = 1 # [1, 5, 6, 8, 9, 11, 12]
     suceeded = 0
     seed = start_seed
     while suceeded < num_seed:  
+        if seed > 200:
+            print(f'Only {suceeded} out of {num_seed} runs succeeded')
+            break
         try:
             run(seed=seed)
             runtime_list.append(run.elapsed_time)
