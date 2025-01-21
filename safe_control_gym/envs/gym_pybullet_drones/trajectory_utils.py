@@ -118,7 +118,13 @@ def generate_trajectory(
         num_continuous_orders=3,
         algorithm='closed-form',
         optimize_options=None,
-):
+    ):
+    '''
+    
+    Args:
+        references: List of Waypoint objectsm {-1: time, 0: position}
+        degree: Degree of the polynomial
+    '''
     if degree < 2:
         raise ValueError('Polynomial degree too low')
 
@@ -157,7 +163,12 @@ def generate_trajectory(
 
     poly_dim = PolynomialSize(
         n_poly=refs.shape[0] - 1, n_cfs=degree + 1, dim=refs.shape[2]
-    )
+    ) 
+    '''
+    n_poly: num of segments = num of references - 1
+    n_cfs: num of coefficients = degree + 1
+    dim: dimension of the trajectory = num of continuous orders
+    '''
 
     if algorithm == 'constrained':
         solver = _solve_constrained
@@ -166,10 +177,10 @@ def generate_trajectory(
     else:
         raise ValueError('Unrecognized algorithm')
     polys = solver(
-        refs,
-        durations,
-        poly_dim,
-        derivative_weights,
+        refs, # parsed references
+        durations, # time intervals between waypoints
+        poly_dim, # PolynomialSize object
+        derivative_weights, # weights for derivatives (e.g. minimum snap)
         num_continuous_orders,
         optimize_options,
     )
@@ -284,7 +295,21 @@ def _solve_constrained(
         derivative_weights,
         r_cts,
         optimize_options,
-):
+    ):
+    '''
+    # reminder: 
+    n_poly: num of segments = num of references - 1
+    n_cfs: num of coefficients = degree + 1
+    dim: dimension of the trajectory = num of continuous orders
+    '''
+    '''
+    refs: np.ndarray, shape=(n_refs, r_cts, dim)
+    durations: np.ndarray, shape=(n_refs-1,)
+    poly_dim: PolynomialSize object (n_poly, n_cfs, dim)
+    derivative_weights: np.ndarray, shape=(n_cfs,)
+    r_cts: int
+    optimize_options: dict
+    '''
     opts = {'method': 'SLSQP', 'tol': 1e-10}
     if optimize_options is not None:
         opts.update(optimize_options)

@@ -575,22 +575,30 @@ class BenchmarkEnv(gym.Env, ABC):
         speed_traj = np.zeros((len(times), 1))
         # Initial trajectory for snap trajectory
         if traj_type == 'snap_figure8':
-            waypoint_times = np.arange(0, traj_length + traj_length / 50, traj_length / 50)
+            num_waypoints = 20
+            waypoint_times = np.arange(0, traj_length + traj_length / num_waypoints, traj_length / num_waypoints)
             waypoints = self._init_figure8(waypoint_times, traj_type, traj_period, coord_index_a,
                                            coord_index_b, position_offset[0], position_offset[1], scaling)
             polys = generate_trajectory(
                 waypoints,
-                degree=6,  # Polynomial degree
+                degree=5,  # Polynomial degree
                 idx_minimized_orders=4,  # Minimize derivatives in these orders (>= 2)
                 num_continuous_orders=3,  # Constrain continuity of derivatives up to order (>= 3)
                 algorithm='closed-form'   # "closed-form" Or "constrained"
                 # algorithm='constrained'   
             )
             # return information up to velocity (2nd derivative)
-            pva = compute_trajectory_derivatives(polys, times, 2)
+            pva = compute_trajectory_derivatives(polys, times, 3)
             pos_ref_traj = pva[0, :, :]
             vel_ref_traj = pva[1, :, :]
+            acc_ref_traj = pva[2, :, :]
             speed_traj = np.linalg.norm(vel_ref_traj, axis=1)
+            acc_mag = np.linalg.norm(acc_ref_traj, axis=1)
+            print(f"Max acceleration: {np.max(acc_mag)}")
+            print(f"Acc bound is: {0.3 * 9.81} to {1.8 * 9.81}")
+            print(f"Max velocity: {np.max(speed_traj)}")
+            print()
+            
 
         elif traj_type == 'snap_custom':
             if waypoint_list is None:
@@ -606,7 +614,13 @@ class BenchmarkEnv(gym.Env, ABC):
             pva = compute_trajectory_derivatives(polys, times, 2)
             pos_ref_traj = pva[0, :, :]
             vel_ref_traj = pva[1, :, :]
+            acc_ref_traj = pva[2, :, :]
             speed_traj = np.linalg.norm(vel_ref_traj, axis=1)
+            acc_mag = np.linalg.norm(acc_ref_traj, axis=1)
+            print(f"Max acceleration: {np.max(acc_mag)}")
+            print(f"Max velocity: {np.max(speed_traj)}")
+            print()
+            
 
         else:
             # Compute trajectory points.
