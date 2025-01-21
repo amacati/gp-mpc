@@ -34,6 +34,7 @@ PPO_SF_dict = {
     'entropy_coef': {'values': [0.00000001, 0.1], 'scale': 'log', 'type': float, 'cat': 'float'},  # log-scaled
     'actor_lr': {'values': [1e-5, 1e-2], 'scale': 'log', 'type': float, 'cat': 'float'},  # log-scaled
     'critic_lr': {'values': [1e-5, 1e-2], 'scale': 'log', 'type': float, 'cat': 'float'},  # log-scaled
+    'rollout_batch_size': {'values': [1], 'scale': 'uniform', 'type': int, 'cat': 'discrete'},
     'rew_state_weight': {'values': [0.0001, 15], 'scale': 'uniform', 'type': list, 'cat': 'float'},
     'rew_act_weight': {'values': [0.0001, 15], 'scale': 'uniform', 'type': list, 'cat': 'float'},
     'sf_penalty': {'values': [0.001, 10.0], 'scale': 'uniform', 'type': float, 'cat': 'float'},

@@ -57,13 +57,14 @@ done
 if [ "$resume" == '1' ] && [ "$sampler" == 'optuna' ]; then
 
     if [ "$safety_filter" == 'False' ]; then
+        algo_name=${algo}
         for ((i=0; i<parallel_jobs; i++)); do
             python ./examples/hpo/hpo_experiment.py \
                                 --algo $algo \
                                 --overrides ./examples/hpo/${sys_name}/config_overrides/${sys}_${task}_eval.yaml \
                                             ./examples/hpo/${sys_name}/config_overrides/${algo}_${sys}_${task}_${prior}.yaml \
                                             ./examples/hpo/${sys_name}/config_overrides/${algo}_${sys}_hpo.yaml \
-                                --output_dir ./examples/hpo/hpo/${algo} \
+                                --output_dir ./examples/hpo/hpo/${algo_name} \
                                 --sampler $sampler \
                                 --resume ${resume} \
                                 --use_gpu True \
@@ -72,6 +73,7 @@ if [ "$resume" == '1' ] && [ "$sampler" == 'optuna' ]; then
             sleep 3
         done
     else
+        algo_name=${algo}_sf
         for ((i=0; i<parallel_jobs; i++)); do
             python ./examples/hpo/hpo_experiment.py \
                                 --algo $algo \
@@ -84,7 +86,7 @@ if [ "$resume" == '1' ] && [ "$sampler" == 'optuna' ]; then
                                              algo_config.filter_train_actions=True \
                                              algo_config.penalize_sf_diff=True \
                                              algo_config.sf_penalty=0.03 \
-                                --output_dir ./examples/hpo/hpo/${algo} \
+                                --output_dir ./examples/hpo/hpo/${algo_name} \
                                 --sampler $sampler \
                                 --resume ${resume} \
                                 --use_gpu True \
@@ -98,12 +100,13 @@ if [ "$resume" == '1' ] && [ "$sampler" == 'optuna' ]; then
 else
     # First job creates the study
     if [ "$safety_filter" == 'False' ]; then
+        algo_name=${algo}
         python ./examples/hpo/hpo_experiment.py \
                             --algo $algo \
                             --overrides ./examples/hpo/${sys_name}/config_overrides/${sys}_${task}_eval.yaml \
                                         ./examples/hpo/${sys_name}/config_overrides/${algo}_${sys}_${task}_${prior}.yaml \
                                         ./examples/hpo/${sys_name}/config_overrides/${algo}_${sys}_hpo.yaml \
-                            --output_dir ./examples/hpo/hpo/${algo} \
+                            --output_dir ./examples/hpo/hpo/${algo_name} \
                             --sampler $sampler \
                             --resume ${resume} \
                             --use_gpu True \
@@ -121,7 +124,7 @@ else
                                 --overrides ./examples/hpo/${sys_name}/config_overrides/${sys}_${task}_eval.yaml \
                                             ./examples/hpo/${sys_name}/config_overrides/${algo}_${sys}_${task}_${prior}.yaml \
                                             ./examples/hpo/${sys_name}/config_overrides/${algo}_${sys}_hpo.yaml \
-                                --output_dir ./examples/hpo/hpo/${algo} \
+                                --output_dir ./examples/hpo/hpo/${algo_name} \
                                 --sampler $sampler \
                                 --resume ${resume} \
                                 --use_gpu True \
@@ -131,6 +134,7 @@ else
     fi
 
     if [ "$safety_filter" == 'True' ]; then
+        algo_name=${algo}_sf
         python ./examples/hpo/hpo_experiment.py \
                             --algo $algo \
                             --overrides ./examples/hpo/${sys_name}/config_overrides/${sys}_${task}_eval.yaml \
@@ -142,7 +146,7 @@ else
                                              algo_config.filter_train_actions=True \
                                              algo_config.penalize_sf_diff=True \
                                              algo_config.sf_penalty=0.03 \
-                            --output_dir ./examples/hpo/hpo/${algo} \
+                            --output_dir ./examples/hpo/hpo/${algo_name} \
                             --sampler $sampler \
                             --resume ${resume} \
                             --use_gpu True \
@@ -165,7 +169,7 @@ else
                                              algo_config.filter_train_actions=True \
                                              algo_config.penalize_sf_diff=True \
                                              algo_config.sf_penalty=0.03 \
-                                --output_dir ./examples/hpo/hpo/${algo} \
+                                --output_dir ./examples/hpo/hpo/${algo_name} \
                                 --sampler $sampler \
                                 --resume ${resume} \
                                 --use_gpu True \
@@ -184,6 +188,6 @@ done
 
 # back up the database after all jobs finish
 echo "backing up the database"
-mv ${algo}_hpo_${sampler}.db ./examples/hpo/hpo/${algo}/${experiment_name}/${algo}_hpo_${sampler}.db
-mv ${algo}_hpo_${sampler}.db-journal ./examples/hpo/hpo/${algo}/${experiment_name}/${algo}_hpo_${sampler}.db-journal
-mv ${algo}_hpo_${sampler}_endpoint.yaml ./examples/hpo/hpo/${algo}/${experiment_name}/${algo}_hpo_${sampler}_endpoint.yaml
+mv ${algo}_hpo_${sampler}.db ./examples/hpo/hpo/${algo_name}/${experiment_name}/${algo_name}_hpo_${sampler}.db
+mv ${algo}_hpo_${sampler}.db-journal ./examples/hpo/hpo/${algo_name}/${experiment_name}/${algo_name}_hpo_${sampler}.db-journal
+mv ${algo}_hpo_${sampler}_endpoint.yaml ./examples/hpo/hpo/${algo_name}/${experiment_name}/${algo_name}_hpo_${sampler}_endpoint.yaml
