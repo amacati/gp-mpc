@@ -717,6 +717,8 @@ class Quadrotor(BaseAviary):
         z = cs.MX.sym('z')
         z_dot = cs.MX.sym('z_dot')
         u_eq = m * g
+        X_dot, parameterized_X_dot, Y = None, None, None
+        lr_param = None  # external model parameters
         if self.QUAD_TYPE == QuadType.ONE_D:
             nx, nu = 2, 1
             # Define states.

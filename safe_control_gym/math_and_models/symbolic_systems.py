@@ -51,7 +51,8 @@ class SymbolicModel:
         # Variable dimensions.
         self.nx = self.x_sym.shape[0]
         self.nu = self.u_sym.shape[0]
-        self.npl = self.p_sym.shape[0]
+        if self.p_sym is not None:
+            self.npl = self.p_sym.shape[0]
         self.ny = self.y_sym.shape[0]
         # Setup cost function.
         self.cost_func = cost['cost_func']
@@ -71,8 +72,9 @@ class SymbolicModel:
         self.fc_func = cs.Function('fc', [self.x_sym, self.u_sym], [self.x_dot], ['x', 'u'], ['f'])
 
         # Parameterized continuous time dynamics
-        self.param_fc_func = cs.Function('fc_param', [self.x_sym, self.u_sym, self.p_sym], [self.param_x_dot],
-                                         ['x', 'u', 'p'], ['f'])
+        if self.param_x_dot is not None:
+            self.param_fc_func = cs.Function('fc_param', [self.x_sym, self.u_sym, self.p_sym], [self.param_x_dot],
+                                             ['x', 'u', 'p'], ['f'])
 
         # Discrete time dynamics.
         self.fd_func = cs.integrator('fd', self.integration_algo,
