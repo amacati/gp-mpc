@@ -55,7 +55,8 @@ class BaseHPO(ABC):
                  output_dir='./results',
                  safety_filter=None,
                  sf_config=None,
-                 load_study=False):
+                 load_study=False,
+                 resume=False):
         """
         Base class for Hyperparameter Optimization (HPO).
 
@@ -69,6 +70,7 @@ class BaseHPO(ABC):
             safety_filter (str): Safety filter to be applied (optional).
             sf_config: Safety filter configuration (optional).
             load_study (bool): Load existing study if True.
+            resume (bool): Resume existing trials if True.
         """
         self.algo = algo
         self.task = task
@@ -97,6 +99,8 @@ class BaseHPO(ABC):
 
         self.state_dim = env.state_dim
         self.action_dim = env.action_dim
+
+        self.resume = resume
 
         self.append_hps_config()
         self.check_hyperparmeter_config()
@@ -167,6 +171,13 @@ class BaseHPO(ABC):
         Args:
             params (dict): Specified hyperparameters.
             objective (float): Objective value.
+        """
+        raise NotImplementedError
+    
+    @abstractmethod
+    def resume_trials(self):
+        """
+        Resume existing trials.
         """
         raise NotImplementedError
 

@@ -20,7 +20,7 @@ algo=$7 # ilqr, gpmpc_acados, ppo
 prior=$8
 safety_filter=$9 # True or False
 task=${10} # stab, or tracking
-resume=${11} # True or False
+resume=${11} # 0 or 1
 
 # activate the environment
 if [ "$localOrHost" == 'local' ]; then
@@ -53,8 +53,29 @@ for ((i=0; i<parallel_jobs; i++)); do
     seeds[$i]=$((seed1 + i * 100))
 done
 
-# if resume is False, create a study for the first job and load it for the remaining jobs
-if [ "$resume" == 'False' ]; then
+# if resume is 1 and sampler is optuna, load the study for all jobs
+if [ "$resume" == '1' ] && [ "$sampler" == 'optuna' ]; then
+    cd ./examples/hpo/hpo/${algo}/${experiment_name}
+
+    cd ~/safe-control-gym
+
+    for ((i=0; i<parallel_jobs; i++)); do
+        python ./examples/hpo/hpo_experiment.py \
+                            --algo $algo \
+                            --overrides ./examples/hpo/${sys_name}/config_overrides/${sys}_${task}_eval.yaml \
+                                        ./examples/hpo/${sys_name}/config_overrides/${algo}_${sys}_${task}_${prior}.yaml \
+                                        ./examples/hpo/${sys_name}/config_overrides/${algo}_${sys}_hpo.yaml \
+                            --output_dir ./examples/hpo/hpo/${algo} \
+                            --sampler $sampler \
+                            --resume ${resume} \
+                            --use_gpu True \
+                            --task ${sys_name} --load_study True --tag ${experiment_name} --seed ${seeds[$i]} &
+        pids[$i]=$!
+        sleep 3
+    done
+
+# else create a study for the first job and load it for the remaining jobs
+else
     # First job creates the study
     if [ "$safety_filter" == 'False' ]; then
         python ./examples/hpo/hpo_experiment.py \
@@ -64,6 +85,7 @@ if [ "$resume" == 'False' ]; then
                                         ./examples/hpo/${sys_name}/config_overrides/${algo}_${sys}_hpo.yaml \
                             --output_dir ./examples/hpo/hpo/${algo} \
                             --sampler $sampler \
+                            --resume ${resume} \
                             --use_gpu True \
                             --task ${sys_name} --tag ${experiment_name} --seed ${seeds[0]} &
         pid1=$!
@@ -81,6 +103,7 @@ if [ "$resume" == 'False' ]; then
                                             ./examples/hpo/${sys_name}/config_overrides/${algo}_${sys}_hpo.yaml \
                                 --output_dir ./examples/hpo/hpo/${algo} \
                                 --sampler $sampler \
+                                --resume ${resume} \
                                 --use_gpu True \
                                 --task ${sys_name} --load_study True --tag ${experiment_name} --seed ${seeds[$i]} &
             pids[$i]=$!
@@ -97,6 +120,7 @@ if [ "$resume" == 'False' ]; then
                             --kv_overrides sf_config.cost_function=one_step_cost \
                             --output_dir ./examples/hpo/hpo/${algo} \
                             --sampler $sampler \
+                            --resume ${resume} \
                             --use_gpu True \
                             --task ${sys_name} --tag ${experiment_name} --seed ${seeds[0]} &
         pid1=$!
@@ -115,33 +139,13 @@ if [ "$resume" == 'False' ]; then
                                 --kv_overrides sf_config.cost_function=one_step_cost \
                                 --output_dir ./examples/hpo/hpo/${algo} \
                                 --sampler $sampler \
+                                --resume ${resume} \
                                 --use_gpu True \
                                 --task ${sys_name} --load_study True --tag ${experiment_name} --seed ${seeds[$i]} &
             pids[$i]=$!
             sleep 3
         done
     fi
-fi
-
-# if resume is True, load the study for all jobs
-if [ "$resume" == 'True' ]; then
-    cd ./examples/hpo/hpo/${algo}/${experiment_name}
-
-    cd ~/safe-control-gym
-
-    for ((i=0; i<parallel_jobs; i++)); do
-        python ./examples/hpo/hpo_experiment.py \
-                            --algo $algo \
-                            --overrides ./examples/hpo/${sys_name}/config_overrides/${sys}_${task}_eval.yaml \
-                                        ./examples/hpo/${sys_name}/config_overrides/${algo}_${sys}_${task}_${prior}.yaml \
-                                        ./examples/hpo/${sys_name}/config_overrides/${algo}_${sys}_hpo.yaml \
-                            --output_dir ./examples/hpo/hpo/${algo} \
-                            --sampler $sampler \
-                            --use_gpu True \
-                            --task ${sys_name} --load_study True --tag ${experiment_name} --seed ${seeds[$i]} &
-        pids[$i]=$!
-        sleep 3
-    done
 fi
 
 # Wait for all jobs to finish

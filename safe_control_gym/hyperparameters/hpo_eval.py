@@ -27,7 +27,7 @@ class HPOEval(BaseHPO):
             safety_filter (str): Safety filter name.
             sf_config (dict): Safety filter configuration.
         '''
-        super(HPOEval, self).__init__(hpo_config, task_config, algo_config, algo, task, output_dir, safety_filter, sf_config, False)
+        super(HPOEval, self).__init__(hpo_config, task_config, algo_config, algo, task, output_dir, safety_filter, sf_config, False, False)
 
         if 'vizier_hps' in self.hpo_config:
             self.vizier_hps = self.hpo_config['vizier_hps']
@@ -91,6 +91,13 @@ class HPOEval(BaseHPO):
         Dummy function.
         """
         raise NotImplementedError
+    
+    def resume_trials(self):
+        """
+        Dummy function.
+        """
+        raise NotImplementedError
+
     def hyperparameter_optimization(self):
         """
         Dummy function.

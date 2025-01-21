@@ -12,13 +12,15 @@ import time
 
 import matplotlib.pyplot as plt
 import numpy as np
-import yaml
+import pandas as pd
+import yaml, json
 from vizier.service import clients
 from vizier.service import pyvizier as vz
 from vizier.service import servers
 
 from safe_control_gym.hyperparameters.base_hpo import BaseHPO
 from safe_control_gym.hyperparameters.hpo_search_space import HYPERPARAMS_DICT
+from safe_control_gym.hyperparameters.hpo_utils import get_smallest_and_latest_seed_folder
 
 
 class HPO_Vizier(BaseHPO):
@@ -32,7 +34,8 @@ class HPO_Vizier(BaseHPO):
                  output_dir='./results',
                  safety_filter=None,
                  sf_config=None,
-                 load_study=False):
+                 load_study=False,
+                 resume=False):
         """
         Hyperparameter Optimization (HPO) class using package Vizier.
 
@@ -46,8 +49,9 @@ class HPO_Vizier(BaseHPO):
             safety_filter (str): Safety filter to be applied (optional).
             sf_config: Safety filter configuration (optional).
             load_study (bool): Load existing study if True.
+            resume (bool): if resume from a trial file.
         """
-        super().__init__(hpo_config, task_config, algo_config, algo, task, output_dir, safety_filter, sf_config, load_study)
+        super().__init__(hpo_config, task_config, algo_config, algo, task, output_dir, safety_filter, sf_config, load_study, resume)
 
         self.client_id = f'client_{os.getpid()}'  # use process id as client id
         self.setup_problem()
@@ -128,7 +132,7 @@ class HPO_Vizier(BaseHPO):
             study_config = vz.StudyConfig.from_problem(self.problem)
             study_config.algorithm = 'GAUSSIAN_PROCESS_BANDIT'
             self.study_client = clients.Study.from_study_config(study_config, owner='owner', study_id=self.study_name)
-            self.warm_start(self.config_to_param(self.hps_config))
+            self.resume_trials() if self.resume else self.warm_start(self.config_to_param(self.hps_config))
 
         existing_trials = 0
         while existing_trials < self.hpo_config.trials:
@@ -207,6 +211,32 @@ class HPO_Vizier(BaseHPO):
             trial = vz.Trial(parameters=params, final_measurement=vz.Measurement(objective_values))
             self.study_client._add_trial(trial)
             self.warmstart_trial_value = res
+
+    def resume_trials(self):
+        """
+        Resume trials from a trial file.
+        """
+        def helper(s):
+            try:
+                return json.loads(s)  
+            except:
+                return float(s)
+        # get previous and lastest seed folder
+        try:
+            folder_path = get_smallest_and_latest_seed_folder(self.output_dir)
+            csv_file = os.path.join(folder_path, 'hpo', 'trials.csv')
+            data = pd.read_csv(csv_file)
+            length = len(data)
+            for i in range(length):
+                config = {key: helper(data[key].iloc[i]) for key in self.hps_config.keys()}
+                params = self.config_to_param(config)
+                objective_values = {obj: data[obj].iloc[i] for obj in self.hpo_config.objective}
+                trial = vz.Trial(parameters=params, final_measurement=vz.Measurement(objective_values))
+                self.study_client._add_trial(trial)
+                self.logger.info(f'Resume trial {i} with hyperparameters: {params}')
+                self.logger.info(f'Returns: {objective_values}')
+        except:
+            self.logger.info('No trial file found to resume')
 
     def checkpoint(self):
         """
@@ -317,7 +347,7 @@ class HPO_Vizier(BaseHPO):
                     # Ensure objectives and parameters are in consistent order
                     row_values = [trial_number]
                     row_values.extend([objective_values.get(obj, '') for obj in self.hpo_config.objective])
-                    row_values.extend([trial_params.get(key, '') for key in parameter_keys])
+                    row_values.extend([json.dumps(trial_params.get(key, '')) for key in parameter_keys])
                     
                     writer.writerow(row_values)
         

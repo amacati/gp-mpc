@@ -32,7 +32,8 @@ class HPO_Optuna(BaseHPO):
                  output_dir='./results',
                  safety_filter=None,
                  sf_config=None,
-                 load_study=False):
+                 load_study=False,
+                 resume=False):
         """
         Hyperparameter Optimization (HPO) class using package Optuna.
 
@@ -46,8 +47,9 @@ class HPO_Optuna(BaseHPO):
             safety_filter (str): Safety filter to be applied (optional).
             sf_config: Safety filter configuration (optional).
             load_study (bool): Load existing study if True.
+            resume (bool): Resume trials if True.
         """
-        super().__init__(hpo_config, task_config, algo_config, algo, task, output_dir, safety_filter, sf_config, load_study)
+        super().__init__(hpo_config, task_config, algo_config, algo, task, output_dir, safety_filter, sf_config, load_study, resume)
         self.setup_problem()
 
     def setup_problem(self):
@@ -97,7 +99,14 @@ class HPO_Optuna(BaseHPO):
         """ Hyperparameter optimization.
         """
         if self.load_study:
-            self.study = optuna.load_study(study_name=self.study_name, storage=f'sqlite:///{self.study_name}_optuna.db')
+            if self.resume:
+                dir = os.path.dirname(self.output_dir)
+                # db path
+                db_path = os.path.join(dir, f'{self.study_name}_optuna.db')
+                storage = f'sqlite:///{db_path}' if os.path.exists(db_path) else f'sqlite:///{self.study_name}_optuna.db'
+            else:
+                storage = f'sqlite:///{self.study_name}_optuna.db'
+            self.study = optuna.load_study(study_name=self.study_name, storage=storage)
         else:
             # single-objective optimization
             if len(self.hpo_config.direction) == 1:
@@ -160,6 +169,12 @@ class HPO_Optuna(BaseHPO):
                 )
             )
             self.warmstart_trial_value = res
+
+    def resume_trials(self):
+        """
+        Dummy function.
+        """
+        raise NotImplementedError
 
     def checkpoint(self):
         """

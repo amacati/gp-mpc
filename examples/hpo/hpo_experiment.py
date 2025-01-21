@@ -61,6 +61,7 @@ def hpo(config):
                          config.safety_filter,
                          config.sf_config,
                          config.load_study,
+                         config.resume
                          )
     elif config.sampler == 'vizier':
         hpo = HPO_Vizier(config.hpo_config,
@@ -72,6 +73,7 @@ def hpo(config):
                          config.safety_filter,
                          config.sf_config,
                          config.load_study,
+                         config.resume
                          )
     else:
         raise ValueError('Only optuna and vizier are supported for now.')
@@ -136,6 +138,7 @@ if __name__ == '__main__':
     fac.add_argument('--func', type=str, default='hpo', help='main function to run.')
     fac.add_argument('--load_study', type=bool, default=False, help='whether to load study from a previous HPO.')
     fac.add_argument('--sampler', type=str, default='optuna', help='which package to use in HPO.')
+    fac.add_argument('--resume', type=int, default=False, help='if to resume HPO.') # this is defined as int to be able to pass from bash command
     # merge config
     config = fac.merge()
 

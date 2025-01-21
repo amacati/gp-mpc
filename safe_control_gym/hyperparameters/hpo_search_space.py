@@ -155,7 +155,7 @@ PID_dict = {
     'd_coeff_for': {'values': [0.001, 5], 'scale': 'uniform', 'type': list, 'cat': 'float'},
     'p_coeff_tor': {'values': [50000, 80000], 'scale': 'uniform', 'type': list, 'cat': 'float'},
     'i_coeff_tor': {'values': [0, 700], 'scale': 'uniform', 'type': list, 'cat': 'float'},
-    'd_coeff_tor': {'values': [10000, 15000], 'scale': 'uniform', 'type': list, 'cat': 'float'},
+    'd_coeff_tor': {'values': [10000, 20000], 'scale': 'uniform', 'type': list, 'cat': 'float'},
 }
 
 

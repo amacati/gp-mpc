@@ -7,35 +7,17 @@ import pandas as pd
 import seaborn as sns
 import ast
 
+from safe_control_gym.hyperparameters.hpo_utils import get_smallest_seed_folder, load_trials_data
+
 # Define the base directory
 base_dir = 'examples/hpo/hpo'  # Change this if needed
 algorithms = ['pid', 'lqr', 'ilqr', 'linear_mpc', 'mpc_acados', 'fmpc', 'gpmpc_acados_TP', 'ppo', 'sac', 'dppo']  # List your algorithms here
 trials = 40  # Number of trials for HPO
 
-# Function to get the seed folder with the smallest seed number
-def get_smallest_seed_folder(algorithm, package):
-    package_dir = os.path.join(base_dir, algorithm, package)
-    seed_folders = [f for f in os.listdir(package_dir) if os.path.isdir(os.path.join(package_dir, f)) and f.startswith('seed')]
-
-    # Extract the seed numbers and sort to find the smallest
-    seed_numbers = [(folder, int(folder.split('_')[0][4:])) for folder in seed_folders]
-    smallest_seed_folder = min(seed_numbers, key=lambda x: x[1])[0] if seed_numbers else None
-
-    return smallest_seed_folder
-
-# Function to load trials data from the smallest seed folder
-def load_trials_data(algorithm, package):
-    seed_folder = get_smallest_seed_folder(algorithm, package)
-    if seed_folder:
-        file_path = os.path.join(base_dir, algorithm, package, seed_folder, 'hpo', 'trials.csv')
-        if os.path.exists(file_path):
-            return pd.read_csv(file_path)
-    return None
-
 # Function to load hand-tuned performance data
 def load_handtune_data(algorithm):
     try:
-        seed_folder = get_smallest_seed_folder(algorithm, 'optuna')
+        seed_folder = get_smallest_seed_folder(algorithm, 'optuna', base_dir)
         file_path = os.path.join(base_dir, algorithm, 'optuna', seed_folder, 'hpo', 'warmstart_trial_value.txt')
         if os.path.exists(file_path):
             with open(file_path, 'r') as file:
@@ -44,7 +26,7 @@ def load_handtune_data(algorithm):
                 return np.mean(metric_dict['exponentiated_rmse']), np.mean(metric_dict['exponentiated_rms_action_change'])
     except:
         try:
-            seed_folder = get_smallest_seed_folder(algorithm, 'vizier')
+            seed_folder = get_smallest_seed_folder(algorithm, 'vizier', base_dir)
             file_path = os.path.join(base_dir, algorithm, 'vizier', seed_folder, 'hpo', 'warmstart_trial_value.txt')
             if os.path.exists(file_path):
                 with open(file_path, 'r') as file:
@@ -72,7 +54,7 @@ def plot_hpo_evaluation(trials, algorithms, packages=['optuna', 'vizier'], targe
             ax.set_ylabel(target_name)
 
             # Load trial data
-            trials_data = load_trials_data(algorithm, package)
+            trials_data = load_trials_data(algorithm, package, base_dir)
             if trials_data is not None:
                 trial_numbers = trials_data['number'][:trials]
                 if 'values_0' in trials_data.keys():
@@ -107,7 +89,7 @@ def plot_performance_comparison(algorithms, packages=['optuna', 'vizier']):
 
         # HPO data for each package
         for package in packages:
-            trials_data = load_trials_data(algorithm, package)
+            trials_data = load_trials_data(algorithm, package, base_dir)
             if trials_data is not None:
                 if 'values_0' in trials_data.keys():
                     norm_rmse = trials_data['values_0']
