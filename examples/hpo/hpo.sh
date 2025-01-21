@@ -188,6 +188,6 @@ done
 
 # back up the database after all jobs finish
 echo "backing up the database"
-mv ${algo}_hpo_${sampler}.db ./examples/hpo/hpo/${algo_name}/${experiment_name}/${algo_name}_hpo_${sampler}.db
-mv ${algo}_hpo_${sampler}.db-journal ./examples/hpo/hpo/${algo_name}/${experiment_name}/${algo_name}_hpo_${sampler}.db-journal
-mv ${algo}_hpo_${sampler}_endpoint.yaml ./examples/hpo/hpo/${algo_name}/${experiment_name}/${algo_name}_hpo_${sampler}_endpoint.yaml
+mv ${algo_name}_hpo_${sampler}.db ./examples/hpo/hpo/${algo_name}/${experiment_name}/${algo_name}_hpo_${sampler}.db
+mv ${algo_name}_hpo_${sampler}.db-journal ./examples/hpo/hpo/${algo_name}/${experiment_name}/${algo_name}_hpo_${sampler}.db-journal
+mv ${algo_name}_hpo_${sampler}_endpoint.yaml ./examples/hpo/hpo/${algo_name}/${experiment_name}/${algo_name}_hpo_${sampler}_endpoint.yaml
