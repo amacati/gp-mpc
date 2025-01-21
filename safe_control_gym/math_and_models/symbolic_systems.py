@@ -26,9 +26,9 @@ class SymbolicModel:
         # Setup for dynamics.
         self.x_sym = dynamics['vars']['X']
         self.u_sym = dynamics['vars']['U']
-        self.p_sym = dynamics['vars']['P']
+        self.p_sym = dynamics['vars']['P'] if 'P' in dynamics['vars'] else None
         self.x_dot = dynamics['dyn_eqn']
-        self.param_x_dot = dynamics['param_dyn_eqn']
+        self.param_x_dot = dynamics['param_dyn_eqn'] if 'param_dyn_eqn' in dynamics else None
         if dynamics['obs_eqn'] is None:
             self.y_sym = self.x_sym
         else:
