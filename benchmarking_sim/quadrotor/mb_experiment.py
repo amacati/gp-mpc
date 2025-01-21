@@ -47,15 +47,15 @@ def run(gui=False, n_episodes=1, n_steps=None, save_data=True):
         # ALGO = 'lqr'
         # ALGO = 'lqr_c'
         # ALGO = 'pid'
-    # SYS = 'quadrotor_2D_attitude'
-    SYS = 'quadrotor_3D_attitude'
+    SYS = 'quadrotor_2D_attitude'
+    # SYS = 'quadrotor_3D_attitude'
     TASK = 'tracking'
     # TASK = 'stab'
     # PRIOR = '200'
     # PRIOR = '150'
-    # ADDITIONAL = ''
+    ADDITIONAL = ''
     # ADDITIONAL = '_9'
-    ADDITIONAL = '_11'
+    # ADDITIONAL = '_11'
     # ADDITIONAL='_snap'
     PRIOR = '100'
     agent = 'quadrotor' if SYS in ['quadrotor_2D', 'quadrotor_2D_attitude', 'quadrotor_3D_attitude'] else SYS
@@ -199,6 +199,16 @@ def run(gui=False, n_episodes=1, n_steps=None, save_data=True):
     random_env.close()
     metrics = experiment.compute_metrics(all_trajs)
     all_trajs = dict(all_trajs)
+    np.save(f'./data/{ALGO}_ref_traj.npy', all_trajs, allow_pickle=True)
+    
+    if hasattr(experiment.env, 'dw_model'):
+        force_log = experiment.env.dw_model.get_force_log()
+        fig, ax = plt.subplots()
+        ax.plot(np.arange(len(force_log))/60, force_log)
+        ax.set_xlabel('Time [s]')
+        ax.set_ylabel('Downwash force [N]')
+        ax.set_title('Downwash force')
+        fig.savefig(f'./{config.output_dir}/downwash_force.png')
 
     if save_data:
         results = {'trajs_data': all_trajs, 'metrics': metrics}
