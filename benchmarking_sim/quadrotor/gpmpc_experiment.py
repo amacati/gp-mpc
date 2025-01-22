@@ -17,6 +17,8 @@ from safe_control_gym.utils.registration import make
 from safe_control_gym.utils.utils import mkdirs, set_dir_from_config, timing
 from safe_control_gym.envs.gym_pybullet_drones.quadrotor import Quadrotor
 from safe_control_gym.utils.gpmpc_plotting import make_quad_plots
+from safe_control_gym.controllers.mpc.gpmpc_base import GPMPC
+from benchmarking_sim.quadrotor.mb_experiment import plot_quad_eval
 
 script_path = os.path.dirname(os.path.realpath(__file__))
 
@@ -33,18 +35,21 @@ def run(gui=False, n_episodes=1, n_steps=None, save_data=True, seed=2):
     # ALGO = 'ilqr'
     # ALGO = 'gp_mpc'
     # ALGO = 'gpmpc_acados'
-    ALGO = 'gpmpc_acados_TP'
+    # ALGO = 'gpmpc_acados_TP'
+    ALGO = 'gpmpc_acados_TRP'
     # ALGO = 'mpc'
     # ALGO = 'mpc_acados'
     # ALGO = 'linear_mpc'
     # ALGO = 'lqr'
     # ALGO = 'lqr_c'
     # ALGO = 'pid'
-    SYS = 'quadrotor_2D_attitude'
+    # SYS = 'quadrotor_2D_attitude'
+    SYS = 'quadrotor_3D_attitude'
     TASK = 'tracking'
     # PRIOR = '200_hpo_ilqr_norm'
     PRIOR = '100'
-    agent = 'quadrotor' if SYS == 'quadrotor_2D' or SYS == 'quadrotor_2D_attitude' else SYS
+    # agent = 'quadrotor' if SYS == 'quadrotor_2D' or SYS == 'quadrotor_2D_attitude' else SYS
+    agent = 'quadrotor' if SYS in ['quadrotor_2D', 'quadrotor_2D_attitude', 'quadrotor_3D', 'quadrotor_3D_attitude'] else SYS
     SAFETY_FILTER = None
     # SAFETY_FILTER='linear_mpsc'
 
@@ -82,7 +87,7 @@ def run(gui=False, n_episodes=1, n_steps=None, save_data=True, seed=2):
     fac.add_argument('--n_episodes', type=int, default=1, help='number of episodes to run.')
     # merge config and create output directory
     config = fac.merge()
-    if ALGO in ['gpmpc_acados', 'gp_mpc', 'gpmpc_acados_TP', 'gpmpc_acados_TPR']:
+    if ALGO in ['gpmpc_acados', 'gp_mpc', 'gpmpc_acados_TP', 'gpmpc_acados_TRP']:
         num_data_max = config.algo_config.num_epochs * config.algo_config.num_samples
         config.output_dir = os.path.join(config.output_dir, PRIOR + '_' + repr(num_data_max))
     print('output_dir',  config.algo_config.output_dir)
@@ -130,7 +135,7 @@ def run(gui=False, n_episodes=1, n_steps=None, save_data=True, seed=2):
 
         # Create experiment, train, and run evaluation
         if SAFETY_FILTER is None:  
-            if ALGO in ['gpmpc_acados', 'gp_mpc', 'gpmpc_acados_TP', 'gpmpc_acados_TPR']:
+            if isinstance(ctrl, GPMPC):
                 experiment = BaseExperiment(env=static_env, ctrl=ctrl, train_env=static_train_env)
                 if config.algo_config.num_epochs == 1:
                     print('Evaluating prior controller')
@@ -158,7 +163,7 @@ def run(gui=False, n_episodes=1, n_steps=None, save_data=True, seed=2):
 
         # plotting training and evaluation results
         # training
-        if ALGO in ['gpmpc_acados', 'gp_mpc', 'gpmpc_acados_TP', 'gpmpc_acados_TPR'] and \
+        if isinstance(ctrl, GPMPC) and \
            config.algo_config.gp_model_path is None and \
            config.algo_config.num_epochs > 1:
                 if isinstance(static_env, Quadrotor):
@@ -166,7 +171,10 @@ def run(gui=False, n_episodes=1, n_steps=None, save_data=True, seed=2):
                                     train_runs=train_runs, 
                                     trajectory=ctrl.traj.T,
                                     dir=ctrl.output_dir)
-        plot_quad_eval(trajs_data['obs'][0], trajs_data['action'][0], ctrl.env, config.output_dir)
+        plot_quad_eval(trajs_data['obs'][0], 
+                       trajs_data['action'][0], 
+                       ctrl.env, 
+                       config.output_dir)
 
 
         # Close environments
@@ -195,86 +203,6 @@ def run(gui=False, n_episodes=1, n_steps=None, save_data=True, seed=2):
 
     print('FINAL METRICS - ' + ', '.join([f'{key}: {value}' for key, value in metrics.items()]))
 
-
-def plot_quad_eval(state_stack, input_stack, env, save_path=None):
-    '''Plots the input and states to determine iLQR's success.
-
-    Args:
-        state_stack (ndarray): The list of observations of iLQR in the latest run.
-        input_stack (ndarray): The list of inputs of iLQR in the latest run.
-    '''
-    model = env.symbolic
-    stepsize = model.dt
-
-    plot_length = np.min([np.shape(input_stack)[0], np.shape(state_stack)[0]])
-    times = np.linspace(0, stepsize * plot_length, plot_length)
-
-    reference = env.X_GOAL
-    if env.TASK == Task.STABILIZATION:
-        reference = np.tile(reference.reshape(1, model.nx), (plot_length, 1))
-
-    # Plot states
-    fig, axs = plt.subplots(model.nx)
-    for k in range(model.nx):
-        axs[k].plot(times, np.array(state_stack).transpose()[k, 0:plot_length], label='actual')
-        axs[k].plot(times, reference.transpose()[k, 0:plot_length], color='r', label='desired')
-        axs[k].set(ylabel=env.STATE_LABELS[k] + f'\n[{env.STATE_UNITS[k]}]')
-        axs[k].yaxis.set_major_formatter(FormatStrFormatter('%.1f'))
-        if k != model.nx - 1:
-            axs[k].set_xticks([])
-    axs[0].set_title('State Trajectories')
-    axs[-1].legend(ncol=3, bbox_transform=fig.transFigure, bbox_to_anchor=(1, 0), loc='lower right')
-    axs[-1].set(xlabel='time (sec)')
-
-    if save_path is not None:
-        plt.savefig(os.path.join(save_path, 'state_trajectories.png'))
-
-    # Plot inputs
-    _, axs = plt.subplots(model.nu)
-    if model.nu == 1:
-        axs = [axs]
-    for k in range(model.nu):
-        axs[k].plot(times, np.array(input_stack).transpose()[k, 0:plot_length])
-        axs[k].set(ylabel=f'input {k}')
-        axs[k].set(ylabel=env.ACTION_LABELS[k] + f'\n[{env.ACTION_UNITS[k]}]')
-        axs[k].yaxis.set_major_formatter(FormatStrFormatter('%.1f'))
-    axs[0].set_title('Input Trajectories')
-    axs[-1].set(xlabel='time (sec)')
-
-    if save_path is not None:
-        plt.savefig(os.path.join(save_path, 'input_trajectories.png'))
-
-    # plot the figure-eight
-    _, axs = plt.subplots(1)
-    axs.plot(np.array(state_stack).transpose()[0, 0:plot_length], 
-             np.array(state_stack).transpose()[2, 0:plot_length], label='actual')
-    axs.plot(reference.transpose()[0, 0:plot_length], 
-             reference.transpose()[2, 0:plot_length], color='r', label='desired')
-    axs.set_xlabel('x [m]')
-    axs.set_ylabel('z [m]')
-    axs.set_title('State path in x-z plane')
-    axs.legend()
-    
-    if save_path is not None:
-        plt.savefig(os.path.join(save_path, 'state_path.png'))
-        print(f'Plots saved to {save_path}')
-
-
-def wrap2pi_vec(angle_vec):
-    '''Wraps a vector of angles between -pi and pi.
-
-    Args:
-        angle_vec (ndarray): A vector of angles.
-    '''
-    for k, angle in enumerate(angle_vec):
-        while angle > np.pi:
-            angle -= np.pi
-        while angle <= -np.pi:
-            angle += np.pi
-        angle_vec[k] = angle
-    return angle_vec
-
-
 if __name__ == '__main__':
     # runtime_list = []
     # num_seed = 3
@@ -292,7 +220,7 @@ if __name__ == '__main__':
     suceeded = 0
     seed = start_seed
     while suceeded < num_seed:  
-        if seed > 200:
+        if seed > 50:
             print(f'Only {suceeded} out of {num_seed} runs succeeded')
             break
         try:
