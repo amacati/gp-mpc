@@ -18,6 +18,7 @@ from safe_control_gym.utils.utils import mkdirs, set_dir_from_config, timing
 from safe_control_gym.envs.gym_pybullet_drones.quadrotor import Quadrotor
 from safe_control_gym.utils.gpmpc_plotting import make_quad_plots
 from benchmarking_sim.quadrotor.mb_experiment import plot_quad_eval
+from safe_control_gym.controllers.mpc.gpmpc_base import GPMPC
 
 script_path = os.path.dirname(os.path.realpath(__file__))
 # gp_model_path = '/home/mingxuan/Repositories/scg_tsung/benchmarking_sim/quadrotor/gpmpc_acados/results/200_300_aggresive'
@@ -28,7 +29,7 @@ script_path = os.path.dirname(os.path.realpath(__file__))
 @timing
 def run(gui=False, n_episodes=1, n_steps=None, save_data=True, 
         seed=2, Additional='', ALGO='pid', SYS='quadrotor_2D_attitude',
-        noise_factor=1, eval_task=None):
+        noise_factor=1, dw_height_scale=None, eval_task=None):
     '''The main function running experiments for model-based methods.
 
     Args:
@@ -104,6 +105,8 @@ def run(gui=False, n_episodes=1, n_steps=None, save_data=True,
             config.output_dir = config.output_dir + f'_rollout{ADDITIONAL}'
         elif eval_task == 'noise':
             config.output_dir = config.output_dir + '_noise/' + f'seed_{seed}'
+        elif eval_task == 'downwash':
+            config.output_dir = config.output_dir + '_downwash/' + f'seed_{seed}'
         else:
             raise ValueError('eval_task not recognized')
         
@@ -119,6 +122,16 @@ def run(gui=False, n_episodes=1, n_steps=None, save_data=True,
     config.task_config.disturbances.observation[0]['std'] = [noise_factor * default_noise_std[i] for i in range(len(default_noise_std))]
     print(f'Amplified observation noise std: {config.task_config.disturbances.observation[0]["std"]}')
 
+    # downwash height scale
+    if dw_height_scale is not None:
+        max_dw_height, min_dw_height = 3, 0.5
+        dw_height_space = max_dw_height - min_dw_height
+        traj_center = config.task_config.task_info.trajectory_position_offset[1] # 1 [m] by default
+        config.task_config.disturbances.downwash[0].pos[-1] = traj_center + min_dw_height + \
+                                                            dw_height_scale * dw_height_space
+        print(f'dw_height_scale: {dw_height_scale:.2f}')
+        print('Amplified downwash height: ', config.task_config.disturbances.downwash[0].pos[-1])
+    
     # Create an environment
     env_func = partial(make,
                        config.task,
@@ -159,7 +172,7 @@ def run(gui=False, n_episodes=1, n_steps=None, save_data=True,
 
         # Create experiment, train, and run evaluation
         if SAFETY_FILTER is None:  
-            if ALGO in ['gpmpc_acados', 'gp_mpc'] :
+            if isinstance(ctrl, GPMPC):
                 experiment = BaseExperiment(env=static_env, ctrl=ctrl, train_env=static_train_env)
                 if config.algo_config.num_epochs == 1:
                     print('Evaluating prior controller')
@@ -187,7 +200,7 @@ def run(gui=False, n_episodes=1, n_steps=None, save_data=True,
 
         # plotting training and evaluation results
         # training
-        if ALGO in ['gpmpc_acados', 'gp_mpc'] and \
+        if isinstance(ctrl, GPMPC) and \
            config.algo_config.gp_model_path is None and \
            config.algo_config.num_epochs > 1:
                 if isinstance(static_env, Quadrotor):
@@ -210,7 +223,23 @@ def run(gui=False, n_episodes=1, n_steps=None, save_data=True,
     random_env.close()
     metrics = experiment.compute_metrics(all_trajs)
     metrics['noise_factor'] = noise_factor
+    metrics['dw_height_scale'] = dw_height_scale
+    max_dw_force = None
+    if hasattr(experiment.env, 'dw_model'):
+        dw_force_log = experiment.env.dw_model.get_force_log()
+        max_dw_force = np.max(dw_force_log)
+    metrics['max_dw_force'] = max_dw_force    
     all_trajs = dict(all_trajs)
+    
+    if hasattr(experiment.env, 'dw_model'):
+        force_log = experiment.env.dw_model.get_force_log()
+        fig, ax = plt.subplots()
+        ax.plot(np.arange(len(force_log))/60, force_log)
+        ax.set_xlabel('Time [s]')
+        ax.set_ylabel('Downwash force [N]')
+        ax.set_title('Downwash force')
+        fig.savefig(f'./{config.output_dir}/downwash_force.png')
+
 
     if save_data:
         results = {'trajs_data': all_trajs, 'metrics': metrics}

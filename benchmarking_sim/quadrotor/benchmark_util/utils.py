@@ -63,6 +63,7 @@ def run_rollouts(task_description):
     SYS = getattr(task_description, 'SYS', 'quadrotor_2D_attitude')
     noise_factor = getattr(task_description, 'noise_factor', 1)
     eval_task = getattr(task_description, 'eval_task', None)
+    dw_height_scale = getattr(task_description, 'dw_height_scale', 1.0)
 
     for seed in range(start_seed, num_seed + start_seed):
         run(n_episodes=num_runs_per_seed,
@@ -71,6 +72,7 @@ def run_rollouts(task_description):
             ALGO=algo,
             SYS=SYS,
             noise_factor=noise_factor,
+            dw_height_scale=dw_height_scale,
             eval_task=eval_task)
 
 def plot_xz_trajectory_with_hull(ax, traj_data, label=None, 
