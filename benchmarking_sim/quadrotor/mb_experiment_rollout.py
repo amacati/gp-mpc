@@ -21,10 +21,6 @@ from benchmarking_sim.quadrotor.mb_experiment import plot_quad_eval
 from safe_control_gym.controllers.mpc.gpmpc_base import GPMPC
 
 script_path = os.path.dirname(os.path.realpath(__file__))
-# gp_model_path = '/home/mingxuan/Repositories/scg_tsung/benchmarking_sim/quadrotor/gpmpc_acados/results/200_300_aggresive'
-# # get all directories in the gp_model_path
-# gp_model_dirs = [d for d in os.listdir(gp_model_path) if os.path.isdir(os.path.join(gp_model_path, d))]
-# gp_model_dirs = [os.path.join(gp_model_path, d) for d in gp_model_dirs]
 
 @timing
 def run(gui=False, n_episodes=1, n_steps=None, save_data=True, 
@@ -94,12 +90,17 @@ def run(gui=False, n_episodes=1, n_steps=None, save_data=True,
     # merge config and create output directory
     config = fac.merge()
     if ALGO in ['gpmpc_acados', 'gp_mpc', 'gpmpc_acados_TP']:
+        # gp_model_path = '/home/mingxuan/Repositories/scg_tsung/benchmarking_sim/quadrotor/gpmpc_acados/results/200_300_aggresive'
+        gp_model_path = '/home/mingxuan/Repositories/scg_tsung/benchmarking_sim/quadrotor/gpmpc_acados_TP/results/100_200/temp'
+        # # get all directories in the gp_model_path
+        gp_model_dirs = [d for d in os.listdir(gp_model_path) if os.path.isdir(os.path.join(gp_model_path, d))]
+        gp_model_dirs = [os.path.join(gp_model_path, d) for d in gp_model_dirs]
         num_data_max = config.algo_config.num_epochs * config.algo_config.num_samples
         config.output_dir = os.path.join(config.output_dir, PRIOR + '_' + repr(num_data_max) + f'_rollout{ADDITIONAL}')
-        if seed%10 == 0:
-            config.algo_config.gp_model_path = gp_model_dirs[10-1]
-        else:
-            config.algo_config.gp_model_path = gp_model_dirs[seed%10-1]
+        # if seed%10 == 0:
+        #     config.algo_config.gp_model_path = gp_model_dirs[10-1]
+        # else:
+        #     config.algo_config.gp_model_path = gp_model_dirs[seed%10-1]
     else:
         if eval_task == 'rollout':
             config.output_dir = config.output_dir + f'_rollout{ADDITIONAL}'
@@ -115,7 +116,9 @@ def run(gui=False, n_episodes=1, n_steps=None, save_data=True,
     config.algo_config.output_dir = config.output_dir
     mkdirs(config.output_dir)
 
-    config.algo_config.gp_model_path = gp_model_dirs[seed-1] if ALGO == 'gpmpc_acados' else None
+    config.algo_config.gp_model_path = None
+    if ALGO in ['gpmpc_acados', 'gp_mpc', 'gpmpc_acados_TP']:
+        config.algo_config.gp_model_path = gp_model_dirs[seed-1]
     # amplify the observation noise std with a factor 
     default_noise_std = config.task_config.disturbances.observation[0]['std']
     print(f'Original observation noise std: {default_noise_std}')
