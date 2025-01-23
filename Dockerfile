@@ -8,6 +8,11 @@
 # 4. push the image
 # docker tag safe-control-gym:latest tsungyuan/safe-control-gym:latest
 # docker push tsungyuan/safe-control-gym:latest
+# 5. create enroot image on cluster
+# salloc -p lrz-hgx-h100-92x4 --gres=gpu:1
+# srun --pty bash
+# enroot import docker://tsungyuan/safe-control-gym:latest
+# enroot create tsungyuan+safe-control-gym+latest.sqsh
 
 FROM nvcr.io/nvidia/pytorch:24.10-py3
 
@@ -42,8 +47,9 @@ RUN git clone https://github.com/acados/acados.git /project/acados && \
 # Install ACADOS Python interface
 RUN pip install -e /project/acados/interfaces/acados_template
 
-# Set environment variables
-RUN echo "export LD_LIBRARY_PATH=\$LD_LIBRARY_PATH:/project/acados/lib" >> ~/.bashrc && \
-    echo "export ACADOS_SOURCE_DIR=/project/acados" >> ~/.bashrc
+ENV ACADOS_SOURCE_DIR=/project/acados
+ENV LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/project/acados/lib
+
+RUN echo "y" | python3 /project/acados/examples/acados_python/getting_started/minimal_example_ocp.py
 
 WORKDIR /project/safe-control-gym
