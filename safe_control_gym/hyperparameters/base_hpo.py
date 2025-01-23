@@ -84,8 +84,8 @@ class BaseHPO(ABC):
         if self.safety_filter == 'linear_mpsc' and self.algo == 'ilqr':
             self.search_space_key = 'ilqr_sf'
         elif self.safety_filter == 'nl_mpsc' and self.algo == 'ppo':
-            self.search_space_key = 'ppo_sf'
-            self.study_name = algo + '_sf_hpo'
+            self.search_space_key = 'ppo_mpsf'
+            self.study_name = algo + '_mpsf_hpo'
         else:
             self.study_name = algo + '_hpo'
             self.search_space_key = self.algo
