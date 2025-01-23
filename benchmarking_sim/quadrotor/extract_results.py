@@ -60,7 +60,7 @@ def plot_xz_trajectory_with_hull(ax, traj_data, label=None,
         ax.add_patch(poly_connecting)
 
 
-def plot_trajectory(notebook_dir, data_folder, title, ctrl):
+def plot_trajectory(notebook_dir, data_folder, title, ctrl, additional=''):
     from safe_control_gym.utils.configuration import ConfigFactory
     from functools import partial
     from safe_control_gym.utils.registration import make
@@ -162,11 +162,11 @@ def plot_trajectory(notebook_dir, data_folder, title, ctrl):
 
     ax.legend(ncol=5, loc='upper center', fontsize=legend_fontsize)
 
-    fig.savefig(os.path.join(fmpc_data_path, 'xz_path_performance.png'), dpi=300, bbox_inches='tight')
-    print(f'saved to {fmpc_data_path}/xz_path_performance.png')
+    fig.savefig(os.path.join(fmpc_data_path, f'xz_path_performance{additional}.png'), dpi=300, bbox_inches='tight')
+    print(f'saved to {fmpc_data_path}/xz_path_performance{additional}.png')
     # save data
-    np.save(os.path.join(fmpc_data_path, f'traj_results_{ctrl}.npy'), fmpc_traj_data)
-    print(f'traj data saved to {fmpc_data_path}/traj_results_{ctrl}.npy')
+    np.save(os.path.join(fmpc_data_path, f'traj_results_{ctrl}{additional}.npy'), fmpc_traj_data)
+    print(f'traj data saved to {fmpc_data_path}/traj_results_{ctrl}{additional}.npy')
 
 
 def extract_rollouts(notebook_dir, data_folder, controller_name, additional=''):
@@ -225,21 +225,25 @@ if len(sys.argv) > 1:
 else:
     # ctrl = 'pid'
     # ctrl = 'pid'
-    ctrl = 'ilqr'
+    # ctrl = 'ilqr'
     # ctrl = 'fmpc'
     # ctrl = 'linear_mpc'
     # ctrl = 'linear_mpc_acados'
     # ctrl = 'mpc_acados'
+    ctrl = 'gpmpc_acados_TP'
 
-# for additinonal in ['_9', '_11', '_13', '_15']:
-# for additinonal in ['_11', '_12', '_13', '_14', '_15']:
-for additinonal in ['_9', '_10', '_11', '_12', '_13', '_14', '_15']:
-    data_folder = f'results_rollout{additinonal}/temp'
-    # traj_resutls, metrics = extract_rollouts(notebook_dir, data_folder, ctrl, additinonal)
-    if additinonal == '_11':
-        metrics, timing_data = extract_rollouts(notebook_dir, data_folder, ctrl, additinonal)
+# for additional in ['_9', '_11', '_13', '_15']:
+# for additional in ['_11', '_12', '_13', '_14', '_15']:
+for additional in ['_9', '_10', '_11', '_12', '_13', '_14', '_15']:
+    data_folder = f'results_rollout{additional}/temp'
+    if ctrl in ['gpmpc_acados_TP']:
+        GPMPC_option = '100_200'
+        data_folder = f'results/{GPMPC_option}_rollout{additional}/temp'
+    # traj_resutls, metrics = extract_rollouts(notebook_dir, data_folder, ctrl, additional)
+    if additional == '_11':
+        metrics, timing_data = extract_rollouts(notebook_dir, data_folder, ctrl, additional)
     else:
-        metrics, _ = extract_rollouts(notebook_dir, data_folder, ctrl, additinonal)
+        metrics, _ = extract_rollouts(notebook_dir, data_folder, ctrl, additional)
 
 # time_vector = (np.squeeze(timing_data)).flatten()
 # mean_exec_time = np.mean(time_vector)
@@ -252,12 +256,21 @@ for additinonal in ['_9', '_10', '_11', '_12', '_13', '_14', '_15']:
 
 additional = '_11'
 data_folder = f'results_rollout{additional}/temp'
-plot_trajectory(notebook_dir, data_folder, 'Evaluation', ctrl)
+if ctrl in ['gpmpc_acados_TP']:
+        GPMPC_option = '100_200'
+        data_folder = f'results/{GPMPC_option}_rollout{additional}/temp'
+plot_trajectory(notebook_dir, data_folder, 'Evaluation', ctrl, additional)
 
 additional = '_15'
 data_folder = f'results_rollout{additional}/temp'
-plot_trajectory(notebook_dir, data_folder, 'Generalization (slower)', ctrl)
+if ctrl in ['gpmpc_acados_TP']:
+        GPMPC_option = '100_200'
+        data_folder = f'results/{GPMPC_option}_rollout{additional}/temp'
+plot_trajectory(notebook_dir, data_folder, 'Generalization (slower)', ctrl, additional)
 
 additional = '_9'
 data_folder = f'results_rollout{additional}/temp'
-plot_trajectory(notebook_dir, data_folder, 'Generalization (faster)', ctrl)
+if ctrl in ['gpmpc_acados_TP']:
+        GPMPC_option = '100_200'
+        data_folder = f'results/{GPMPC_option}_rollout{additional}/temp'
+plot_trajectory(notebook_dir, data_folder, 'Generalization (faster)', ctrl, additional)

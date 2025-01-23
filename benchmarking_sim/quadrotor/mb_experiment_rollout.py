@@ -101,15 +101,15 @@ def run(gui=False, n_episodes=1, n_steps=None, save_data=True,
         #     config.algo_config.gp_model_path = gp_model_dirs[10-1]
         # else:
         #     config.algo_config.gp_model_path = gp_model_dirs[seed%10-1]
+    # else:
+    if eval_task == 'rollout':
+        config.output_dir = config.output_dir + f'_rollout{ADDITIONAL}'
+    elif eval_task == 'noise':
+        config.output_dir = config.output_dir + '_noise/' + f'seed_{seed}'
+    elif eval_task == 'downwash':
+        config.output_dir = config.output_dir + '_downwash/' + f'seed_{seed}'
     else:
-        if eval_task == 'rollout':
-            config.output_dir = config.output_dir + f'_rollout{ADDITIONAL}'
-        elif eval_task == 'noise':
-            config.output_dir = config.output_dir + '_noise/' + f'seed_{seed}'
-        elif eval_task == 'downwash':
-            config.output_dir = config.output_dir + '_downwash/' + f'seed_{seed}'
-        else:
-            raise ValueError('eval_task not recognized')
+        raise ValueError('eval_task not recognized')
         
     print('output_dir',  config.algo_config.output_dir)
     set_dir_from_config(config)
