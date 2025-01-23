@@ -42,11 +42,6 @@ else
     exit 1
 fi
 
-# echo config path
-echo "task config path: ./examples/hpo/${sys_name}/config_overrides/${sys}_${task}_eval.yaml"
-echo "algo config path: ./examples/hpo/${sys_name}/config_overrides/${algo}_${sys}_${task}_${prior}.yaml"
-echo "hpo config path: ./examples/hpo/${sys_name}/config_overrides/${algo}_${sys}_hpo.yaml"
-
 # Adjust the seed for each parallel job
 seeds=()
 for ((i=0; i<parallel_jobs; i++)); do
@@ -58,12 +53,15 @@ if [ "$resume" == '1' ] && [ "$sampler" == 'optuna' ]; then
 
     if [ "$safety_filter" == 'False' ]; then
         algo_name=${algo}
+        echo "task config path: ./examples/hpo/${sys_name}/config_overrides/${sys}_${task}_eval.yaml"
+        echo "algo config path: ./examples/hpo/${sys_name}/config_overrides/${algo_name}_${sys}_${task}_${prior}.yaml"
+        echo "hpo config path: ./examples/hpo/${sys_name}/config_overrides/${algo_name}_${sys}_hpo.yaml"
         for ((i=0; i<parallel_jobs; i++)); do
             python ./examples/hpo/hpo_experiment.py \
                                 --algo $algo \
                                 --overrides ./examples/hpo/${sys_name}/config_overrides/${sys}_${task}_eval.yaml \
-                                            ./examples/hpo/${sys_name}/config_overrides/${algo}_${sys}_${task}_${prior}.yaml \
-                                            ./examples/hpo/${sys_name}/config_overrides/${algo}_${sys}_hpo.yaml \
+                                            ./examples/hpo/${sys_name}/config_overrides/${algo_name}_${sys}_${task}_${prior}.yaml \
+                                            ./examples/hpo/${sys_name}/config_overrides/${algo_name}_${sys}_hpo.yaml \
                                 --output_dir ./examples/hpo/hpo/${algo_name} \
                                 --sampler $sampler \
                                 --resume ${resume} \
@@ -73,13 +71,17 @@ if [ "$resume" == '1' ] && [ "$sampler" == 'optuna' ]; then
             sleep 3
         done
     else
-        algo_name=${algo}_sf
+        algo_name=${algo}_mpsc
+        echo "task config path: ./examples/hpo/${sys_name}/config_overrides/${sys}_${task}_eval.yaml"
+        echo "algo config path: ./examples/hpo/${sys_name}/config_overrides/${algo_name}_${sys}_${task}_${prior}.yaml"
+        echo "hpo config path: ./examples/hpo/${sys_name}/config_overrides/${algo_name}_${sys}_hpo.yaml"
+        echo "sf config path: ./examples/hpo/${sys_name}/config_overrides/nl_mpsc_${sys}.yaml"
         for ((i=0; i<parallel_jobs; i++)); do
             python ./examples/hpo/hpo_experiment.py \
                                 --algo $algo \
                                 --overrides ./examples/hpo/${sys_name}/config_overrides/${sys}_${task}_eval.yaml \
-                                            ./examples/hpo/${sys_name}/config_overrides/${algo}_${sys}_${task}_${prior}.yaml \
-                                            ./examples/hpo/${sys_name}/config_overrides/${algo}_${sys}_hpo.yaml \
+                                            ./examples/hpo/${sys_name}/config_overrides/${algo_name}_${sys}_${task}_${prior}.yaml \
+                                            ./examples/hpo/${sys_name}/config_overrides/${algo_name}_${sys}_hpo.yaml \
                                             ./examples/hpo/${sys_name}/config_overrides/nl_mpsc_${sys}.yaml \
                                 --kv_overrides sf_config.cost_function=one_step_cost \
                                              sf_config.soften_constraints=True \
@@ -101,11 +103,14 @@ else
     # First job creates the study
     if [ "$safety_filter" == 'False' ]; then
         algo_name=${algo}
+        echo "task config path: ./examples/hpo/${sys_name}/config_overrides/${sys}_${task}_eval.yaml"
+        echo "algo config path: ./examples/hpo/${sys_name}/config_overrides/${algo_name}_${sys}_${task}_${prior}.yaml"
+        echo "hpo config path: ./examples/hpo/${sys_name}/config_overrides/${algo_name}_${sys}_hpo.yaml"
         python ./examples/hpo/hpo_experiment.py \
                             --algo $algo \
                             --overrides ./examples/hpo/${sys_name}/config_overrides/${sys}_${task}_eval.yaml \
-                                        ./examples/hpo/${sys_name}/config_overrides/${algo}_${sys}_${task}_${prior}.yaml \
-                                        ./examples/hpo/${sys_name}/config_overrides/${algo}_${sys}_hpo.yaml \
+                                        ./examples/hpo/${sys_name}/config_overrides/${algo_name}_${sys}_${task}_${prior}.yaml \
+                                        ./examples/hpo/${sys_name}/config_overrides/${algo_name}_${sys}_hpo.yaml \
                             --output_dir ./examples/hpo/hpo/${algo_name} \
                             --sampler $sampler \
                             --resume ${resume} \
@@ -134,12 +139,16 @@ else
     fi
 
     if [ "$safety_filter" == 'True' ]; then
-        algo_name=${algo}_sf
+        algo_name=${algo}_mpsc
+        echo "task config path: ./examples/hpo/${sys_name}/config_overrides/${sys}_${task}_eval.yaml"
+        echo "algo config path: ./examples/hpo/${sys_name}/config_overrides/${algo_name}_${sys}_${task}_${prior}.yaml"
+        echo "hpo config path: ./examples/hpo/${sys_name}/config_overrides/${algo_name}_${sys}_hpo.yaml"
+        echo "sf config path: ./examples/hpo/${sys_name}/config_overrides/nl_mpsc_${sys}.yaml"
         python ./examples/hpo/hpo_experiment.py \
                             --algo $algo \
                             --overrides ./examples/hpo/${sys_name}/config_overrides/${sys}_${task}_eval.yaml \
-                                        ./examples/hpo/${sys_name}/config_overrides/${algo}_${sys}_${task}_${prior}.yaml \
-                                        ./examples/hpo/${sys_name}/config_overrides/${algo}_${sys}_hpo.yaml \
+                                        ./examples/hpo/${sys_name}/config_overrides/${algo_name}_${sys}_${task}_${prior}.yaml \
+                                        ./examples/hpo/${sys_name}/config_overrides/${algo_name}_${sys}_hpo.yaml \
                                         ./examples/hpo/${sys_name}/config_overrides/nl_mpsc_${sys}.yaml \
                             --kv_overrides sf_config.cost_function=one_step_cost \
                                              sf_config.soften_constraints=True \
@@ -161,8 +170,8 @@ else
             python ./examples/hpo/hpo_experiment.py \
                                 --algo $algo \
                                 --overrides ./examples/hpo/${sys_name}/config_overrides/${sys}_${task}_eval.yaml \
-                                            ./examples/hpo/${sys_name}/config_overrides/${algo}_${sys}_${task}_${prior}.yaml \
-                                            ./examples/hpo/${sys_name}/config_overrides/${algo}_${sys}_hpo.yaml \
+                                            ./examples/hpo/${sys_name}/config_overrides/${algo_name}_${sys}_${task}_${prior}.yaml \
+                                            ./examples/hpo/${sys_name}/config_overrides/${algo_name}_${sys}_hpo.yaml \
                                             ./examples/hpo/${sys_name}/config_overrides/nl_mpsc_${sys}.yaml \
                                 --kv_overrides sf_config.cost_function=one_step_cost \
                                              sf_config.soften_constraints=True \

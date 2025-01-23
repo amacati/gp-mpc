@@ -162,7 +162,7 @@ PID_dict = {
 
 HYPERPARAMS_DICT = {
     'ppo': PPO_dict,
-    'ppo_sf': PPO_SF_dict,
+    'ppo_mpsf': PPO_SF_dict,
     'dppo': DPPO_dict,
     'sac': SAC_dict,
     'gp_mpc': GPMPC_dict,
