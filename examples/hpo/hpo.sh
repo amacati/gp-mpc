@@ -140,13 +140,13 @@ else
 
     if [ "$safety_filter" == 'True' ]; then
         algo_name=${algo}_mpsc
-        echo "task config path: ./examples/hpo/${sys_name}/config_overrides/${sys}_${task}_eval.yaml"
+        echo "task config path: ./examples/hpo/${sys_name}/config_overrides/${algo_name}_${sys}_${task}.yaml"
         echo "algo config path: ./examples/hpo/${sys_name}/config_overrides/${algo_name}_${sys}_${task}_${prior}.yaml"
         echo "hpo config path: ./examples/hpo/${sys_name}/config_overrides/${algo_name}_${sys}_hpo.yaml"
         echo "sf config path: ./examples/hpo/${sys_name}/config_overrides/nl_mpsc_${sys}.yaml"
         python ./examples/hpo/hpo_experiment.py \
                             --algo $algo \
-                            --overrides ./examples/hpo/${sys_name}/config_overrides/${sys}_${task}_eval.yaml \
+                            --overrides ./examples/hpo/${sys_name}/config_overrides/${algo_name}_${sys}_${task}.yaml \
                                         ./examples/hpo/${sys_name}/config_overrides/${algo_name}_${sys}_${task}_${prior}.yaml \
                                         ./examples/hpo/${sys_name}/config_overrides/${algo_name}_${sys}_hpo.yaml \
                                         ./examples/hpo/${sys_name}/config_overrides/nl_mpsc_${sys}.yaml \
@@ -169,7 +169,7 @@ else
         for ((i=1; i<parallel_jobs; i++)); do
             python ./examples/hpo/hpo_experiment.py \
                                 --algo $algo \
-                                --overrides ./examples/hpo/${sys_name}/config_overrides/${sys}_${task}_eval.yaml \
+                                --overrides ./examples/hpo/${sys_name}/config_overrides/${algo_name}_${sys}_${task}.yaml \
                                             ./examples/hpo/${sys_name}/config_overrides/${algo_name}_${sys}_${task}_${prior}.yaml \
                                             ./examples/hpo/${sys_name}/config_overrides/${algo_name}_${sys}_hpo.yaml \
                                             ./examples/hpo/${sys_name}/config_overrides/nl_mpsc_${sys}.yaml \
