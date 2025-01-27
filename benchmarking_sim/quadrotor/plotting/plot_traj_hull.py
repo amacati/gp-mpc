@@ -126,213 +126,49 @@ colors = plt.rcParams['axes.prop_cycle'].by_key()['color']
 
 script_path = os.path.dirname(os.path.realpath(__file__))
 
-##### GP MPC plot
-# if not generalization:
-#     gp_model_path = '/home/mingxuan/Repositories/scg_tsung/benchmarking_sim/quadrotor/gpmpc_acados/results/200_300_aggresive'
-# if generalization:
-#     gp_model_path = '/home/mingxuan/Repositories/scg_tsung/benchmarking_sim/quadrotor/gpmpc_acados/results/100_400_rollout/temp'
-# # gp_model_path = '/home/mingxuan/Repositories/scg_tsung/benchmarking_sim/quadrotor/gpmpc_acados/results/200_300_rti/temp'
-# # get all directories in the gp_model_path
-# gp_model_dirs = [d for d in os.listdir(gp_model_path) if os.path.isdir(os.path.join(gp_model_path, d))]
-# gp_model_dirs = [os.path.join(gp_model_path, d) for d in gp_model_dirs]
-#
-# traj_data_name = 'gpmpc_acados_data_quadrotor_traj_tracking.pkl'
-# data_name = [os.path.join(d, traj_data_name) for d in gp_model_dirs]
-#
-# # print(data_name)
-# # data = np.load(data_name[0], allow_pickle=True)
-# # print(data.keys())
-# # print(data['trajs_data'].keys())
-# # print(data['trajs_data']['obs'][0].shape) # (541, 6)
-# data = []
-# for d in data_name:
-#     data.append(np.load(d, allow_pickle=True))
-# gpmpc_traj_data = [d['trajs_data']['obs'][0] for d in data]
-# gpmpc_traj_data = np.array(gpmpc_traj_data)
-# if generalization:
-#     np.save('gpmpc_traj_data_gen.npy', gpmpc_traj_data)
-# else:
-#     np.save('gpmpc_traj_data.npy', gpmpc_traj_data)
-# print(gpmpc_traj_data.shape) # (10, 541, 6) seed, time_step, obs
-# # take average of all seeds
-# mean_traj_data = np.mean(gpmpc_traj_data, axis=0)
-# print(mean_traj_data.shape) # (mean_541, 6)
-#
-# ### plot the ilqr data
-# if not generalization:
-#     ilqr_data_path = '/home/mingxuan/Repositories/scg_tsung/benchmarking_sim/quadrotor/ilqr/results/temp'
-# if generalization:
-#     ilqr_data_path = '/home/mingxuan/Repositories/scg_tsung/benchmarking_sim/quadrotor/ilqr/results_rollout/temp'
-#
-# ilqr_data_dirs = [d for d in os.listdir(ilqr_data_path) if os.path.isdir(os.path.join(ilqr_data_path, d))]
-# ilqr_traj_data_name = 'ilqr_data_quadrotor_traj_tracking.pkl'
-# ilqr_traj_data_name = [os.path.join(d, ilqr_traj_data_name) for d in ilqr_data_dirs]
-#
-# ilqr_data = []
-# for d in ilqr_traj_data_name:
-#     ilqr_data.append(np.load(os.path.join(ilqr_data_path, d), allow_pickle=True))
-# ilqr_traj_data = [d['trajs_data']['obs'][0] for d in ilqr_data]
-# ilqr_traj_data = np.array(ilqr_traj_data)
-# print(ilqr_traj_data.shape) # (10, 541, 6) seed, time_step, obs
-# # take average of all seeds
-# ilqr_mean_traj_data = np.mean(ilqr_traj_data, axis=0)
-# print(ilqr_mean_traj_data.shape) # (mean_541, 6)
-#
-# ### plot the linear mpc data
-# if not generalization:
-#     lmpc_data_path = '/home/mingxuan/Repositories/scg_tsung/benchmarking_sim/quadrotor/linear_mpc/results/temp'
-# if generalization:
-#     lmpc_data_path = '/home/mingxuan/Repositories/scg_tsung/benchmarking_sim/quadrotor/linear_mpc/results_rollout/temp'
-# lmpc_data_path =
-# lmpc_data_dirs = [d for d in os.listdir(lmpc_data_path) if os.path.isdir(os.path.join(lmpc_data_path, d))]
-# lmpc_traj_data_name = 'linear_mpc_data_quadrotor_traj_tracking.pkl'
-# lmpc_traj_data_name = [os.path.join(d, lmpc_traj_data_name) for d in lmpc_data_dirs]
-
-# lmpc_data = []
-# for d in lmpc_traj_data_name:
-#     lmpc_data.append(np.load(os.path.join(lmpc_data_path, d), allow_pickle=True))
-# lmpc_traj_data = [d['trajs_data']['obs'][0] for d in lmpc_data]
-# lmpc_traj_data = np.array(lmpc_traj_data)
-# print(lmpc_traj_data.shape)
-# # take average of all seeds
-# lmpc_mean_traj_data = np.mean(lmpc_traj_data, axis=0)
-# print(lmpc_mean_traj_data.shape)
-
-# ### plot the mpc data
-# if not generalization:
-#     mpc_data_path = '/home/mingxuan/Repositories/scg_tsung/benchmarking_sim/quadrotor/mpc_acados/results/temp'
-# if generalization:
-#     mpc_data_path = '/home/mingxuan/Repositories/scg_tsung/benchmarking_sim/quadrotor/mpc_acados/results_rollout/temp'
-# mpc_data_path =
-# mpc_data_dirs = [d for d in os.listdir(mpc_data_path) if os.path.isdir(os.path.join(mpc_data_path, d))]
-# mpc_traj_data_name = 'mpc_acados_data_quadrotor_traj_tracking.pkl'
-# mpc_traj_data_name = [os.path.join(d, mpc_traj_data_name) for d in mpc_data_dirs]
-
-# mpc_data = []
-# for d in mpc_traj_data_name:
-#     mpc_data.append(np.load(os.path.join(mpc_data_path, d), allow_pickle=True))
-# mpc_traj_data = [d['trajs_data']['obs'][0] for d in mpc_data]
-# mpc_traj_data = np.array(mpc_traj_data)
-# print(mpc_traj_data.shape) # (10, 541, 6) seed, time_step, obs
-# # take average of all seeds
-# mpc_mean_traj_data = np.mean(mpc_traj_data, axis=0)
-# print(mpc_mean_traj_data.shape) # (mean_541, 6)
-
-
 # load Control-oriented data
-pid_data_path = f'/home/mingxuan/Repositories/scg_tsung/benchmarking_sim/quadrotor/pid/results_rollout_{additional}/temp/traj_results_pid.npy'
+pid_data_path = f'/home/mingxuan/Repositories/scg_tsung/benchmarking_sim/quadrotor/data/traj_results_pid_{additional}.npy'
 pid_traj_data = np.load(pid_data_path, allow_pickle=True)
 print(pid_traj_data.shape)  # (10, 541, 6) seed, time_step, obs
 
-lqr_data_path = f'/home/mingxuan/Repositories/scg_tsung/benchmarking_sim/quadrotor/lqr/results_rollout_{additional}/temp/traj_results_lqr.npy'
+lqr_data_path = f'/home/mingxuan/Repositories/scg_tsung/benchmarking_sim/quadrotor/data/traj_results_lqr_{additional}.npy'
 lqr_traj_data = np.load(lqr_data_path, allow_pickle=True)
 print(lqr_traj_data.shape)  # (10, 541, 6) seed, time_step, obs
 
-ilqr_data_path = f'/home/mingxuan/Repositories/scg_tsung/benchmarking_sim/quadrotor/ilqr/results_rollout_{additional}/temp/traj_results_ilqr.npy'
+ilqr_data_path = f'/home/mingxuan/Repositories/scg_tsung/benchmarking_sim/quadrotor/data/traj_results_ilqr_{additional}.npy'
 ilqr_traj_data = np.load(ilqr_data_path, allow_pickle=True)
 print(ilqr_traj_data.shape)  # (10, 541, 6) seed, time_step, obs
 
-# if not generalization:
-#     ppo_data_path = '/home/mingxuan/Repositories/scg_tsung/benchmarking_sim/quadrotor/data/traj_results_ppo.npy'
-# else:
-#     ppo_data_path = '/home/mingxuan/Repositories/scg_tsung/benchmarking_sim/quadrotor/data/gen_traj_results_ppo.npy'
-# lmpc_data_path = '/home/mingxuan/Repositories/scg_tsung/benchmarking_sim/quadrotor/data/traj_results_linear_mpc_fast.npy'
-# lmpc_data_path = '/home/mingxuan/Repositories/scg_tsung/benchmarking_sim/quadrotor/data/traj_results_linear_mpc.npy'
-# lmpc_data_path = '/home/mingxuan/Repositories/scg_tsung/benchmarking_sim/quadrotor/data/traj_results_linear_mpc_slow.npy'
-lmpc_data_path = f'/home/mingxuan/Repositories/scg_tsung/benchmarking_sim/quadrotor/linear_mpc_acados/results_rollout_{additional}/temp/traj_results_linear_mpc_acados.npy'
+lmpc_data_path = f'/home/mingxuan/Repositories/scg_tsung/benchmarking_sim/quadrotor/data/traj_results_linear_mpc_acados_{additional}.npy'
 lmpc_traj_data = np.load(lmpc_data_path, allow_pickle=True)
-# print(lmpc_data)
-# print(lmpc_data.keys())  # (x, 541, 6) seed, time_step, obs
-# print(lmpc_data['obs'][0].shape)
-# lmpc_traj_data = np.array(lmpc_data['obs'])
 print(lmpc_traj_data.shape)  # (10, 541, 6) seed, time_step, obs
 
-# if not generalization:
-#     sac_data_path = '/home/mingxuan/Repositories/scg_tsung/benchmarking_sim/quadrotor/data/traj_results_sac.npy'
-# else:
-#     sac_data_path = '/home/mingxuan/Repositories/scg_tsung/benchmarking_sim/quadrotor/data/gen_traj_results_sac.npy'
-# mpc_data_path = '/home/mingxuan/Repositories/scg_tsung/benchmarking_sim/quadrotor/data/traj_results_mpc_fast.npy'
-mpc_data_path = f'/home/mingxuan/Repositories/scg_tsung/benchmarking_sim/quadrotor/data/traj_results_mpc_{additional}.npy'
-# mpc_data_path = '/home/mingxuan/Repositories/scg_tsung/benchmarking_sim/quadrotor/data/traj_results_mpc.npy'
+mpc_data_path = f'/home/mingxuan/Repositories/scg_tsung/benchmarking_sim/quadrotor/data/traj_results_mpc_acados_{additional}.npy'
 mpc_traj_data = np.load(mpc_data_path, allow_pickle=True)
-# print(mpc_data.keys())  # (x, 541, 6) seed, time_step, obs
-# print(mpc_data['obs'][0].shape)
-# mpc_traj_data = np.array(mpc_data['obs'])
 print(mpc_traj_data.shape)  # (10, 541, 6) seed, time_step, obs
 
-# fmpc
-fmpc_data_path = f'/home/mingxuan/Repositories/scg_tsung/benchmarking_sim/quadrotor/fmpc/results_rollout_{additional}/temp/traj_results_fmpc.npy'
+fmpc_data_path = f'/home/mingxuan/Repositories/scg_tsung/benchmarking_sim/quadrotor/data/traj_results_fmpc_{additional}.npy'
 fmpc_traj_data = np.load(fmpc_data_path, allow_pickle=True)
 print(fmpc_traj_data.shape)  # (10, 541, 6) seed, time_step, obs
 
-# if not generalization:
-#     dppo_data_path = '/home/mingxuan/Repositories/scg_tsung/benchmarking_sim/quadrotor/data/traj_results_dppo.npy'
-# else:
-#     dppo_data_path = '/home/mingxuan/Repositories/scg_tsung/benchmarking_sim/quadrotor/data/gen_traj_results_dppo.npy'
-# gpmpc_data_path = '/home/mingxuan/Repositories/scg_tsung/benchmarking_sim/quadrotor/data/traj_results_gpmpc_fast.npy'
-gpmpc_data_path = f'/home/mingxuan/Repositories/scg_tsung/benchmarking_sim/quadrotor/data/traj_results_gpmpc_{additional}.npy'
-# gpmpc_data_path = '/home/mingxuan/Repositories/scg_tsung/benchmarking_sim/quadrotor/data/traj_results_gpmpc.npy'
+gpmpc_data_path = f'/home/mingxuan/Repositories/scg_tsung/benchmarking_sim/quadrotor/data/traj_results_gpmpc_acados_TP_{additional}.npy'
 gpmpc_traj_data = np.load(gpmpc_data_path, allow_pickle=True)
-# print(gpmpc_data.keys())  # (x, 541, 6) seed, time_step, obs
-# print(gpmpc_data['obs'][0].shape)
-# gpmpc_traj_data = np.array(gpmpc_data['obs'])
 print(gpmpc_traj_data.shape)  # (10, 541, 6) seed, time_step, obs
 
-# load ppo and sac data
-# if not generalization:
-#     ppo_data_path = '/home/mingxuan/Repositories/scg_tsung/benchmarking_sim/quadrotor/data/traj_results_ppo.npy'
-# else:
-#     ppo_data_path = '/home/mingxuan/Repositories/scg_tsung/benchmarking_sim/quadrotor/data/gen_traj_results_ppo.npy'
-# ppo_data_path = '/home/mingxuan/Repositories/scg_tsung/examples/rl/Data/traj_results_ppo_15.npy'
-# if additional == '11':
-#     ppo_data_path = '/home/mingxuan/Repositories/scg_tsung/examples/rl/Data/traj_results_ppo_11.npy'
-# elif additional == '9':
-#     ppo_data_path = '/home/mingxuan/Repositories/scg_tsung/examples/rl/Data/traj_results_ppo_9.npy'
-# elif additional == '15':
-#     ppo_data_path = '/home/mingxuan/Repositories/scg_tsung/examples/rl/Data/traj_results_ppo_15.npy'
 ppo_data_path = f'/home/mingxuan/Repositories/scg_tsung/benchmarking_sim/quadrotor/data/traj_results_ppo_{additional}.npy'
 ppo_data = np.load(ppo_data_path, allow_pickle=True).item()
-print(ppo_data.keys())  # (x, 541, 6) seed, time_step, obs
-print(ppo_data['obs'][0].shape)
 ppo_traj_data = np.array(ppo_data['obs'])
 print(ppo_traj_data.shape)  # (10, 541, 6) seed, time_step, obs
 
-# if not generalization:
-#     sac_data_path = '/home/mingxuan/Repositories/scg_tsung/benchmarking_sim/quadrotor/data/traj_results_sac.npy'
-# else:
-#     sac_data_path = '/home/mingxuan/Repositories/scg_tsung/benchmarking_sim/quadrotor/data/gen_traj_results_sac.npy'
-# sac_data_path = '/home/mingxuan/Repositories/scg_tsung/examples/rl/Data/traj_results_sac_15.npy'
-# if additional == '11':
-#     sac_data_path = '/home/mingxuan/Repositories/scg_tsung/examples/rl/Data/traj_results_sac_11.npy'
-# elif additional == '9':
-#     sac_data_path = '/home/mingxuan/Repositories/scg_tsung/examples/rl/Data/traj_results_sac_9.npy'
-# elif additional == '15':
-#     sac_data_path = '/home/mingxuan/Repositories/scg_tsung/examples/rl/Data/traj_results_sac_15.npy'
-sac_data_path = f'/home/mingxuan/Repositories/scg_tsung/examples/rl/Data/traj_results_sac_{additional}.npy'
+sac_data_path = f'/home/mingxuan/Repositories/scg_tsung//benchmarking_sim/quadrotor/data/traj_results_sac_{additional}.npy'
 sac_data = np.load(sac_data_path, allow_pickle=True).item()
-print(sac_data.keys())  # (x, 541, 6) seed, time_step, obs
-print(sac_data['obs'][0].shape)
 sac_traj_data = np.array(sac_data['obs'])
 print(sac_traj_data.shape)  # (10, 541, 6) seed, time_step, obs
 
-# if not generalization:
-#     dppo_data_path = '/home/mingxuan/Repositories/scg_tsung/benchmarking_sim/quadrotor/data/traj_results_dppo.npy'
-# else:
-#     dppo_data_path = '/home/mingxuan/Repositories/scg_tsung/benchmarking_sim/quadrotor/data/gen_traj_results_dppo.npy'
-# dppo_data_path = '/home/mingxuan/Repositories/scg_tsung/examples/rl/Data/traj_results_dppo_15.npy'
-# if additional == '11':
-#     dppo_data_path = '/home/mingxuan/Repositories/scg_tsung/examples/rl/Data/traj_results_dppo_11.npy'
-# elif additional == '9':
-#     dppo_data_path = '/home/mingxuan/Repositories/scg_tsung/examples/rl/Data/traj_results_dppo_9.npy'
-# elif additional == '15':
-#     dppo_data_path = '/home/mingxuan/Repositories/scg_tsung/examples/rl/Data/traj_results_dppo_15.npy'
-dppo_data_path = f'/home/mingxuan/Repositories/scg_tsung/examples/rl/Data/traj_results_dppo_{additional}.npy'
+dppo_data_path = f'/home/mingxuan/Repositories/scg_tsung/benchmarking_sim/quadrotor/data/traj_results_dppo_{additional}.npy'
 dppo_data = np.load(dppo_data_path, allow_pickle=True).item()
-print(dppo_data.keys())  # (x, 541, 6) seed, time_step, obs
-print(dppo_data['obs'][0].shape)
 dppo_traj_data = np.array(dppo_data['obs'])
 print(dppo_traj_data.shape)  # (10, 541, 6) seed, time_step, obs
-
 
 def compute_rmse(traj, ref):
     min_length = min(traj.shape[0], ref.shape[0])
@@ -504,9 +340,6 @@ else:
     print(f'Saved at {os.path.join(script_path, f"{file_name}"+".pdf")}')
     fig.savefig(os.path.join(script_path, f'{file_name}'+".png"), bbox_inches='tight')
     print(f'Saved at {os.path.join(script_path, f"{file_name}"+".png")}')
-# exit()
-
-
 
 ##################################################
 # plot the state path x, z [0, 2]
@@ -597,11 +430,12 @@ the one in the bottom will not be visible.
 '''
 # plt.show()
 
-if not generalization:
-    fig.savefig(os.path.join(script_path, f'{plot_name}_xz_path_performance.pdf'), bbox_inches='tight')
-    print(f'Saved at {os.path.join(script_path, f"{plot_name}_xz_path_performance.pdf")}')
-    fig.savefig(os.path.join(script_path, f'{plot_name}_xz_path_performance.png'), bbox_inches='tight') 
-    print(f'Saved at {os.path.join(script_path, f"{plot_name}_xz_path_performance.png")}')
+# if not generalization:
+if additional == '11':
+    fig.savefig(os.path.join(script_path, f'{plot_name}_xz_path_performance_{additional}.pdf'), bbox_inches='tight')
+    print(f'Saved at {os.path.join(script_path, f"{plot_name}_xz_path_performance_{additional}.pdf")}')
+    fig.savefig(os.path.join(script_path, f'{plot_name}_xz_path_performance_{additional}.png'), bbox_inches='tight') 
+    print(f'Saved at {os.path.join(script_path, f"{plot_name}_xz_path_performance_{additional}.png")}')
 else:
     fig.savefig(os.path.join(script_path, f'{plot_name}_xz_path_generalization_{additional}.pdf'), bbox_inches='tight')
     print(f'Saved at {os.path.join(script_path, f"{plot_name}_xz_path_generalization_{additional}.pdf")}')
