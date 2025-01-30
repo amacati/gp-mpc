@@ -47,7 +47,6 @@ task_config:
     init_q:
       distrib: 'normal'
       scale: 0.02387283406599296
-
   task: traj_tracking
   task_info:
     trajectory_type: figure8
@@ -69,7 +68,7 @@ task_config:
   #   alpha_3: 124.8
   #   pitch_bias: 0.0 # in radian
 
-  episode_len_sec: 15
+  episode_len_sec: 12
   cost: quadratic
 
   constraints:
