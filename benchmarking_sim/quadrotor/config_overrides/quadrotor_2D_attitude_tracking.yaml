@@ -43,11 +43,11 @@ task_config:
     trajectory_plane: 'xz'
     trajectory_position_offset: [0, 1.]
     trajectory_scale: 1.0
-    ilqr_ref: True
-    # pitch_ref: True
-    pitch_ref: False
-    # ilqr_traj_data: /home/mingxuan/Repositories/scg_tsung/benchmarking_sim/quadrotor/data/ilqr_ref_traj.npy
-    ilqr_traj_data: /home/mingxuan/Repositories/scg_tsung/benchmarking_sim/quadrotor/data/mpc_acados_ref_traj.npy
+    # ilqr_ref: True
+    # # pitch_ref: True
+    # pitch_ref: False
+    # # ilqr_traj_data: /home/mingxuan/Repositories/scg_tsung/benchmarking_sim/quadrotor/data/ilqr_ref_traj.npy
+    # ilqr_traj_data: /home/mingxuan/Repositories/scg_tsung/benchmarking_sim/quadrotor/data/mpc_acados_ref_traj.npy
   
   inertial_prop:
     M: 0.033

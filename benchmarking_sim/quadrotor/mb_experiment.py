@@ -39,14 +39,14 @@ def run(gui=False, n_episodes=1, n_steps=None, save_data=True):
         # ALGO = 'gp_mpc'
         # ALGO = 'gpmpc_acados'
         # ALGO = 'gpmpc_acados_TP'
-        ALGO = 'gpmpc_acados_TRP'
+        # ALGO = 'gpmpc_acados_TRP'
         # ALGO = 'mpc'
         # ALGO = 'mpc_acados'
         # ALGO = 'linear_mpc_acados'
         # ALGO = 'linear_mpc'
         # ALGO = 'lqr'
         # ALGO = 'lqr_c'
-        # ALGO = 'pid'
+        ALGO = 'pid'
     SYS = 'quadrotor_2D_attitude'
     # SYS = 'quadrotor_3D_attitude'
     TASK = 'tracking'
@@ -199,7 +199,7 @@ def run(gui=False, n_episodes=1, n_steps=None, save_data=True):
     random_env.close()
     metrics = experiment.compute_metrics(all_trajs)
     all_trajs = dict(all_trajs)
-    np.save(f'./data/{ALGO}_ref_traj.npy', all_trajs, allow_pickle=True)
+    # np.save(f'./data/{ALGO}_ref_traj.npy', all_trajs, allow_pickle=True)
     
     if hasattr(experiment.env, 'dw_model'):
         force_log = experiment.env.dw_model.get_force_log()
