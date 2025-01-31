@@ -94,4 +94,4 @@ task_config:
               3.5e-03, 3.5e-03]
     dynamics:
       - disturbance_func: white_noise
-        std: 0.05
+        std: 0.005
