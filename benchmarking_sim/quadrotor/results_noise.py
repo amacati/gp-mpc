@@ -49,6 +49,7 @@ for noise_factor in noise_factor_list:
             'eval_task': 'obs_noise',
             'num_seed': 1,
             'start_seed': start_seed,
+            'SYS': 'quadrotor_3D_attitude',
             })
         run_rollouts(task_description)
         
@@ -62,5 +63,6 @@ for noise_factor in noise_factor_list:
             'eval_task': 'proc_noise',
             'num_seed': 1,
             'start_seed': start_seed,
+            'SYS': 'quadrotor_3D_attitude',
             })
         run_rollouts(task_description)
