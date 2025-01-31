@@ -77,6 +77,7 @@ class PID(BaseController):
 
         self.control_timestep = self.env.CTRL_TIMESTEP
         self.reference = self.env.X_GOAL
+        self.last_action = None
 
         self.reset()
 
@@ -130,18 +131,24 @@ class PID(BaseController):
         target_rpy_rates = np.zeros(3)
 
         # Compute the next action.
-        thrust, computed_target_rpy, _ = self._dslPIDPositionControl(cur_pos,
-                                                                     cur_quat,
-                                                                     cur_vel,
-                                                                     target_pos,
-                                                                     target_rpy,
-                                                                     target_vel
-                                                                     )
-        rpm = self._dslPIDAttitudeControl(thrust,
-                                          cur_quat,
-                                          computed_target_rpy,
-                                          target_rpy_rates
-                                          )
+        try:
+            thrust, computed_target_rpy, _ = self._dslPIDPositionControl(cur_pos,
+                                                                        cur_quat,
+                                                                        cur_vel,
+                                                                        target_pos,
+                                                                        target_rpy,
+                                                                        target_vel
+                                                                        )
+            rpm = self._dslPIDAttitudeControl(thrust,
+                                            cur_quat,
+                                            computed_target_rpy,
+                                            target_rpy_rates
+                                            )
+        except ValueError as e:
+            print(e)
+            print('Error in Control._dslPIDPositionControl() or Control._dslPIDAttitudeControl()')
+            print('Returning last action')
+            rpm = self.last_action
         action = rpm
         action = self.KF * action**2
         if self.env.QUAD_TYPE == 2:
@@ -157,6 +164,7 @@ class PID(BaseController):
             action = np.array([self.env.attitude_control.pwm2thrust(thrust/3)*4,
                                computed_target_rpy[0],
                                computed_target_rpy[1],])
+        self.last_action = action
         return action
 
     def _dslPIDPositionControl(self,
