@@ -89,9 +89,13 @@ def run(gui=False, n_episodes=1, n_steps=None, save_data=True,
     fac.add_argument('--n_episodes', type=int, default=1, help='number of episodes to run.')
     # merge config and create output directory
     config = fac.merge()
+    gp_model_path = None
     if ALGO in ['gpmpc_acados', 'gp_mpc', 'gpmpc_acados_TP']:
-        # gp_model_path = '/home/mingxuan/Repositories/scg_tsung/benchmarking_sim/quadrotor/gpmpc_acados/results/200_300_aggresive'
         gp_model_path = '/home/mingxuan/Repositories/scg_tsung/benchmarking_sim/quadrotor/gpmpc_acados_TP/results/100_200/temp'
+    elif ALGO in ['gpmpc_acados_TRP']:
+        gp_model_path = '/home/mingxuan/Repositories/scg_tsung/benchmarking_sim/quadrotor/gpmpc_acados_TRP/results/100_200/temp'
+    if gp_model_path is not None:
+        # gp_model_path = '/home/mingxuan/Repositories/scg_tsung/benchmarking_sim/quadrotor/gpmpc_acados/results/200_300_aggresive'
         # # get all directories in the gp_model_path
         gp_model_dirs = [d for d in os.listdir(gp_model_path) if os.path.isdir(os.path.join(gp_model_path, d))]
         gp_model_dirs = [os.path.join(gp_model_path, d) for d in gp_model_dirs]
@@ -119,11 +123,11 @@ def run(gui=False, n_episodes=1, n_steps=None, save_data=True,
     mkdirs(config.output_dir)
 
     config.algo_config.gp_model_path = None
-    if ALGO in ['gpmpc_acados', 'gp_mpc', 'gpmpc_acados_TP']:
+    if ALGO in ['gpmpc_acados', 'gp_mpc', 'gpmpc_acados_TP', 'gpmpc_acados_TRP']:
         config.algo_config.gp_model_path = gp_model_dirs[seed-1]
     
     # remove process noise if there is any
-    config.task_config.disturbances.dynamics[0]['std'] = 0 \
+    config.task_config.disturbances.dynamics[0]['std'] = 0.0000 \
         if eval_task not in ['proc_noise'] \
         else config.task_config.disturbances.dynamics[0]['std']
     # amplify the observation noise std with a factor 
