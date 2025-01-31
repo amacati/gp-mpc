@@ -364,8 +364,9 @@ class GPMPC_ACADOS_TRP(GPMPC):
         '''
         data = np.load(f'{model_path}/data.npz')
         gp_model_path_T = f'{model_path}/best_model_T.pth'
+        gp_model_path_R = f'{model_path}/best_model_R.pth'
         gp_model_path_P = f'{model_path}/best_model_P.pth'
-        gp_model_path = [gp_model_path_T, gp_model_path_P]
+        gp_model_path = [gp_model_path_T, gp_model_path_R, gp_model_path_P]
         self.train_gp(input_data=data['data_inputs'], 
                         target_data=data['data_targets'],
                         gp_model=gp_model_path,)
