@@ -121,6 +121,11 @@ def run(gui=False, n_episodes=1, n_steps=None, save_data=True,
     config.algo_config.gp_model_path = None
     if ALGO in ['gpmpc_acados', 'gp_mpc', 'gpmpc_acados_TP']:
         config.algo_config.gp_model_path = gp_model_dirs[seed-1]
+    
+    # remove process noise if there is any
+    config.task_config.disturbances.dynamics[0]['std'] = 0 \
+        if eval_task not in ['proc_noise'] \
+        else config.task_config.disturbances.dynamics[0]['std']
     # amplify the observation noise std with a factor 
     if eval_task == 'obs_noise':
         default_noise_std = config.task_config.disturbances.observation[0]['std']
@@ -132,7 +137,6 @@ def run(gui=False, n_episodes=1, n_steps=None, save_data=True,
         print(f'Original process noise std: {default_noise_std}')
         config.task_config.disturbances.dynamics[0]['std'] = noise_factor * default_noise_std 
         print(f'Amplified process noise std: {config.task_config.disturbances.dynamics[0]["std"]}')
-    
     # downwash height scale
     if dw_height_scale is not None:
         max_dw_height, min_dw_height = 3, 0.5
