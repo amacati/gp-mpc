@@ -60,18 +60,20 @@ def plot_xz_trajectory_with_hull(ax, traj_data, label=None,
         ax.add_patch(poly_connecting)
 
 
-def plot_trajectory(notebook_dir, data_folder, title, ctrl, additional=''):
+def plot_trajectory(notebook_dir, data_folder, title, ctrl, 
+                    SYS='quadrotor_2D_attitude', 
+                    additional=''):
     from safe_control_gym.utils.configuration import ConfigFactory
     from functools import partial
     from safe_control_gym.utils.registration import make
     #########################################################################
     # launch SCG to get reference trajectory X_GOAL
     ALGO = ctrl
-    SYS = 'quadrotor_2D_attitude'
+    # SYS = 'quadrotor_2D_attitude'
     TASK = 'tracking'
     # PRIOR = '200_hpo'
     PRIOR = '100'
-    agent = 'quadrotor' if SYS == 'quadrotor_2D' or SYS == 'quadrotor_2D_attitude' else SYS
+    agent = 'quadrotor' if SYS in ['quadrotor_2D', 'quadrotor_2D_attitude', 'quadrotor_3D_attitude'] else SYS
     SAFETY_FILTER = None
 
     # check if the config file exists
@@ -162,13 +164,19 @@ def plot_trajectory(notebook_dir, data_folder, title, ctrl, additional=''):
 
     ax.legend(ncol=5, loc='upper center', fontsize=legend_fontsize)
 
-    fig.savefig(os.path.join(fmpc_data_path, f'xz_path_performance{additional}.png'), dpi=300, bbox_inches='tight')
-    print(f'saved to {fmpc_data_path}/xz_path_performance{additional}.png')
+    fig.savefig(os.path.join(fmpc_data_path, f'xz_path_performance{SYS}{additional}.png'), dpi=300, bbox_inches='tight')
+    print(f'saved to {fmpc_data_path}/xz_path_performance{SYS}{additional}.png')
     # save data
-    np.save(os.path.join(fmpc_data_path, f'traj_results_{ctrl}{additional}.npy'), fmpc_traj_data)
-    print(f'traj data saved to {fmpc_data_path}/traj_results_{ctrl}{additional}.npy')
+    np.save(os.path.join(fmpc_data_path, f'traj_results_{ctrl}_{SYS}{additional}.npy'), fmpc_traj_data)
+    print(f'traj data saved to {fmpc_data_path}/traj_results_{ctrl}_{SYS}{additional}.npy')
 
-
+    # copy the data file to the results folder
+    results_folder = os.path.join(notebook_dir, 'data')
+    if not os.path.exists(results_folder):
+        os.makedirs(results_folder)
+    os.system(f'cp {fmpc_data_path}/traj_results_{ctrl}_{SYS}{additional}.npy {results_folder}')
+    print(f'copied to {results_folder}/traj_results_{ctrl}_{SYS}{additional}.npy')
+    
 def extract_rollouts(notebook_dir, data_folder, controller_name, additional=''):
     # print('notebook_dir', notebook_dir)
     data_folder_path = os.path.join(notebook_dir, controller_name, data_folder)
@@ -232,13 +240,16 @@ else:
     # ctrl = 'mpc_acados'
     ctrl = 'gpmpc_acados_TP'
 
+# SYS = 'quadrotor_2D_attitude'
+SYS = 'quadrotor_3D_attitude'
+
 # for additional in ['_9', '_11', '_13', '_15']:
 # for additional in ['_11', '_12', '_13', '_14', '_15']:
 for additional in ['_9', '_10', '_11', '_12', '_13', '_14', '_15']:
-    data_folder = f'results_rollout{additional}/temp'
+    data_folder = f'results_rollout_{SYS}{additional}/temp'
     if ctrl in ['gpmpc_acados_TP']:
         GPMPC_option = '100_200'
-        data_folder = f'results/{GPMPC_option}_rollout{additional}/temp'
+        data_folder = f'results/{GPMPC_option}_rollout_{SYS}{additional}/temp'
     # traj_resutls, metrics = extract_rollouts(notebook_dir, data_folder, ctrl, additional)
     if additional == '_11':
         metrics, timing_data = extract_rollouts(notebook_dir, data_folder, ctrl, additional)
@@ -255,22 +266,22 @@ for additional in ['_9', '_10', '_11', '_12', '_13', '_14', '_15']:
 # sp_plot_inf_time = mean_exec_time # save for later, spider plot
 
 additional = '_11'
-data_folder = f'results_rollout{additional}/temp'
+data_folder = f'results_rollout_{SYS}{additional}/temp'
 if ctrl in ['gpmpc_acados_TP']:
         GPMPC_option = '100_200'
-        data_folder = f'results/{GPMPC_option}_rollout{additional}/temp'
-plot_trajectory(notebook_dir, data_folder, 'Evaluation', ctrl, additional)
+        data_folder = f'results/{GPMPC_option}_rollout_{SYS}{additional}/temp'
+plot_trajectory(notebook_dir, data_folder, 'Evaluation', ctrl, SYS, additional)
 
 additional = '_15'
-data_folder = f'results_rollout{additional}/temp'
+data_folder = f'results_rollout_{SYS}{additional}/temp'
 if ctrl in ['gpmpc_acados_TP']:
         GPMPC_option = '100_200'
-        data_folder = f'results/{GPMPC_option}_rollout{additional}/temp'
-plot_trajectory(notebook_dir, data_folder, 'Generalization (slower)', ctrl, additional)
+        data_folder = f'results/{GPMPC_option}_rollout_{SYS}{additional}/temp'
+plot_trajectory(notebook_dir, data_folder, 'Generalization (slower)', ctrl, SYS, additional)
 
 additional = '_9'
-data_folder = f'results_rollout{additional}/temp'
+data_folder = f'results_rollout_{SYS}{additional}/temp'
 if ctrl in ['gpmpc_acados_TP']:
         GPMPC_option = '100_200'
-        data_folder = f'results/{GPMPC_option}_rollout{additional}/temp'
-plot_trajectory(notebook_dir, data_folder, 'Generalization (faster)', ctrl, additional)
+        data_folder = f'results/{GPMPC_option}_rollout_{SYS}{additional}/temp'
+plot_trajectory(notebook_dir, data_folder, 'Generalization (faster)', ctrl, SYS, additional)

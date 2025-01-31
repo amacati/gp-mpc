@@ -48,7 +48,7 @@ def run(gui=False, n_episodes=1, n_steps=None, save_data=True,
     TASK = 'tracking'
     # PRIOR = '200'
     PRIOR = '100'
-    agent = 'quadrotor' if SYS == 'quadrotor_2D' or SYS == 'quadrotor_2D_attitude' else SYS
+    agent = 'quadrotor' if SYS in ['quadrotor_2D', 'quadrotor_2D_attitude', 'quadrotor_3D_attitude'] else SYS
     # ADDITIONAL = '_fast'
     ADDITIONAL = Additional
     # ADDITIONAL = ''
@@ -103,11 +103,13 @@ def run(gui=False, n_episodes=1, n_steps=None, save_data=True,
         #     config.algo_config.gp_model_path = gp_model_dirs[seed%10-1]
     # else:
     if eval_task == 'rollout':
-        config.output_dir = config.output_dir + f'_rollout{ADDITIONAL}'
-    elif eval_task == 'noise':
-        config.output_dir = config.output_dir + '_noise/' + f'seed_{seed}'
+        config.output_dir = config.output_dir + f'_rollout_{SYS}{ADDITIONAL}'
+    elif eval_task == 'obs_noise':
+        config.output_dir = config.output_dir + f'_obs_noise_{SYS}/' + f'seed_{seed}'
+    elif eval_task == 'proc_noise':
+        config.output_dir = config.output_dir + f'_proc_noise_{SYS}/' + f'seed_{seed}'
     elif eval_task == 'downwash':
-        config.output_dir = config.output_dir + '_downwash/' + f'seed_{seed}'
+        config.output_dir = config.output_dir + f'_downwash_{SYS}/' + f'seed_{seed}'
     else:
         raise ValueError('eval_task not recognized')
         
@@ -120,11 +122,17 @@ def run(gui=False, n_episodes=1, n_steps=None, save_data=True,
     if ALGO in ['gpmpc_acados', 'gp_mpc', 'gpmpc_acados_TP']:
         config.algo_config.gp_model_path = gp_model_dirs[seed-1]
     # amplify the observation noise std with a factor 
-    default_noise_std = config.task_config.disturbances.observation[0]['std']
-    print(f'Original observation noise std: {default_noise_std}')
-    config.task_config.disturbances.observation[0]['std'] = [noise_factor * default_noise_std[i] for i in range(len(default_noise_std))]
-    print(f'Amplified observation noise std: {config.task_config.disturbances.observation[0]["std"]}')
-
+    if eval_task == 'obs_noise':
+        default_noise_std = config.task_config.disturbances.observation[0]['std']
+        print(f'Original observation noise std: {default_noise_std}')
+        config.task_config.disturbances.observation[0]['std'] = [noise_factor * default_noise_std[i] for i in range(len(default_noise_std))]
+        print(f'Amplified observation noise std: {config.task_config.disturbances.observation[0]["std"]}')
+    elif eval_task == 'proc_noise':
+        default_noise_std = config.task_config.disturbances.dynamics[0]['std']
+        print(f'Original process noise std: {default_noise_std}')
+        config.task_config.disturbances.dynamics[0]['std'] = noise_factor * default_noise_std 
+        print(f'Amplified process noise std: {config.task_config.disturbances.dynamics[0]["std"]}')
+    
     # downwash height scale
     if dw_height_scale is not None:
         max_dw_height, min_dw_height = 3, 0.5

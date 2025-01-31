@@ -35,8 +35,9 @@ algo = sys.argv[1]
 # run_rollouts(task_description)
 
 # noise factor test
-additional = ''
-noise_factor_list = np.arange(1, 201, 10)
+additional = '_11'
+# noise_factor_list = np.arange(1, 201, 10)
+noise_factor_list = np.arange(0, 50, 10)
 noise_factor_list[0] = 1
 # for algo in ['pid', 'lqr', 'ilqr']:
 for noise_factor in noise_factor_list:
@@ -45,7 +46,20 @@ for noise_factor in noise_factor_list:
             'additional': additional,
             'algo': algo,
             'noise_factor': noise_factor,
-            'eval_task': 'noise',
+            'eval_task': 'obs_noise',
+            'num_seed': 1,
+            'start_seed': start_seed,
+            })
+        run_rollouts(task_description)
+        
+        
+for noise_factor in noise_factor_list:
+    for start_seed in range(1, 11):
+        task_description = munch.munchify({
+            'additional': additional,
+            'algo': algo,
+            'noise_factor': noise_factor,
+            'eval_task': 'proc_noise',
             'num_seed': 1,
             'start_seed': start_seed,
             })
