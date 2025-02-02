@@ -5,6 +5,7 @@ Based on work conducted at UTIAS' DSL by SiQi Zhou and James Xu.
 
 import math
 import os
+import time
 
 import numpy as np
 import pybullet as p
@@ -131,6 +132,7 @@ class PID(BaseController):
         target_rpy_rates = np.zeros(3)
 
         # Compute the next action.
+        time_before = time.perf_counter()
         try:
             thrust, computed_target_rpy, _ = self._dslPIDPositionControl(cur_pos,
                                                                         cur_quat,
@@ -149,6 +151,8 @@ class PID(BaseController):
             print('Error in Control._dslPIDPositionControl() or Control._dslPIDAttitudeControl()')
             print('Returning last action')
             rpm = self.last_action
+        time_after = time.perf_counter()
+        self.results_dict['inference_time'].append(time_after - time_before)
         action = rpm
         action = self.KF * action**2
         if self.env.QUAD_TYPE == 2:
@@ -303,3 +307,9 @@ class PID(BaseController):
             path (str): The path where the integral errors are saved.
         '''
         self.integral_pos_e, self.last_rpy, self.integral_rpy_e = np.load(path)
+
+    def setup_results_dict(self):
+        '''Setup the results dictionary to store run information.'''
+        self.results_dict = {
+            'inference_time': []
+            }

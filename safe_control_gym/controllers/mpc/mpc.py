@@ -456,7 +456,7 @@ class MPC(BaseController):
                              'common_cost': [],
                              'state': [],
                              'state_error': [],
-                             't_wall': []
+                             'inference_time': []
                              }
 
     def run(self,

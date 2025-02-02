@@ -218,6 +218,7 @@ class FlatMPC(BaseController):
                              'horizon_v': [],
                              'horizon_z': [],
                              'ctrl_run_time': [],
+                             'inference_time': [],
                              }
 
     # @timing
@@ -247,7 +248,7 @@ class FlatMPC(BaseController):
         
         # flat input transformation: z and v to action u        
         action = self.action_from_flat_states_func(z_horizon[:, 1], v_horizon[:, 0], self.inertial_prop, g=self.mpc.env.GRAVITY_ACC) 
-        
+        self.results_dict['inference_time'].append(self.mpc.acados_ocp_solver.get_stats("time_tot"))
 
         # feed data into observer
         self.fs_obs.input_FMPC_result(z_horizon, v_horizon, action)

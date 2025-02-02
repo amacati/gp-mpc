@@ -882,7 +882,10 @@ class GPMPC_ACADOS_TRP(GPMPC):
         
         # Set the probabilistic state and input constraint set limits.
         # Tightening at the first step is possible if self.compute_initial_guess is used
+        # time_before_constraints = time.perf_counter()
         state_constraint_set_prev, input_constraint_set_prev = self.precompute_probabilistic_limits()
+        # time_after_constraints = time.perf_counter()
+        # print(f'gpmpc constraints time: {time_after_constraints - time_before_constraints:.3f}')
         # set acados parameters
         if self.sparse_gp:
             # sparse GP parameters
@@ -969,7 +972,8 @@ class GPMPC_ACADOS_TRP(GPMPC):
         print(f'gpmpc acados sol time: {time_after - time_before:.3f}; sol status {status}; nlp iter {self.acados_ocp_solver.get_stats("sqp_iter")}; qp iter {self.acados_ocp_solver.get_stats("qp_iter")}')
         if time_after - time_before > 1 / 60:
             print(colored(f'========= Warning: GPMPC ACADOS took {time_after - time_before:.3f} seconds =========', 'yellow'))
-
+        self.results_dict['inference_time'].append(self.acados_ocp_solver.get_stats("time_tot"))
+        
         if hasattr(self, 'K'):
             action += self.K @ (self.x_prev[:, 0] - obs)
             # self.u_prev = self.u_prev + self.K @ (self.x_prev - obs)

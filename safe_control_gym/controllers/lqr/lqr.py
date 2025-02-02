@@ -1,5 +1,7 @@
 '''Linear Quadratic Regulator (LQR).'''
 
+import time
+
 from safe_control_gym.controllers.base_controller import BaseController
 from safe_control_gym.controllers.lqr.lqr_utils import compute_lqr_gain, get_cost_weight_matrix
 from safe_control_gym.envs.benchmark_env import Task
@@ -59,7 +61,18 @@ class LQR(BaseController):
 
         step = self.extract_step(info)
 
+        time_before = time.perf_counter()
         if self.env.TASK == Task.STABILIZATION:
-            return -self.gain @ (obs - self.env.X_GOAL) + self.model.U_EQ
+            action = -self.gain @ (obs - self.env.X_GOAL) + self.model.U_EQ
+            time_after = time.perf_counter()
         elif self.env.TASK == Task.TRAJ_TRACKING:
-            return -self.gain @ (obs - self.env.X_GOAL[step]) + self.model.U_EQ
+            action = -self.gain @ (obs - self.env.X_GOAL[step]) + self.model.U_EQ
+            time_after = time.perf_counter()
+        self.results_dict['inference_time'].append(time_after - time_before)
+        return action
+
+    def setup_results_dict(self):
+        '''Setup the results dictionary to store run information.'''
+        self.results_dict = {
+            'inference_time': []
+            }

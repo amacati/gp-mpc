@@ -4,6 +4,7 @@
 [2] https://arxiv.org/pdf/1708.09342.pdf
 '''
 
+import time
 import numpy as np
 from termcolor import colored
 
@@ -292,7 +293,7 @@ class iLQR(BaseController):
         Returns:
             action (ndarray): The action chosen by the controller.
         '''
-
+        time_before = time.perf_counter()
         if training:
             if self.ite_counter == 0:
                 action, gains_fb, input_ff = self.calculate_lqr_action(obs, self.traj_step)
@@ -309,7 +310,9 @@ class iLQR(BaseController):
             action = self.gains_fb_best[self.traj_step].dot(obs) + self.input_ff_best[:, self.traj_step]
         else:
             action, _, _ = self.calculate_lqr_action(obs, self.traj_step)
-
+        time_after = time.perf_counter()
+        self.results_dict['inference_time'].append(time_after - time_before)
+        
         if self.traj_step < self.max_steps - 1:
             self.traj_step += 1
 
@@ -387,3 +390,9 @@ class iLQR(BaseController):
         self.final_obs = obs
         self.final_info = info
         self.total_cost = total_cost
+
+    def setup_results_dict(self):
+        '''Setup the results dictionary to store run information.'''
+        self.results_dict = {
+            'inference_time': []
+            }
