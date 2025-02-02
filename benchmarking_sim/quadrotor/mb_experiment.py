@@ -39,21 +39,24 @@ def run(gui=False, n_episodes=1, n_steps=None, save_data=True):
         # ALGO = 'gp_mpc'
         # ALGO = 'gpmpc_acados'
         # ALGO = 'gpmpc_acados_TP'
-        # ALGO = 'gpmpc_acados_TRP'
+        ALGO = 'gpmpc_acados_TRP'
         # ALGO = 'mpc'
         # ALGO = 'mpc_acados'
         # ALGO = 'linear_mpc_acados'
         # ALGO = 'linear_mpc'
         # ALGO = 'lqr'
         # ALGO = 'lqr_c'
-        ALGO = 'pid'
-    SYS = 'quadrotor_2D_attitude'
-    # SYS = 'quadrotor_3D_attitude'
+        # ALGO = 'pid'
+        # ALGO = 'fmpc'
+    # SYS = 'quadrotor_2D_attitude'
+    SYS = 'quadrotor_3D_attitude'
     TASK = 'tracking'
+    CTRL_ADD = '_tr'
     # TASK = 'stab'
     # PRIOR = '200'
     # PRIOR = '150'
     ADDITIONAL = ''
+    # ADDITIONAL = '_tr'
     # ADDITIONAL = '_9'
     # ADDITIONAL = '_11'
     # ADDITIONAL='_snap'
@@ -64,13 +67,13 @@ def run(gui=False, n_episodes=1, n_steps=None, save_data=True):
 
     # check if the config file exists
     assert os.path.exists(f'./config_overrides/{SYS}_{TASK}{ADDITIONAL}.yaml'), f'./config_overrides/{SYS}_{TASK}{ADDITIONAL}.yaml does not exist'
-    assert os.path.exists(f'./config_overrides/{ALGO}_{SYS}_{TASK}_{PRIOR}.yaml'), f'./config_overrides/{ALGO}_{SYS}_{TASK}_{PRIOR}.yaml does not exist'
+    assert os.path.exists(f'./config_overrides/{ALGO}_{SYS}_{TASK}_{PRIOR}{CTRL_ADD}.yaml'), f'./config_overrides/{ALGO}_{SYS}_{TASK}_{PRIOR}{CTRL_ADD}.yaml does not exist'
     if SAFETY_FILTER is None:
         sys.argv[1:] = ['--algo', ALGO,
                         '--task', agent,
                         '--overrides',
                             f'./config_overrides/{SYS}_{TASK}{ADDITIONAL}.yaml',
-                            f'./config_overrides/{ALGO}_{SYS}_{TASK}_{PRIOR}.yaml',
+                            f'./config_overrides/{ALGO}_{SYS}_{TASK}_{PRIOR}{CTRL_ADD}.yaml',
                         '--seed', '1',
                         '--use_gpu', 'True',
                         '--output_dir', f'./{ALGO}/results',
@@ -85,7 +88,7 @@ def run(gui=False, n_episodes=1, n_steps=None, save_data=True):
                         '--overrides',
                             f'./config_overrides/{SYS}_{TASK}{ADDITIONAL}.yaml',
                             f'./config_overrides/{ALGO}_{SYS}_{TASK}_{PRIOR}.yaml',
-                            f'./config_overrides/{SAFETY_FILTER}_{SYS}_{TASK}_{PRIOR}.yaml',
+                            f'./config_overrides/{SAFETY_FILTER}_{SYS}_{TASK}_{PRIOR}{CTRL_ADD}.yaml',
                         '--kv_overrides', f'sf_config.cost_function={MPSC_COST}',
                         '--seed', '2',
                         '--use_gpu', 'True',
@@ -222,6 +225,7 @@ def run(gui=False, n_episodes=1, n_steps=None, save_data=True):
 
     print('FINAL METRICS - ' + ', '.join([f'{key}: {value}' for key, value in metrics.items()]))
     print(f'pyb_client: {ctrl.env.PYB_CLIENT}')
+    print('rand', ctrl.rand_hist)
 
 # def plot_quad_eval(state_stack, input_stack, clipped_action_stack, env, save_path=None):
 def plot_quad_eval(state_stack, input_stack, env, save_path=None):

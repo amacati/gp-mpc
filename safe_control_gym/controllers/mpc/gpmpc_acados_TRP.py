@@ -71,6 +71,7 @@ class GPMPC_ACADOS_TRP(GPMPC):
             compute_ipopt_initial_guess: bool = True,
             use_RTI: bool = False,
             use_linear_prior: bool = True,
+            train_env_rand_info: dict = None,
             **kwargs
     ):
         super().__init__(
@@ -110,6 +111,8 @@ class GPMPC_ACADOS_TRP(GPMPC):
         self.Bd = np.eye(self.model.nx)[:, self.uncertain_dim]
         self.input_mask = None
         self.target_mask = None
+        self.train_env_rand_info = train_env_rand_info
+        self.rand_hist = {'task_rand': [], 'domain_rand': []}
 
         # MPC params
         # self.use_linear_prior = use_linear_prior
@@ -247,6 +250,11 @@ class GPMPC_ACADOS_TRP(GPMPC):
             train_env = self.env_func(randomized_init=True, seed=self.seed)
             train_env.action_space.seed(self.seed)
             train_envs = [train_env] * self.num_epochs
+        
+        # set up task randomization
+        if self.train_env_rand_info.type == 'task_rand':
+            for env in train_envs:
+                env.EPISODE_LEN_SEC = self.train_env_rand_info.episode_len_sec
         # init_test_states = get_random_init_states(env_func, num_test_episodes_per_epoch)
         test_envs = []
         if self.same_test_initial_state:
@@ -320,6 +328,8 @@ class GPMPC_ACADOS_TRP(GPMPC):
 
             # lengthscale, outputscale, noise, kern = self.gaussian_process.get_hyperparameters(as_numpy=True)
             # compute the condition number of the kernel matrix
+            self.rand_hist['task_rand'].append(train_envs[epoch].episode_len)
+            # self.rand_hist['noise
             # TODO: fix data logging
             np.savez(os.path.join(self.output_dir, 'data_%s'% epoch),
                     data_inputs=training_results['train_inputs'],
