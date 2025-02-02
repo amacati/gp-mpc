@@ -529,7 +529,13 @@ class MetricExtractor:
         Returns:
             episode_inference_time (double): The average inference time of all episodes.
         '''
-        return self.get_episode_data('inference_time_data', postprocess_func=lambda x: np.mean(x))
+        # self.data['controller_data'] 
+        if hasattr(self.data['controller_data'][0], 'inference_time'):
+            return self.get_episode_data('controller_data', 
+                                        postprocess_func=lambda x: np.mean(x['inference_time'][0]))
+        else:
+            return self.get_episode_data('inference_time_data', 
+                                        postprocess_func=lambda x: np.mean(x))
     
     def get_episode_early_stop(self):
         '''Occurence of early stop in episodes.
