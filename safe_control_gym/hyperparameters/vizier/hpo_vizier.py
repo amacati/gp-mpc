@@ -115,6 +115,10 @@ class HPO_Vizier(BaseHPO):
         """ Hyperparameter optimization.
         """
         if self.load_study:
+            # try to load the study from the endpoint file periodically
+            while not os.path.exists(f'{self.study_name}_vizier_endpoint.yaml'):
+                self.logger.info('Endpoint file not found. Waiting for the endpoint file to be created.')
+                time.sleep(10)
             with open(f'{self.study_name}_vizier_endpoint.yaml', 'r') as config_file:
                 endpoint = yaml.safe_load(config_file)['endpoint']
             clients.environment_variables.server_endpoint = endpoint
