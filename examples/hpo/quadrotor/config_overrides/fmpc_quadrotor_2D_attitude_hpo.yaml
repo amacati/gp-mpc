@@ -10,7 +10,7 @@ hpo_config:
   seed: 24
   save_n_best_hps: 1
   # budget
-  trials: 40
+  trials: 60
 
   # hyperparameters
   hps_config:
@@ -19,11 +19,11 @@ hpo_config:
       - 1.0e-6
       - 1.0e-6
     q_mpc: 
-      - 15
+      - 20
       - 0.001
       - 0.1
       - 0.001
-      - 15
+      - 20
       - 0.001
       - 0.1
       - 0.001
@@ -41,17 +41,3 @@ hpo_config:
     r_mpc:
     - 1.0e-07
     - 7.584670721859954e-05
-  optuna_hps:
-    horizon: 40
-    r_mpc:
-      - 1.0e-6
-      - 1.0e-6
-    q_mpc: 
-      - 15
-      - 0.001
-      - 0.1
-      - 0.001
-      - 15
-      - 0.001
-      - 0.1
-      - 0.001

@@ -32,38 +32,3 @@ algo_config:
   eval_interval: 13200
   eval_save_best: True
   tensorboard: False
-
-# algo_config:
-#   # model args
-#   hidden_dim: 8
-#   activation: "tanh"
-
-#   # loss args
-#   gamma: 0.98
-#   use_gae: True
-#   gae_lambda: 0.9
-#   clip_param: 0.2
-#   target_kl: 2.32e-2
-#   entropy_coef: 0.09
-#   quantile_count: 256
-#   value_loss: 'quantile_l1'
-
-#   # optim args
-#   opt_epochs: 20
-#   mini_batch_size: 256
-#   actor_lr: 0.0012
-#   critic_lr: 0.0012
-
-#   # runner args
-#   max_env_steps: 396000
-#   rollout_batch_size: 5
-#   rollout_steps: 660
-#   eval_batch_size: 10
-
-#   # misc
-#   log_interval: 13200
-#   save_interval: 660000
-#   num_checkpoints: 0
-#   eval_interval: 13200
-#   eval_save_best: True
-#   tensorboard: False

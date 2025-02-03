@@ -89,8 +89,8 @@ GPMPC_dict = {
     'optimization_iterations': {'values': [500, 1000, 1500, 2000, 2500, 3000], 'scale': 'uniform', 'type': int, 'cat': 'discrete'},  # type belongs to int due to 1 DoF
     'kernel': {'values': ['Matern', 'RBF'], 'scale': 'uniform', 'type': str, 'cat': 'categorical'},
     'learning_rate': {'values': [5e-4, 0.5], 'scale': 'log', 'type': float, 'cat': 'float'},  # type belongs to float due to 1 DoF
-    'q_mpc': {'values': [0.0001, 15], 'scale': 'uniform', 'type': list, 'cat': 'float'},
-    'r_mpc': {'values': [0.0001, 15], 'scale': 'uniform', 'type': list, 'cat': 'float'},
+    'q_mpc': {'values': [0.0001, 20], 'scale': 'uniform', 'type': list, 'cat': 'float'},
+    'r_mpc': {'values': [0.0001, 5], 'scale': 'uniform', 'type': list, 'cat': 'float'},
 }
 
 GPMPC_TP_dict = {
@@ -100,31 +100,31 @@ GPMPC_TP_dict = {
     'num_samples': {'values': [20, 30, 40, 50, 60, 70, 80], 'scale': 'uniform', 'type': int, 'cat': 'discrete'},
     'optimization_iterations': {'values': [500, 1000, 1500, 2000, 2500, 3000], 'scale': 'uniform', 'type': int, 'cat': 'discrete'},  # type belongs to int due to 1 DoF
     'learning_rate': {'values': [5e-4, 0.5], 'scale': 'log', 'type': float, 'cat': 'float'},  # type belongs to float due to 1 DoF
-    'q_mpc': {'values': [0.0001, 15], 'scale': 'uniform', 'type': list, 'cat': 'float'},
-    'r_mpc': {'values': [0.0001, 15], 'scale': 'uniform', 'type': list, 'cat': 'float'},
+    'q_mpc': {'values': [0.0001, 20], 'scale': 'uniform', 'type': list, 'cat': 'float'},
+    'r_mpc': {'values': [0.0001, 5], 'scale': 'uniform', 'type': list, 'cat': 'float'},
 }
 
 LMPC_dict = {
     'horizon': {'values': [15, 20, 25, 30, 35, 40, 45, 50], 'scale': 'uniform', 'type': int, 'cat': 'discrete'},
-    'q_mpc': {'values': [0.0001, 15], 'scale': 'uniform', 'type': list, 'cat': 'float'},
-    'r_mpc': {'values': [0.0001, 15], 'scale': 'uniform', 'type': list, 'cat': 'float'},
+    'q_mpc': {'values': [0.0001, 20], 'scale': 'uniform', 'type': list, 'cat': 'float'},
+    'r_mpc': {'values': [0.0001, 5], 'scale': 'uniform', 'type': list, 'cat': 'float'},
 }
 
 MPC_dict = {
     'horizon': {'values': [15, 20, 25, 30, 35, 40, 45, 50], 'scale': 'uniform', 'type': int, 'cat': 'discrete'},
-    'q_mpc': {'values': [0.0001, 15], 'scale': 'uniform', 'type': list, 'cat': 'float'},
-    'r_mpc': {'values': [0.0001, 15], 'scale': 'uniform', 'type': list, 'cat': 'float'},
+    'q_mpc': {'values': [0.0001, 20], 'scale': 'uniform', 'type': list, 'cat': 'float'},
+    'r_mpc': {'values': [0.0001, 5], 'scale': 'uniform', 'type': list, 'cat': 'float'},
 }
 
 FMPC_dict = {
     'horizon': {'values': [15, 20, 25, 30, 35, 40, 45, 50], 'scale': 'uniform', 'type': int, 'cat': 'discrete'},
-    'q_mpc': {'values': [0.0001, 15], 'scale': 'uniform', 'type': list, 'cat': 'float'},
+    'q_mpc': {'values': [0.0001, 20], 'scale': 'uniform', 'type': list, 'cat': 'float'},
     'r_mpc': {'values': [1e-7, 1e-4], 'scale': 'uniform', 'type': list, 'cat': 'float'},
 }
 
 LQR_dict = {
-    'q_lqr': {'values': [0.0001, 15], 'scale': 'uniform', 'type': list, 'cat': 'float'},
-    'r_lqr': {'values': [0.0001, 15], 'scale': 'uniform', 'type': list, 'cat': 'float'},
+    'q_lqr': {'values': [0.0001, 20], 'scale': 'uniform', 'type': list, 'cat': 'float'},
+    'r_lqr': {'values': [0.0001, 5], 'scale': 'uniform', 'type': list, 'cat': 'float'},
 }
 
 iLQR_dict = {
@@ -170,6 +170,7 @@ HYPERPARAMS_DICT = {
     'gpmpc_acados_TP': GPMPC_TP_dict,
     'fmpc': FMPC_dict,
     'linear_mpc': LMPC_dict,
+    'linear_mpc_acados': LMPC_dict,
     'mpc_acados': MPC_dict,
     'lqr': LQR_dict,
     'ilqr': iLQR_dict,
