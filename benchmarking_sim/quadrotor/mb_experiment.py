@@ -22,7 +22,7 @@ from safe_control_gym.utils.gpmpc_plotting import make_quad_plots
 script_path = os.path.dirname(os.path.realpath(__file__))
 
 @timing
-def run(gui=False, n_episodes=1, n_steps=None, save_data=True):
+def run(gui=False, n_episodes=1, n_steps=None, save_data=True, seed=1):
     '''The main function running experiments for model-based methods.
 
     Args:
@@ -33,7 +33,9 @@ def run(gui=False, n_episodes=1, n_steps=None, save_data=True):
     '''
     # read the additional arguments
     if len(sys.argv) > 1:
+        print('sys.argv', sys.argv)
         ALGO = sys.argv[1]
+        CTRL_ADD = sys.argv[2] if len(sys.argv) > 2 else ''
     else:
         # ALGO = 'ilqr'
         # ALGO = 'gp_mpc'
@@ -48,10 +50,11 @@ def run(gui=False, n_episodes=1, n_steps=None, save_data=True):
         # ALGO = 'lqr_c'
         # ALGO = 'pid'
         # ALGO = 'fmpc'
-    # SYS = 'quadrotor_2D_attitude'
-    SYS = 'quadrotor_3D_attitude'
+        CTRL_ADD = ''
+    # CTRL_ADD = '_tr'
+    SYS = 'quadrotor_2D_attitude'
+    # SYS = 'quadrotor_3D_attitude'
     TASK = 'tracking'
-    CTRL_ADD = '_tr'
     # TASK = 'stab'
     # PRIOR = '200'
     # PRIOR = '150'
@@ -74,7 +77,7 @@ def run(gui=False, n_episodes=1, n_steps=None, save_data=True):
                         '--overrides',
                             f'./config_overrides/{SYS}_{TASK}{ADDITIONAL}.yaml',
                             f'./config_overrides/{ALGO}_{SYS}_{TASK}_{PRIOR}{CTRL_ADD}.yaml',
-                        '--seed', '1',
+                        '--seed', repr(seed),
                         '--use_gpu', 'True',
                         '--output_dir', f'./{ALGO}/results',
                             ]
@@ -87,10 +90,10 @@ def run(gui=False, n_episodes=1, n_steps=None, save_data=True):
                         '--safety_filter', SAFETY_FILTER,
                         '--overrides',
                             f'./config_overrides/{SYS}_{TASK}{ADDITIONAL}.yaml',
-                            f'./config_overrides/{ALGO}_{SYS}_{TASK}_{PRIOR}.yaml',
-                            f'./config_overrides/{SAFETY_FILTER}_{SYS}_{TASK}_{PRIOR}{CTRL_ADD}.yaml',
+                            f'./config_overrides/{ALGO}_{SYS}_{TASK}_{PRIOR}{CTRL_ADD}.yaml',
+                            f'./config_overrides/{SAFETY_FILTER}_{SYS}_{TASK}_{PRIOR}.yaml',
                         '--kv_overrides', f'sf_config.cost_function={MPSC_COST}',
-                        '--seed', '2',
+                        '--seed', repr(seed),
                         '--use_gpu', 'True',
                         '--output_dir', f'./{ALGO}/results',
                             ]
@@ -99,9 +102,9 @@ def run(gui=False, n_episodes=1, n_steps=None, save_data=True):
     fac.add_argument('--n_episodes', type=int, default=1, help='number of episodes to run.')
     # merge config and create output directory
     config = fac.merge()
-    if ALGO in ['gpmpc_acados', 'gp_mpc' , 'gpmpc_acados_TP']:
+    if ALGO in ['gpmpc_acados', 'gp_mpc' , 'gpmpc_acados_TP', 'gpmpc_acados_TRP']:
         num_data_max = config.algo_config.num_epochs * config.algo_config.num_samples
-        config.output_dir = os.path.join(config.output_dir, PRIOR + '_' + repr(num_data_max))
+        config.output_dir = os.path.join(config.output_dir, PRIOR + '_' + repr(num_data_max)+ CTRL_ADD)
     # print('output_dir',  config.algo_config.output_dir)
     set_dir_from_config(config)
     config.algo_config.output_dir = config.output_dir
@@ -225,7 +228,10 @@ def run(gui=False, n_episodes=1, n_steps=None, save_data=True):
 
     print('FINAL METRICS - ' + ', '.join([f'{key}: {value}' for key, value in metrics.items()]))
     print(f'pyb_client: {ctrl.env.PYB_CLIENT}')
-    print('rand', ctrl.rand_hist)
+    if hasattr(ctrl, 'rand_hist'):
+        with open(f'./{config.output_dir}/rand_hist.txt', 'w') as file:
+            for key, value in ctrl.rand_hist.items():
+                file.write(f'{key}: {value}\n')
 
 # def plot_quad_eval(state_stack, input_stack, clipped_action_stack, env, save_path=None):
 def plot_quad_eval(state_stack, input_stack, env, save_path=None):
