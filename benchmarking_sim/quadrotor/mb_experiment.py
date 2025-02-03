@@ -35,13 +35,12 @@ def run(gui=False, n_episodes=1, n_steps=None, save_data=True, seed=1):
     if len(sys.argv) > 1:
         print('sys.argv', sys.argv)
         ALGO = sys.argv[1]
-        CTRL_ADD = sys.argv[2] if len(sys.argv) > 2 else ''
     else:
         # ALGO = 'ilqr'
         # ALGO = 'gp_mpc'
         # ALGO = 'gpmpc_acados'
-        # ALGO = 'gpmpc_acados_TP'
-        ALGO = 'gpmpc_acados_TRP'
+        ALGO = 'gpmpc_acados_TP'
+        # ALGO = 'gpmpc_acados_TRP'
         # ALGO = 'mpc'
         # ALGO = 'mpc_acados'
         # ALGO = 'linear_mpc_acados'
@@ -58,8 +57,8 @@ def run(gui=False, n_episodes=1, n_steps=None, save_data=True, seed=1):
     # TASK = 'stab'
     # PRIOR = '200'
     # PRIOR = '150'
-    ADDITIONAL = ''
-    # ADDITIONAL = '_tr'
+    # ADDITIONAL = ''
+    ADDITIONAL = '_tr'
     # ADDITIONAL = '_9'
     # ADDITIONAL = '_11'
     # ADDITIONAL='_snap'

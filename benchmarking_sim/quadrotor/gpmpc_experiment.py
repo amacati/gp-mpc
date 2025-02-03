@@ -30,7 +30,7 @@ if __name__ == '__main__':
             break
         try:
             sys.argv[1:] = ['gpmpc_acados_TP', # specify the controller
-                            '_tr']
+                            ]
             run(seed=seed)
             runtime_list.append(run.elapsed_time)
             suceeded += 1
