@@ -10,11 +10,11 @@ hpo_config:
   seed: 24
   save_n_best_hps: 1
   # budget
-  trials: 40
+  trials: 60
 
   # hyperparameters
   hps_config:
-    q_lqr: [5, 0.1, 5, 0.1, 0.5, 0.01]
+    q_lqr: [12, 0.1, 12, 0.1, 0.5, 0.01]
     r_lqr: [1.0, 1.0]
   vizier_hps:
     q_lqr:
@@ -27,14 +27,3 @@ hpo_config:
     r_lqr:
     - 1.2497823191792372
     - 0.8638794170664649
-  optuna_hps:
-    q_lqr:
-    - 5.0
-    - 0.1
-    - 5.0
-    - 0.1
-    - 0.5
-    - 0.01
-    r_lqr:
-    - 1.0
-    - 1.0

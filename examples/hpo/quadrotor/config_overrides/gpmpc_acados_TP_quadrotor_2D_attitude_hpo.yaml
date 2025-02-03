@@ -10,7 +10,7 @@ hpo_config:
   seed: 24
   save_n_best_hps: 1
   # budget
-  trials: 40
+  trials: 60
 
   # hyperparameters
   hps_config:
@@ -24,7 +24,7 @@ hpo_config:
     n_ind_points: 40
     num_epochs: 4
     num_samples: 50
-    q_mpc: [15, 0.1, 15, 0.1, 0.5, 0.01]
+    q_mpc: [18, 0.1, 18, 0.1, 0.5, 0.01]
     r_mpc: [15., 5.]
   vizier_hps:
     horizon: 25
@@ -47,26 +47,5 @@ hpo_config:
     r_mpc:
     - 15.0
     - 5.983763933381028
-  optuna_hps:
-    horizon: 40
-    learning_rate:
-    - 0.037698716128765714
-    - 0.037698716128765714
-    n_ind_points: 40
-    num_epochs: 9
-    num_samples: 50
-    optimization_iterations:
-    - 500
-    - 500
-    q_mpc:
-    - 12.522030216382474
-    - 0.005365037059564759
-    - 14.23494784523414
-    - 9.431441342048704
-    - 0.11647151972157371
-    - 0.02161096348902896
-    r_mpc:
-    - 13.96472043195951
-    - 0.17094019932776305
 
 
