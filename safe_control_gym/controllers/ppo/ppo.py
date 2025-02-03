@@ -155,6 +155,10 @@ class PPO(BaseController):
             self.env.set_env_random_state(state['env_random_state'])
             self.logger.load(self.total_steps)
 
+    def setup_results_dict(self):
+        '''Setup the results dictionary to store run information.'''
+        self.results_dict = {'inference_time': []}
+
     def learn(self,
               env=None,
               **kwargs
@@ -212,7 +216,9 @@ class PPO(BaseController):
 
         with torch.no_grad():
             obs = torch.FloatTensor(obs).to(self.device)
+            start = time.time()
             action, v, logp = self.agent.ac.act(obs, True)
+            self.results_dict['inference_time'].append(time.time()-start)
         if extra_info:
             return action, v, logp
         return action
