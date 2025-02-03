@@ -40,29 +40,23 @@ task_config:
 
   init_state_randomization_info:
     init_x:
-      distrib: 'uniform'
-      low: -0.05
-      high: 0.05
+      distrib: 'normal'
+      scale: 0.0011629923113331312
     init_x_dot:
-      distrib: 'uniform'
-      low: -0.05
-      high: 0.05
+      distrib: 'normal'
+      scale: 0.003635597781389117
     init_z:
-      distrib: 'uniform'
-      low: -0.05
-      high: 0.05
+      distrib: 'normal'
+      scale: 0.0024990695232428458
     init_z_dot:
-      distrib: 'uniform'
-      low: -0.05
-      high: 0.05
+      distrib: 'normal'
+      scale: 0.010193088084183025
     init_theta:
-      distrib: 'uniform'
-      low: -0.05
-      high: 0.05
+      distrib: 'normal'
+      scale: 0.0024088251667187467
     init_theta_dot:
-      distrib: 'uniform'
-      low: -0.05
-      high: 0.05
+      distrib: 'normal'
+      scale: 0.02387283406599296
 
   task: traj_tracking
   task_info:
@@ -108,7 +102,7 @@ task_config:
         std: 0.05
     observation:
       - disturbance_func: white_noise
-        std: [5.6e-05, 1.5e-02, 2.9e-05, 8.0e-03, 1.3e-03, 3.6e-01]
+        std: [5.6e-05, 1.5e-02, 2.9e-05, 8.0e-03, 1.3e-03, 3.5e-03]
     action:
       - disturbance_func: impulse
         magnitude: 0.01
