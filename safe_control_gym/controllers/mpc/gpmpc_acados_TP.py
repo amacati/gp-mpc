@@ -71,7 +71,6 @@ class GPMPC_ACADOS_TP(GPMPC):
             compute_ipopt_initial_guess: bool = True,
             use_RTI: bool = False,
             use_linear_prior: bool = True,
-            train_env_rand_info: dict = None,
             **kwargs
     ):
         super().__init__(
@@ -111,7 +110,6 @@ class GPMPC_ACADOS_TP(GPMPC):
         self.Bd = np.eye(self.model.nx)[:, self.uncertain_dim]
         self.input_mask = None
         self.target_mask = None
-        self.train_env_rand_info = train_env_rand_info
         self.rand_hist = {'task_rand': [], 'domain_rand': []}
 
         # MPC params
@@ -238,11 +236,6 @@ class GPMPC_ACADOS_TP(GPMPC):
             train_env.action_space.seed(self.seed)
             train_envs = [train_env] * self.num_epochs
         
-        # set up task randomization
-        if self.train_env_rand_info.type == 'task_rand':
-            for env in train_envs:
-                env.EPISODE_LEN_SEC = self.train_env_rand_info.episode_len_sec
-        # init_test_states = get_random_init_states(env_func, num_test_episodes_per_epoch)
         test_envs = []
         if self.same_test_initial_state:
             for epoch in range(self.num_epochs):

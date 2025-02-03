@@ -37,7 +37,11 @@ class BaseExperiment:
         self.metric_extractor = MetricExtractor()
         self.verbose = verbose
         self.env = env
-        self.MAX_STEPS = int(self.env.CTRL_FREQ * self.env.EPISODE_LEN_SEC)
+        # NOTE: a hack for task randomization, need to be removed
+        if isinstance(self.env.EPISODE_LEN_SEC, list):
+            self.MAX_STEPS = int(self.env.CTRL_FREQ * max(self.env.EPISODE_LEN_SEC))
+        else:
+            self.MAX_STEPS = int(self.env.CTRL_FREQ * self.env.EPISODE_LEN_SEC) 
         if not is_wrapped(self.env, RecordDataWrapper):
             self.env = RecordDataWrapper(self.env)
         self.ctrl = ctrl
