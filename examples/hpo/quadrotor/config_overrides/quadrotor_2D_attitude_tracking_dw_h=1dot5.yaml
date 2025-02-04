@@ -14,7 +14,7 @@ task_config:
     init_theta: 0
     init_theta_dot: 0
   randomized_init: True
-  randomized_inertial_prop: True
+  randomized_inertial_prop: False
 
   inertial_prop_randomization_info:
     beta_1: # Nominal: 18.11
@@ -103,14 +103,8 @@ task_config:
     observation:
       - disturbance_func: white_noise
         std: [5.6e-05, 1.5e-02, 2.9e-05, 8.0e-03, 1.3e-03, 3.5e-03]
-    # action:
-    #   - disturbance_func: impulse
-    #     magnitude: 0.01
-    #     step_offset: 2
-    #     duration: 1
-    #     decary_rate: 1
     downwash:
-      - disturbance_func: uniform 
+      - disturbance_func: uniform
         low:  1.
         high: 1.
         mode: fix
