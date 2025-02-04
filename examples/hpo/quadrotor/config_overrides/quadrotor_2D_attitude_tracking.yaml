@@ -90,8 +90,8 @@ task_config:
       constrained_variable: state
     - constraint_form: default_constraint
       constrained_variable: input
-      upper_bounds: [0.58212, 0.7]
-      lower_bounds: [0.09702, -0.7]
+      # upper_bounds: [0.58212, 0.7]
+      # lower_bounds: [0.09702, -0.7]
 
   done_on_out_of_bound: True
   done_on_violation: False
@@ -99,13 +99,20 @@ task_config:
   disturbances:
     dynamics:
       - disturbance_func: white_noise
-        std: 0.05
+        std: 0.005
     observation:
       - disturbance_func: white_noise
         std: [5.6e-05, 1.5e-02, 2.9e-05, 8.0e-03, 1.3e-03, 3.5e-03]
-    action:
-      - disturbance_func: impulse
-        magnitude: 0.01
-        step_offset: 2
-        duration: 1
-        decary_rate: 1
+    # action:
+    #   - disturbance_func: impulse
+    #     magnitude: 0.01
+    #     step_offset: 2
+    #     duration: 1
+    #     decary_rate: 1
+    downwash:
+      - disturbance_func: uniform # dummy
+        low:  1. # dummy
+        high: 1. # dummy
+        mode: fix
+        # mode: track
+        pos: [0, 0, 0] # z = 0, will cause no downwash
