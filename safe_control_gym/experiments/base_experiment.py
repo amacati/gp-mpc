@@ -23,6 +23,7 @@ class BaseExperiment:
                  safety_filter=None,
                  learn_safety_filter=False,
                  verbose: bool = False,
+                 reset_when_created: bool = True,
                  ):
         '''Creates a generic experiment class to run evaluations and collect standard metrics.
 
@@ -52,7 +53,8 @@ class BaseExperiment:
         self.safety_filter = safety_filter
         self.learn_safety_filter = learn_safety_filter
 
-        self.reset()
+        if reset_when_created:
+            self.reset()
 
     def run_evaluation(self, training=False, n_episodes=None, n_steps=None, done_on_max_steps=None, log_freq=None, verbose=True, **kwargs):
         '''Evaluate a trained controller.

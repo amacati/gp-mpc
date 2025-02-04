@@ -810,8 +810,10 @@ class GPMPC(MPC, ABC):
         x_next_seq_int = []
         actions_int = []
         for episode_i in range(n_episodes):
-            run_results_int = all_runs[epoch_i][episode_i]
-            n = run_results_int['action'].shape[0]
+            # run_results_int = all_runs[epoch_i][episode_i]
+            # n = run_results_int['action'].shape[0]
+            run_results_int = all_runs[epoch_i][episode_i][0]
+            n = run_results_int['action'][0].shape[0]
             if num_samples_per_episode < n:
                 if rand_generator is not None:
                     rand_inds_int = rand_generator.choice(n - 1, num_samples_per_episode, replace=False)
@@ -820,9 +822,12 @@ class GPMPC(MPC, ABC):
             else:
                 rand_inds_int = np.arange(n - 1)
             next_inds_int = rand_inds_int + 1
-            x_seq_int.append(run_results_int.obs[rand_inds_int, :])
-            actions_int.append(run_results_int.action[rand_inds_int, :])
-            x_next_seq_int.append(run_results_int.obs[next_inds_int, :])
+            # x_seq_int.append(run_results_int.obs[rand_inds_int, :])
+            # actions_int.append(run_results_int.action[rand_inds_int, :])
+            # x_next_seq_int.append(run_results_int.obs[next_inds_int, :])
+            x_seq_int.append(run_results_int['obs'][0][rand_inds_int, :])
+            actions_int.append(run_results_int['action'][0][rand_inds_int, :])
+            x_next_seq_int.append(run_results_int['obs'][0][next_inds_int, :])
         x_seq_int = np.vstack(x_seq_int)
         actions_int = np.vstack(actions_int)
         x_next_seq_int = np.vstack(x_next_seq_int)

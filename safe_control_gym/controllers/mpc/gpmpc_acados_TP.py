@@ -30,6 +30,7 @@ from safe_control_gym.controllers.mpc.gpmpc_base import GPMPC
 from safe_control_gym.controllers.mpc.mpc_acados import MPC_ACADOS
 from safe_control_gym.envs.benchmark_env import Task
 from safe_control_gym.utils.utils import timing
+from safe_control_gym.experiments.base_experiment import BaseExperiment
 
 class GPMPC_ACADOS_TP(GPMPC):
     '''Implements a GP-MPC controller with Acados optimization.'''
@@ -225,43 +226,57 @@ class GPMPC_ACADOS_TP(GPMPC):
 
         train_runs = {0: {}}
         test_runs = {0: {}}
+        
+        # epoch seed factor 
+        np.random.seed(self.seed)
+        epoch_seeds = np.random.randint(1000, size=self.num_epochs, dtype=int) * self.seed
+        epoch_seeds = [int(seed) for seed in epoch_seeds]
 
         if self.same_train_initial_state:
             train_envs = []
             for epoch in range(self.num_epochs):
-                train_envs.append(self.env_func(randomized_init=True, seed=self.seed))
-                train_envs[epoch].action_space.seed(self.seed)
+                train_envs.append(self.env_func(randomized_init=True, seed=epoch_seeds[epoch]))
+                train_envs[epoch].action_space.seed(epoch_seeds[epoch])
         else:
-            train_env = self.env_func(randomized_init=True, seed=self.seed)
-            train_env.action_space.seed(self.seed)
+            train_env = self.env_func(randomized_init=True, seed=epoch_seeds[0])
+            train_env.action_space.seed(epoch_seeds[0])
             train_envs = [train_env] * self.num_epochs
         
         test_envs = []
         if self.same_test_initial_state:
             for epoch in range(self.num_epochs):
-                test_envs.append(self.env_func(randomized_init=True, seed=self.seed))
-                test_envs[epoch].action_space.seed(self.seed)
+                test_envs.append(self.env_func(randomized_init=True, seed=epoch_seeds[epoch]))
+                test_envs[epoch].action_space.seed(epoch_seeds[epoch])
         else:
-            test_env = self.env_func(randomized_init=True, seed=self.seed)
-            test_env.action_space.seed(self.seed)
+            test_env = self.env_func(randomized_init=True, seed=epoch_seeds[0])
+            test_env.action_space.seed(epoch_seeds[0])
             test_envs = [test_env] * self.num_epochs
 
+        # creating train and test experiments
+        train_experiments = [BaseExperiment(env=env, ctrl=self, reset_when_created=False) for env in train_envs[1:]]
+        test_experiments = [BaseExperiment(env=env, ctrl=self, reset_when_created=False) for env in test_envs[1:]]
+        # first experiments are for the prior
+        train_experiments.insert(0, BaseExperiment(env=train_envs[0], ctrl=self.prior_ctrl, reset_when_created=False))
+        test_experiments.insert(0, BaseExperiment(env=test_envs[0], ctrl=self.prior_ctrl, reset_when_created=False))
+        
         for episode in range(self.num_train_episodes_per_epoch):
-            run_results = self.prior_ctrl.run(env=train_envs[0],
-                                              terminate_run_on_done=self.terminate_train_on_done)
+            # run_results = self.prior_ctrl.run(env=train_envs[0],
+            #                                   terminate_run_on_done=self.terminate_train_on_done)
+            run_results = train_experiments[0].run_evaluation(n_episodes=1)
             train_runs[0].update({episode: munch.munchify(run_results)})
-            self.reset()
+            # self.reset()
         for test_ep in range(self.num_test_episodes_per_epoch):
-            run_results = self.run(env=test_envs[0],
-                                   terminate_run_on_done=self.terminate_test_on_done)
+            # run_results = self.run(env=test_envs[0],
+            #                        terminate_run_on_done=self.terminate_test_on_done)
+            run_results = test_experiments[0].run_evaluation(n_episodes=1)
             test_runs[0].update({test_ep: munch.munchify(run_results)})
-        self.reset()
-
+        # self.reset()
+        
         training_results = None
         for epoch in range(1, self.num_epochs):
             # only take data from the last episode from the last epoch
             # if self.rand_data_selection:
-            episode_length = train_runs[epoch - 1][self.num_train_episodes_per_epoch - 1]['obs'].shape[0]
+            episode_length = train_runs[epoch - 1][self.num_train_episodes_per_epoch - 1][0]['obs'][0].shape[0]
             if True:
                 x_seq, actions, x_next_seq, x_dot_seq = self.gather_training_samples(train_runs, epoch - 1, self.num_samples, train_envs[epoch - 1].np_random)
             else:
@@ -275,11 +290,12 @@ class GPMPC_ACADOS_TP(GPMPC):
             # Test new policy.
             test_runs[epoch] = {}
             for test_ep in range(self.num_test_episodes_per_epoch):
-                self.x_prev = test_runs[epoch - 1][episode]['obs'][:self.T + 1, :].T
-                self.u_prev = test_runs[epoch - 1][episode]['action'][:self.T, :].T
-                self.reset()
-                run_results = self.run(env=test_envs[epoch],
-                                       terminate_run_on_done=self.terminate_test_on_done)
+                self.x_prev = test_runs[epoch - 1][episode][0]['obs'][0][:self.T + 1, :].T
+                self.u_prev = test_runs[epoch - 1][episode][0]['action'][0][:self.T, :].T
+                # self.reset()
+                # run_results = self.run(env=test_envs[epoch],
+                #                        terminate_run_on_done=self.terminate_test_on_done)
+                run_results = test_experiments[epoch].run_evaluation(n_episodes=1)
                 test_runs[epoch].update({test_ep: munch.munchify(run_results)})
 
             x_seq, actions, x_next_seq, x_dot_seq = self.gather_training_samples(test_runs, epoch - 1, episode_length)
@@ -299,16 +315,27 @@ class GPMPC_ACADOS_TP(GPMPC):
             # gather training data
             train_runs[epoch] = {}
             for episode in range(self.num_train_episodes_per_epoch):
-                self.reset()
-                self.x_prev = train_runs[epoch - 1][episode]['obs'][:self.T + 1, :].T
-                self.u_prev = train_runs[epoch - 1][episode]['action'][:self.T, :].T
-                run_results = self.run(env=train_envs[epoch],
-                                       terminate_run_on_done=self.terminate_train_on_done)
+                # self.reset()
+                # self.x_prev = train_runs[epoch - 1][episode]['obs'][:self.T + 1, :].T
+                # self.u_prev = train_runs[epoch - 1][episode]['action'][:self.T, :].T
+                # run_results = self.run(env=train_envs[epoch],
+                #                        terminate_run_on_done=self.terminate_train_on_done)
+                self.x_prev = train_runs[epoch - 1][episode][0]['obs'][0][:self.T + 1, :].T
+                self.u_prev = train_runs[epoch - 1][episode][0]['action'][0][:self.T, :].T
+                run_results = train_experiments[epoch].run_evaluation(n_episodes=1)
                 train_runs[epoch].update({episode: munch.munchify(run_results)})
 
             # lengthscale, outputscale, noise, kern = self.gaussian_process.get_hyperparameters(as_numpy=True)
             # compute the condition number of the kernel matrix
-            self.rand_hist['task_rand'].append(train_envs[epoch].episode_len)
+            # self.rand_hist['task_rand'].append(train_envs[epoch].episode_len)
+            self.rand_hist['task_rand'].append(test_experiments[epoch].env.episode_len)
+            domain_rand_info = {}
+            for keys, values in test_experiments[epoch].env.disturbances.items():
+                if keys == 'downwash':
+                    domain_rand_info[keys] = test_experiments[epoch].env.dw_model.pos
+                else:
+                    domain_rand_info[keys] = values.disturbances[0].std
+            self.rand_hist['domain_rand'].append(domain_rand_info)
             # TODO: fix data logging
             np.savez(os.path.join(self.output_dir, 'data_%s'% epoch),
                     data_inputs=training_results['train_inputs'],
@@ -335,10 +362,14 @@ class GPMPC_ACADOS_TP(GPMPC):
                     data_targets=training_results['train_targets'])
 
         # close environments
-        for env in train_envs:
-            env.close()
-        for env in test_envs:
-            env.close()
+        for experiment in train_experiments:
+            experiment.env.close()
+        for experiment in test_experiments:
+            experiment.env.close()
+        # for env in train_envs:
+        #     env.close()
+        # for env in test_envs:
+        #     env.close()
 
         self.train_runs = train_runs
         self.test_runs = test_runs

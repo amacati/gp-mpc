@@ -18,7 +18,7 @@ def get_runtime(test_runs, train_runs):
     # num_episode = len(train_runs[0].keys())
     num_train_samples_by_epoch = [] # number of training data
     # steps_per_episode = len(test_runs[0][0]['runtime'])
-    num_steps_max = np.max([len(test_runs[epoch][0]['runtime']) for epoch in range(num_epochs)])
+    # num_steps_max = np.max([len(test_runs[epoch][0][0]['inference_time_data'][0]) for epoch in range(num_epochs)])
 
     mean_runtime = np.zeros(num_epochs)
     std_runtime = np.zeros(num_epochs)
@@ -29,7 +29,7 @@ def get_runtime(test_runs, train_runs):
         num_samples =  len(train_runs[epoch].keys())
         num_train_samples_by_epoch.append(num_samples)
         # num_steps = len(test_runs[epoch][0]['runtime'])
-        runtime = test_runs[epoch][0]['runtime'][1:] # remove the first step
+        runtime = test_runs[epoch][0][0]['inference_time_data'][0][1:] # remove the first step
         
         mean_runtime[epoch] = np.mean(runtime)
         std_runtime[epoch] = np.std(runtime)
@@ -67,11 +67,11 @@ def plot_runs(all_runs, num_epochs, episode=0, ind=0, ylabel='x position', dir=N
     if traj is not None:
         plt.plot(traj[:, ind], label='Reference', color='gray', linestyle='--')
     # plot the prior controller
-    plt.plot(all_runs[0][episode]['state'][:, ind], label='prior MPC')
+    plt.plot(all_runs[0][0][episode]['state'][0][:, ind], label='prior MPC')
     # plot each learning epoch
     for epoch in range(1, num_epochs):
         # plot the first episode of each epoch
-        plt.plot(all_runs[epoch][episode]['state'][:, ind], label='GP-MPC %s' % epoch)
+        plt.plot(all_runs[epoch][episode][0]['state'][0][:, ind], label='GP-MPC %s' % epoch)
     plt.title(ylabel)
     plt.xlabel('Step')
     plt.ylabel(ylabel)
@@ -87,11 +87,11 @@ def plot_runs(all_runs, num_epochs, episode=0, ind=0, ylabel='x position', dir=N
 
 def plot_runs_input(all_runs, num_epochs, episode=0, ind=0, ylabel='x position', dir=None,):
     # plot the prior controller
-    plt.plot(all_runs[0][episode]['action'][:, ind], label='prior MPC')
+    plt.plot(all_runs[0][episode][0]['action'][0][:, ind], label='prior MPC')
     # plot each learning epoch
     for epoch in range(1, num_epochs):
         # plot the first episode of each epoch
-        plt.plot(all_runs[epoch][episode]['action'][:, ind], label='GP-MPC %s' % epoch)
+        plt.plot(all_runs[epoch][episode][0]['action'][0][:, ind], label='GP-MPC %s' % epoch)
     plt.title(ylabel)
     plt.xlabel('Step')
     plt.ylabel(ylabel)
@@ -266,9 +266,9 @@ def plot_xz_trajectory(runs, ref, dir):
     num_epochs = len(runs)
     plt.figure()
     plt.plot(ref[:, 0], ref[:, 2], label='Reference', color='gray', linestyle='--')
-    plt.plot(runs[0][0]['obs'][:, 0], runs[0][0]['obs'][:, 2], label='prior MPC')
+    plt.plot(runs[0][0][0]['obs'][0][:, 0], runs[0][0][0]['obs'][0][:, 2], label='prior MPC')
     for epoch in range(1, num_epochs):
-        plt.plot(runs[epoch][0]['obs'][:, 0], runs[epoch][0]['obs'][:, 2], label='GP-MPC %s' % epoch)
+        plt.plot(runs[epoch][0][0]['obs'][0][:, 0], runs[epoch][0][0]['obs'][0][:, 2], label='GP-MPC %s' % epoch)
     plt.title('X-Z plane path')
     plt.xlabel('X [m]')
     plt.ylabel('Z [m]')
@@ -319,10 +319,9 @@ def make_plots(test_runs, train_runs, dir):
 
 
 def make_quad_plots(test_runs, train_runs, trajectory, dir):
-    nx = test_runs[0][0]['state'].shape[1]
-    nu = test_runs[0][0]['action'].shape[1]
+    num_steps, nx = test_runs[0][0][0]['state'][0].shape
+    nu = test_runs[0][0][0]['action'][0].shape[1]
     # trim the traj steps to mach the evaluation steps
-    num_steps = test_runs[0][0]['obs'].shape[0]
     trajectory = trajectory[0:num_steps, :]
     num_epochs = len(test_runs)
     num_episodes = len(test_runs[0])
@@ -342,18 +341,19 @@ def make_quad_plots(test_runs, train_runs, trajectory, dir):
     for epoch in range(1, num_epochs):
         num_train_episodes = len(train_runs[epoch])
         for episode in range(num_train_episodes):
-            num_points += train_runs[epoch][episode]['obs'].shape[0]
+            num_points += train_runs[epoch][episode][0]['obs'][0].shape[0]
         num_points_per_epoch.append(num_points)
 
     # plot learning curves
-    common_costs = get_quad_cost(test_runs, trajectory)
-    plot_learning_curve(common_costs, num_points_per_epoch, 'common_xz_cost_learning_curve', fig_dir)
-    rmse_error = get_quad_average_rmse_error(test_runs, trajectory)
+    # common_costs = get_quad_cost(test_runs, trajectory)
+    # plot_learning_curve(common_costs, num_points_per_epoch, 'common_xz_cost_learning_curve', fig_dir)
+    # rmse_error = get_quad_average_rmse_error(test_runs, trajectory
+    rmse_error = [test_runs[epoch][0][1]['rmse'] for epoch in range(num_epochs)]
     plot_learning_curve(rmse_error, num_points_per_epoch, 'rmse_error_learning_curve', fig_dir)
-    rmse_error_xz = get_quad_average_rmse_error_xz_only(test_runs, trajectory)
-    plot_learning_curve(rmse_error_xz, num_points_per_epoch, 'rmse_xz_error_learning_curve', fig_dir)
-    rmse_error_state = get_quad_average_rmse_error_xyz(test_runs, trajectory)
-    plot_learning_curve(rmse_error_state, num_points_per_epoch, 'rmse_xyz_error_learning_curve', fig_dir)
+    # rmse_error_xz = get_quad_average_rmse_error_xz_only(test_runs, trajectory)
+    # plot_learning_curve(rmse_error_xz, num_points_per_epoch, 'rmse_xz_error_learning_curve', fig_dir)
+    # rmse_error_state = get_quad_average_rmse_error_xyz(test_runs, trajectory)
+    # plot_learning_curve(rmse_error_state, num_points_per_epoch, 'rmse_xyz_error_learning_curve', fig_dir)
     runtime_result = get_runtime(test_runs, train_runs)
     plot_runtime(runtime_result, num_points_per_epoch, fig_dir)
     
