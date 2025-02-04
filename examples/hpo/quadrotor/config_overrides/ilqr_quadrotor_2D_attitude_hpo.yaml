@@ -10,7 +10,7 @@ hpo_config:
   seed: 24
   save_n_best_hps: 1
   # budget
-  trials: 40
+  trials: 60
 
   # hyperparameters
   hps_config:
@@ -22,9 +22,4 @@ hpo_config:
     epsilon: 0.001
     lamb_factor: 15
     lamb_max: 2000
-    max_iterations: 10
-  optuna_hps:
-    epsilon: 0.0005
-    lamb_factor: 15
-    lamb_max: 3000
     max_iterations: 10
