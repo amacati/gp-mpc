@@ -18,22 +18,28 @@ if __name__ == '__main__':
     #     runtime_list.append(run.elapsed_time)
     # print(f'Average runtime for {num_seed} runs: \
     #       {np.mean(runtime_list):.3f} sec')
+    ALGO = sys.argv[1]
+    ADDITIONAL = sys.argv[2]
 
     runtime_list = []
-    num_seed = 1
+    num_seed = 50
     start_seed = 1 # [1, 5, 6, 8, 9, 11, 12]
     suceeded = 0
     seed = start_seed
     while suceeded < num_seed:  
-        if seed > 2:
-            print(f'Only {suceeded} out of {num_seed} runs succeeded')
+        if seed > num_seed + start_seed:
+            print(f'{suceeded} out of {num_seed} runs succeeded')
             break
         try:
-            sys.argv[1:] = ['gpmpc_acados_TP', # specify the controller
+            sys.argv[1:] = [ALGO,
+                            ADDITIONAL,
+                            ]
+            # sys.argv[1:] = ['gpmpc_acados_TP', # specify the controller
                             # '_dwr',
                             # '_obsr',
-                            '_procr'
-                            ]
+                            # '_procr'
+                            # '_tr'
+                            # ]
             run(seed=seed)
             runtime_list.append(run.elapsed_time)
             suceeded += 1
