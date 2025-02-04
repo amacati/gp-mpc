@@ -25,7 +25,9 @@ script_path = os.path.dirname(os.path.realpath(__file__))
 @timing
 def run(gui=False, n_episodes=1, n_steps=None, save_data=True, 
         seed=2, Additional='', ALGO='pid', SYS='quadrotor_2D_attitude',
-        noise_factor=1, dw_height_scale=None, eval_task=None):
+        noise_factor=1, 
+        dw_height=None, dw_height_scale=None, 
+        eval_task=None):
     '''The main function running experiments for model-based methods.
 
     Args:
@@ -142,14 +144,18 @@ def run(gui=False, n_episodes=1, n_steps=None, save_data=True,
         config.task_config.disturbances.dynamics[0]['std'] = noise_factor * default_noise_std 
         print(f'Amplified process noise std: {config.task_config.disturbances.dynamics[0]["std"]}')
     # downwash height scale
-    if dw_height_scale is not None:
-        max_dw_height, min_dw_height = 3, 0.5
-        dw_height_space = max_dw_height - min_dw_height
-        traj_center = config.task_config.task_info.trajectory_position_offset[1] # 1 [m] by default
-        config.task_config.disturbances.downwash[0].pos[-1] = traj_center + min_dw_height + \
-                                                            dw_height_scale * dw_height_space
-        print(f'dw_height_scale: {dw_height_scale:.2f}')
-        print('Amplified downwash height: ', config.task_config.disturbances.downwash[0].pos[-1])
+    elif eval_task == 'downwash':
+        if dw_height is not None:
+            config.task_config.disturbances.downwash[0].pos[-1] = dw_height
+            print('downwash height: ', config.task_config.disturbances.downwash[0].pos)
+        elif dw_height_scale is not None:
+            max_dw_height, min_dw_height = 3, 0.5
+            dw_height_space = max_dw_height - min_dw_height
+            traj_center = config.task_config.task_info.trajectory_position_offset[1] # 1 [m] by default
+            config.task_config.disturbances.downwash[0].pos[-1] = traj_center + min_dw_height + \
+                                                                dw_height_scale * dw_height_space
+            print(f'dw_height_scale: {dw_height_scale:.2f}')
+            print('downwash height: ', config.task_config.disturbances.downwash[0].pos[-1])
     
     # Create an environment
     env_func = partial(make,
@@ -231,6 +237,7 @@ def run(gui=False, n_episodes=1, n_steps=None, save_data=True,
 
 
         # Close environments
+        experiment.close()
         static_env.close()
         static_train_env.close()
 

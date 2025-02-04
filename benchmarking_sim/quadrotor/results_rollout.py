@@ -19,6 +19,7 @@ task_description = munch.munchify({
     'algo': algo,
     'eval_task': 'rollout',
     'start_seed': start_seed,
-    'SYS': 'quadrotor_3D_attitude',
+    # 'SYS': 'quadrotor_3D_attitude',
+    'SYS': 'quadrotor_2D_attitude',
     })
 run_rollouts(task_description)

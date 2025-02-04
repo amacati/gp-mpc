@@ -37,7 +37,7 @@ algo = sys.argv[1]
 # noise factor test
 additional = '_11'
 # noise_factor_list = np.arange(1, 201, 10)
-noise_factor_list = np.arange(0, 50, 10)
+noise_factor_list = np.arange(0, 201, 10)
 noise_factor_list[0] = 1
 # for algo in ['pid', 'lqr', 'ilqr']:
 for noise_factor in noise_factor_list:
@@ -49,7 +49,8 @@ for noise_factor in noise_factor_list:
             'eval_task': 'obs_noise',
             'num_seed': 1,
             'start_seed': start_seed,
-            'SYS': 'quadrotor_3D_attitude',
+            # 'SYS': 'quadrotor_3D_attitude',
+            'SYS': 'quadrotor_2D_attitude', 
             })
         run_rollouts(task_description)
         
@@ -63,6 +64,7 @@ for noise_factor in noise_factor_list:
             'eval_task': 'proc_noise',
             'num_seed': 1,
             'start_seed': start_seed,
-            'SYS': 'quadrotor_3D_attitude',
+            # 'SYS': 'quadrotor_3D_attitude',
+            'SYS': 'quadrotor_2D_attitude', 
             })
         run_rollouts(task_description)
