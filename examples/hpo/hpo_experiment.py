@@ -14,6 +14,11 @@ def hpo(config):
         * to start HPO, use with `--func hpo`.
     '''
 
+    # initialize safety filter
+    if 'safety_filter' not in config:
+        config.safety_filter = None
+        config.sf_config = None
+
     # change the cost function for rl methods
     if config.algo == 'ppo' or config.algo == 'sac' or config.algo == 'dppo':
         config.task_config.cost = 'rl_reward'
@@ -44,11 +49,6 @@ def hpo(config):
     set_dir_from_config(config)
     set_seed_from_config(config)
     set_device_from_config(config)
-
-    # initialize safety filter
-    if 'safety_filter' not in config:
-        config.safety_filter = None
-        config.sf_config = None
 
     # HPO
     if config.sampler == 'optuna':
