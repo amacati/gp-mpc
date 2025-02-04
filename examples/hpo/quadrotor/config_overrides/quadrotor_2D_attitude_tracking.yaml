@@ -79,7 +79,7 @@ task_config:
     alpha_3: 124.8
     pitch_bias: 0.0 # in radian
 
-  episode_len_sec: 11
+  episode_len_sec: [9, 11, 15]
   cost: quadratic
 
   rew_state_weight: [10.0, 0.1, 10.0, 0.1, 0.1, 0.001]

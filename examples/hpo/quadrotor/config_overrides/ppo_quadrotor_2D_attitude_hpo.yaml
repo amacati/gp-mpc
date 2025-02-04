@@ -10,7 +10,7 @@ hpo_config:
   seed: 24
   save_n_best_hps: 1
   # budget
-  trials: 40
+  trials: 60
 
   # hyperparameters
   hps_config:
@@ -62,28 +62,4 @@ hpo_config:
     - 0.042781113613173966
     rollout_batch_size: 5
     target_kl: 0.003516987203810008
-  optuna_hps:
-    activation: relu
-    actor_lr: 0.001242429110643358
-    clip_param: 0.2
-    critic_lr: 0.0007409742970868751
-    entropy_coef: 0.011477148555145044
-    gae_lambda: 0.92
-    gamma: 0.995
-    hidden_dim: 64
-    max_env_steps: 336000
-    mini_batch_size: 256
-    opt_epochs: 20
-    rew_act_weight:
-    - 2.398067015799397
-    - 8.4601550853529
-    rew_state_weight:
-    - 8.398154529340253
-    - 3.4328554805141462
-    - 14.329562904757722
-    - 3.167493869531107
-    - 0.28023049036766756
-    - 1.6380948160813094
-    rollout_batch_size: 4
-    target_kl: 0.0049339425693280346
 

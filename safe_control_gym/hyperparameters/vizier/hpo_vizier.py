@@ -130,6 +130,8 @@ class HPO_Vizier(BaseHPO):
             server = servers.DefaultVizierServer(database_url=f'sqlite:///{self.study_name}_vizier.db')
             clients.environment_variables.server_endpoint = server.endpoint
             endpoint = server.endpoint
+            if os.path.exists(f'{self.study_name}_vizier_endpoint.yaml'):
+                os.remove(f'{self.study_name}_vizier_endpoint.yaml')
             with open(f'{self.study_name}_vizier_endpoint.yaml', 'w') as config_file:
                 yaml.dump({'endpoint': endpoint}, config_file, default_flow_style=False)
 
