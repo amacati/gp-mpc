@@ -105,7 +105,7 @@ def run(gui=False, n_episodes=1, n_steps=None, save_data=True, seed=2):
     config = fac.merge()
     if ALGO in ['gpmpc_acados', 'gp_mpc' , 'gpmpc_acados_TP', 'gpmpc_acados_TRP']:
         num_data_max = config.algo_config.num_epochs * config.algo_config.num_samples
-        config.output_dir = os.path.join(config.output_dir, PRIOR + '_' + repr(num_data_max)+ CTRL_ADD)
+        config.output_dir = os.path.join(config.output_dir, PRIOR + '_' + repr(num_data_max)+ ADDITIONAL)
     # print('output_dir',  config.algo_config.output_dir)
     set_dir_from_config(config)
     config.algo_config.output_dir = config.output_dir
