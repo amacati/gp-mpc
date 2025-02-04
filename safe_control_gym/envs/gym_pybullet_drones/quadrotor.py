@@ -584,12 +584,39 @@ class Quadrotor(BaseAviary):
         p.resetBaseVelocity(self.DRONE_IDS[0], INIT_VEL, INIT_ANG_VEL,
                             physicsClientId=self.PYB_CLIENT)
 
+        # Randomize disturbances.
+        # disturbance_rand_dict = {}
+        if self.RANDOMIZED_DISTURBANCE and self.DISTURBABCE_RAND_INFO is not None:
+            # first reset the disturbances
+            for keys, values in self.DISTURBANCES.items():
+                if keys in self.disturbances:
+                    if keys == 'downwash':
+                        self.dw_model.update_pos(self.DISTURBANCES['downwash'][0]['pos'])
+                    else:
+                        # process and observation disturbances
+                        self.disturbances[keys].disturbances[0].std = values[0]['std']
+            
+            # then randomize the disturbances #TODO: need a more elegant way to do this
+            self.disturbance_before_rand = self.disturbances.copy()
+            for keys, values in self.DISTURBABCE_RAND_INFO.items():
+                if keys in self.disturbances:
+                    if keys == 'downwash':
+                        self.dw_model.update_pos(np.random.choice(values[0]['scale']))
+                    else:
+                        # process and observation disturbances
+                        if isinstance(self.disturbances[keys].disturbances[0].std, list):
+                            self.disturbances[keys].disturbances[0].std =\
+                                list(np.array(self.disturbances[keys].disturbances[0].std) * np.random.choice(values[0]['scale']))
+                        elif isinstance(self.disturbances[keys].disturbances[0].std, float):
+                            self.disturbances[keys].disturbances[0].std =\
+                                self.disturbances[keys].disturbances[0].std * np.random.choice(values[0]['scale'])
         # Update BaseAviary internal variables before calling self._get_observation().
         self._update_and_store_kinematic_information()
         obs, info = self._get_observation(), self._get_reset_info()
         obs, info = super().after_reset(obs, info)
 
         # Update task goals
+        # NOTE: Task info will be randomized when set_goals() is called.
         self.set_goals()
 
         # Return either an observation and dictionary or just the observation.

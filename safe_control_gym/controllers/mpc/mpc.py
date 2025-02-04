@@ -559,12 +559,12 @@ class MPC(BaseController):
                             'Check to make sure initial conditions are feasible.')
         return deepcopy(self.results_dict)
 
-    def reset_before_run(self, obs, info=None, env=None):
-        '''Reinitialize just the controller before a new run.
+    # def reset_before_run(self, obs, info=None, env=None):
+    #     '''Reinitialize just the controller before a new run.
 
-        Args:
-            obs (ndarray): The initial observation for the new run.
-            info (dict): The first info of the new run.
-            env (BenchmarkEnv): The environment to be used for the new run.
-        '''
-        self.reset()
+    #     Args:
+    #         obs (ndarray): The initial observation for the new run.
+    #         info (dict): The first info of the new run.
+    #         env (BenchmarkEnv): The environment to be used for the new run.
+    #     '''
+    #     self.reset()

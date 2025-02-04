@@ -23,6 +23,7 @@ class BaseExperiment:
                  safety_filter=None,
                  learn_safety_filter=False,
                  verbose: bool = False,
+                 reset_when_created: bool = True,
                  ):
         '''Creates a generic experiment class to run evaluations and collect standard metrics.
 
@@ -37,7 +38,11 @@ class BaseExperiment:
         self.metric_extractor = MetricExtractor()
         self.verbose = verbose
         self.env = env
-        self.MAX_STEPS = int(self.env.CTRL_FREQ * self.env.EPISODE_LEN_SEC)
+        # NOTE: a hack for task randomization, need to be removed
+        if isinstance(self.env.EPISODE_LEN_SEC, list):
+            self.MAX_STEPS = int(self.env.CTRL_FREQ * max(self.env.EPISODE_LEN_SEC))
+        else:
+            self.MAX_STEPS = int(self.env.CTRL_FREQ * self.env.EPISODE_LEN_SEC) 
         if not is_wrapped(self.env, RecordDataWrapper):
             self.env = RecordDataWrapper(self.env)
         self.ctrl = ctrl
@@ -48,7 +53,8 @@ class BaseExperiment:
         self.safety_filter = safety_filter
         self.learn_safety_filter = learn_safety_filter
 
-        self.reset()
+        if reset_when_created:
+            self.reset()
 
     def run_evaluation(self, training=False, n_episodes=None, n_steps=None, done_on_max_steps=None, log_freq=None, verbose=True, **kwargs):
         '''Evaluate a trained controller.

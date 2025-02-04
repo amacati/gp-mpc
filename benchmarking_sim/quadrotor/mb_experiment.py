@@ -22,7 +22,7 @@ from safe_control_gym.utils.gpmpc_plotting import make_quad_plots
 script_path = os.path.dirname(os.path.realpath(__file__))
 
 @timing
-def run(gui=False, n_episodes=1, n_steps=None, save_data=True, seed=1):
+def run(gui=False, n_episodes=1, n_steps=None, save_data=True, seed=2):
     '''The main function running experiments for model-based methods.
 
     Args:
@@ -35,13 +35,13 @@ def run(gui=False, n_episodes=1, n_steps=None, save_data=True, seed=1):
     if len(sys.argv) > 1:
         print('sys.argv', sys.argv)
         ALGO = sys.argv[1]
-        CTRL_ADD = sys.argv[2] if len(sys.argv) > 2 else ''
+        ADDITIONAL = sys.argv[2] if len(sys.argv) > 2 else ''
     else:
         # ALGO = 'ilqr'
         # ALGO = 'gp_mpc'
         # ALGO = 'gpmpc_acados'
-        # ALGO = 'gpmpc_acados_TP'
-        ALGO = 'gpmpc_acados_TRP'
+        ALGO = 'gpmpc_acados_TP'
+        # ALGO = 'gpmpc_acados_TRP'
         # ALGO = 'mpc'
         # ALGO = 'mpc_acados'
         # ALGO = 'linear_mpc_acados'
@@ -50,7 +50,8 @@ def run(gui=False, n_episodes=1, n_steps=None, save_data=True, seed=1):
         # ALGO = 'lqr_c'
         # ALGO = 'pid'
         # ALGO = 'fmpc'
-        CTRL_ADD = ''
+        ADDITIONAL = ''
+    CTRL_ADD = ''
     # CTRL_ADD = '_tr'
     SYS = 'quadrotor_2D_attitude'
     # SYS = 'quadrotor_3D_attitude'
@@ -58,7 +59,7 @@ def run(gui=False, n_episodes=1, n_steps=None, save_data=True, seed=1):
     # TASK = 'stab'
     # PRIOR = '200'
     # PRIOR = '150'
-    ADDITIONAL = ''
+    # ADDITIONAL = ''
     # ADDITIONAL = '_tr'
     # ADDITIONAL = '_9'
     # ADDITIONAL = '_11'
@@ -104,7 +105,7 @@ def run(gui=False, n_episodes=1, n_steps=None, save_data=True, seed=1):
     config = fac.merge()
     if ALGO in ['gpmpc_acados', 'gp_mpc' , 'gpmpc_acados_TP', 'gpmpc_acados_TRP']:
         num_data_max = config.algo_config.num_epochs * config.algo_config.num_samples
-        config.output_dir = os.path.join(config.output_dir, PRIOR + '_' + repr(num_data_max)+ CTRL_ADD)
+        config.output_dir = os.path.join(config.output_dir, PRIOR + '_' + repr(num_data_max)+ ADDITIONAL)
     # print('output_dir',  config.algo_config.output_dir)
     set_dir_from_config(config)
     config.algo_config.output_dir = config.output_dir
@@ -186,11 +187,12 @@ def run(gui=False, n_episodes=1, n_steps=None, save_data=True, seed=1):
                                     train_runs=train_runs, 
                                     trajectory=ctrl.traj.T,
                                     dir=ctrl.output_dir)
-        plot_quad_eval(trajs_data['obs'][0], 
-                       trajs_data['action'][0], 
-                    #    trajs_data['current_clipped_action'][0],
-                       ctrl.env, 
-                       config.output_dir)
+        if not isinstance(config.task_config.episode_len_sec, list):
+            plot_quad_eval(trajs_data['obs'][0], 
+                        trajs_data['action'][0], 
+                        #    trajs_data['current_clipped_action'][0],
+                        experiment.env, 
+                        config.output_dir)
 
 
         # Close environments

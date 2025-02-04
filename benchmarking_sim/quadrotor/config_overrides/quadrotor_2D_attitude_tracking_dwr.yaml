@@ -60,20 +60,16 @@ task_config:
     alpha_3: 124.8
     pitch_bias: 0.0 # in radian
 
-  # randomized_taks_length: True
-  # task_length_randomization_info:
-  #   value: [9, 11, 15]
-  # randomized_disturbance: True
-  # disturbance_randomization_info:
-  #   dynamics:
-  #     - scale: [5, 15, 25]
-  #   observation:
-  #     - scale: [5, 15, 25]
-  #   downwash:
-      # - scale: [1.5, 2.5, 4.0]
-
   episode_len_sec: 11
   cost: quadratic
+  randomized_disturbance: True
+  disturbance_randomization_info:
+  #   dynamics:
+  #     - scale: [25, 50, 100]
+  #   observation:
+  #     - scale: [25, 50, 100]
+    downwash:
+      - scale: [1.5, 2.5, 4.0]
 
   constraints:
     - constraint_form: default_constraint
@@ -98,11 +94,11 @@ task_config:
       - disturbance_func: white_noise
         std: [5.6e-05, 1.5e-02, 2.9e-05, 8.0e-03, 1.3e-03, 3.5e-03]
     downwash:
-      - disturbance_func: uniform # dummy
-        low:  1. # dummy
-        high: 1. # dummy
+      - disturbance_func: uniform
+        low:  1.
+        high: 1.
         mode: fix
         # mode: track
-        pos: [0, 0, 0] # z = 0, will cause no downwash
+        pos: [0, 0, 0] 
         # pos in track mode is the relative position to the quadrotor
         # pos in fix mode is the absolute position in the world frame

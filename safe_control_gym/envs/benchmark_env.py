@@ -77,6 +77,8 @@ class BenchmarkEnv(gym.Env, ABC):
                  inertial_prop=None,
                  randomized_inertial_prop: bool = False,
                  inertial_prop_randomization_info=None,
+                 randomized_disturbance = False,
+                 disturbance_randomization_info = None,
                  # Constraint.
                  constraints=None,
                  done_on_violation: bool = False,
@@ -115,6 +117,8 @@ class BenchmarkEnv(gym.Env, ABC):
             randomized_inertial_prop (bool, optional): Whether to randomize the inertial properties.
             inertial_prop_randomization_info (dict, optional): A dictionary with information used
                 to randomize the inert. properties.
+            randomized_noise (bool, optional): Whether to randomize the noise.
+            disturbance_randomization_info (dict, optional): A dictionary with information used to randomize the noise.
             constraints (Dict, optional): Dictionary to specify the constraints being used.
             done_on_violation (bool, optional): Whether to return done==True on a constraint violation.
             use_constraint_penalty (bool, optional): If to use shaped reward to penalize potential
@@ -163,6 +167,9 @@ class BenchmarkEnv(gym.Env, ABC):
         self.RANDOMIZED_INERTIAL_PROP = randomized_inertial_prop
         if inertial_prop_randomization_info is not None:
             self.INERTIAL_PROP_RAND_INFO = inertial_prop_randomization_info
+        self.RANDOMIZED_DISTURBANCE = randomized_disturbance
+        if disturbance_randomization_info is not None:
+            self.DISTURBABCE_RAND_INFO = disturbance_randomization_info
         # Set up action and observation space.
         self.NORMALIZED_RL_ACTION_SPACE = normalized_rl_action_space
         # Define cost-related quantities.
