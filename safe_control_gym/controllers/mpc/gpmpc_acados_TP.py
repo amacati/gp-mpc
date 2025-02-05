@@ -350,7 +350,7 @@ class GPMPC_ACADOS_TP(GPMPC):
                     domain_rand_info[keys] = values.disturbances[0].std
             self.rand_hist['domain_rand'].append(domain_rand_info)
             # TODO: fix data logging
-            np.savez(os.path.join(self.output_dir, 'data_%s'% epoch),
+            np.savez(os.path.join(self.output_dir, 'epoch_data'),
                     data_inputs=training_results['train_inputs'],
                     data_targets=training_results['train_targets'],
                     train_runs=train_runs,
@@ -380,8 +380,8 @@ class GPMPC_ACADOS_TP(GPMPC):
         for experiment in test_experiments:
             experiment.env.close()
         # delete c_generated_code folder and acados_ocp_solver.json files
-        shutil.rmtree(os.path.join(self.output_dir, '*c_generated_code*'), ignore_errors=True)
-        shutil.rmtree(os.path.join(self.output_dir, '*acados_ocp_solver*.json'), ignore_errors=True)
+        os.system(f'rm -rf {self.output_dir}/*c_generated_code*')
+        os.system(f'rm -rf {self.output_dir}/*acados_ocp_solver*')
         # for env in train_envs:
         #     env.close()
         # for env in test_envs:
