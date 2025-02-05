@@ -27,7 +27,9 @@ def run(gui=False, n_episodes=1, n_steps=None, save_data=True,
         seed=2, Additional='', ALGO='pid', SYS='quadrotor_2D_attitude',
         noise_factor=1, 
         dw_height=None, dw_height_scale=None, 
-        eval_task=None):
+        eval_task=None,
+        gp_model_tag='',
+        ):
     '''The main function running experiments for model-based methods.
 
     Args:
@@ -93,9 +95,9 @@ def run(gui=False, n_episodes=1, n_steps=None, save_data=True,
     config = fac.merge()
     gp_model_path = None
     if ALGO in ['gpmpc_acados', 'gp_mpc', 'gpmpc_acados_TP']:
-        gp_model_path = '/home/mingxuan/Repositories/scg_tsung/benchmarking_sim/quadrotor/gpmpc_acados_TP/results/100_200/temp'
+        gp_model_path = os.path.join(script_path, f'gpmpc_acados_TP/results/{gp_model_tag}/temp')
     elif ALGO in ['gpmpc_acados_TRP']:
-        gp_model_path = '/home/mingxuan/Repositories/scg_tsung/benchmarking_sim/quadrotor/gpmpc_acados_TRP/results/100_200/temp'
+        gp_model_path = os.path.join(script_path, f'gpmpc_acados_TRP/results/{gp_model_tag}/temp')
     if gp_model_path is not None:
         # gp_model_path = '/home/mingxuan/Repositories/scg_tsung/benchmarking_sim/quadrotor/gpmpc_acados/results/200_300_aggresive'
         # # get all directories in the gp_model_path

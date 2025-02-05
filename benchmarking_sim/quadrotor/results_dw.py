@@ -14,6 +14,7 @@ print('notebook_dir', notebook_dir)
 # algo = sys.argv[3]
 # noise_factor = int(sys.argv[4])
 algo = sys.argv[1]
+gp_model_tag = sys.argv[2]
 
 # noise factor test
 # additional = ''
@@ -33,5 +34,6 @@ for dw_height in np.arange(1.5, 4.0, 0.2):
             'num_seed': 1,
             'start_seed': start_seed,
             'SYS': 'quadrotor_2D_attitude',
+            'gp_model_tag': gp_model_tag,
             })
         run_rollouts(task_description)
