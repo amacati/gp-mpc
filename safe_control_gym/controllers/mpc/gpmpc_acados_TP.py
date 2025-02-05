@@ -252,6 +252,15 @@ class GPMPC_ACADOS_TP(GPMPC):
             test_env.action_space.seed(epoch_seeds[0])
             test_envs = [test_env] * self.num_epochs
 
+        for env in train_envs:
+            if isinstance(env.EPISODE_LEN_SEC, list):
+                idx = np.random.choice(len(env.EPISODE_LEN_SEC))
+                env.EPISODE_LEN_SEC = env.EPISODE_LEN_SEC[idx]
+        for env in test_envs:
+            if isinstance(env.EPISODE_LEN_SEC, list):
+                idx = np.random.choice(len(env.EPISODE_LEN_SEC))
+                env.EPISODE_LEN_SEC = env.EPISODE_LEN_SEC[idx]
+
         # creating train and test experiments
         train_experiments = [BaseExperiment(env=env, ctrl=self, reset_when_created=False) for env in train_envs[1:]]
         test_experiments = [BaseExperiment(env=env, ctrl=self, reset_when_created=False) for env in test_envs[1:]]
@@ -262,12 +271,14 @@ class GPMPC_ACADOS_TP(GPMPC):
         for episode in range(self.num_train_episodes_per_epoch):
             # run_results = self.prior_ctrl.run(env=train_envs[0],
             #                                   terminate_run_on_done=self.terminate_train_on_done)
+            self.env = train_envs[0]
             run_results = train_experiments[0].run_evaluation(n_episodes=1)
             train_runs[0].update({episode: munch.munchify(run_results)})
             # self.reset()
         for test_ep in range(self.num_test_episodes_per_epoch):
             # run_results = self.run(env=test_envs[0],
             #                        terminate_run_on_done=self.terminate_test_on_done)
+            self.env = test_envs[0]
             run_results = test_experiments[0].run_evaluation(n_episodes=1)
             test_runs[0].update({test_ep: munch.munchify(run_results)})
         # self.reset()
@@ -295,6 +306,7 @@ class GPMPC_ACADOS_TP(GPMPC):
                 # self.reset()
                 # run_results = self.run(env=test_envs[epoch],
                 #                        terminate_run_on_done=self.terminate_test_on_done)
+                self.env = test_envs[epoch]
                 run_results = test_experiments[epoch].run_evaluation(n_episodes=1)
                 test_runs[epoch].update({test_ep: munch.munchify(run_results)})
 
@@ -322,6 +334,7 @@ class GPMPC_ACADOS_TP(GPMPC):
                 #                        terminate_run_on_done=self.terminate_train_on_done)
                 self.x_prev = train_runs[epoch - 1][episode][0]['obs'][0][:self.T + 1, :].T
                 self.u_prev = train_runs[epoch - 1][episode][0]['action'][0][:self.T, :].T
+                self.env = train_envs[epoch]
                 run_results = train_experiments[epoch].run_evaluation(n_episodes=1)
                 train_runs[epoch].update({episode: munch.munchify(run_results)})
 
@@ -366,6 +379,9 @@ class GPMPC_ACADOS_TP(GPMPC):
             experiment.env.close()
         for experiment in test_experiments:
             experiment.env.close()
+        # delete c_generated_code folder and acados_ocp_solver.json files
+        shutil.rmtree(os.path.join(self.output_dir, '*c_generated_code*'), ignore_errors=True)
+        shutil.rmtree(os.path.join(self.output_dir, '*acados_ocp_solver*.json'), ignore_errors=True)
         # for env in train_envs:
         #     env.close()
         # for env in test_envs:

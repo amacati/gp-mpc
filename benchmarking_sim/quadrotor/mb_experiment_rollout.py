@@ -25,7 +25,11 @@ script_path = os.path.dirname(os.path.realpath(__file__))
 @timing
 def run(gui=False, n_episodes=1, n_steps=None, save_data=True, 
         seed=2, Additional='', ALGO='pid', SYS='quadrotor_2D_attitude',
-        noise_factor=1, dw_height_scale=None, eval_task=None):
+        noise_factor=1, 
+        dw_height=None, dw_height_scale=None, 
+        eval_task=None,
+        gp_model_tag='',
+        ):
     '''The main function running experiments for model-based methods.
 
     Args:
@@ -91,16 +95,15 @@ def run(gui=False, n_episodes=1, n_steps=None, save_data=True,
     config = fac.merge()
     gp_model_path = None
     if ALGO in ['gpmpc_acados', 'gp_mpc', 'gpmpc_acados_TP']:
-        gp_model_path = '/home/mingxuan/Repositories/scg_tsung/benchmarking_sim/quadrotor/gpmpc_acados_TP/results/100_200/temp'
+        gp_model_path = os.path.join(script_path, f'gpmpc_acados_TP/results/{gp_model_tag}/temp')
     elif ALGO in ['gpmpc_acados_TRP']:
-        gp_model_path = '/home/mingxuan/Repositories/scg_tsung/benchmarking_sim/quadrotor/gpmpc_acados_TRP/results/100_200/temp'
+        gp_model_path = os.path.join(script_path, f'gpmpc_acados_TRP/results/{gp_model_tag}/temp')
     if gp_model_path is not None:
         # gp_model_path = '/home/mingxuan/Repositories/scg_tsung/benchmarking_sim/quadrotor/gpmpc_acados/results/200_300_aggresive'
         # # get all directories in the gp_model_path
         gp_model_dirs = [d for d in os.listdir(gp_model_path) if os.path.isdir(os.path.join(gp_model_path, d))]
         gp_model_dirs = [os.path.join(gp_model_path, d) for d in gp_model_dirs]
-        num_data_max = config.algo_config.num_epochs * config.algo_config.num_samples
-        config.output_dir = os.path.join(config.output_dir, PRIOR + '_' + repr(num_data_max) + f'_rollout{ADDITIONAL}')
+        config.output_dir = os.path.join(config.output_dir, f'_{gp_model_tag}')
         # if seed%10 == 0:
         #     config.algo_config.gp_model_path = gp_model_dirs[10-1]
         # else:
@@ -142,14 +145,18 @@ def run(gui=False, n_episodes=1, n_steps=None, save_data=True,
         config.task_config.disturbances.dynamics[0]['std'] = noise_factor * default_noise_std 
         print(f'Amplified process noise std: {config.task_config.disturbances.dynamics[0]["std"]}')
     # downwash height scale
-    if dw_height_scale is not None:
-        max_dw_height, min_dw_height = 3, 0.5
-        dw_height_space = max_dw_height - min_dw_height
-        traj_center = config.task_config.task_info.trajectory_position_offset[1] # 1 [m] by default
-        config.task_config.disturbances.downwash[0].pos[-1] = traj_center + min_dw_height + \
-                                                            dw_height_scale * dw_height_space
-        print(f'dw_height_scale: {dw_height_scale:.2f}')
-        print('Amplified downwash height: ', config.task_config.disturbances.downwash[0].pos[-1])
+    elif eval_task == 'downwash':
+        if dw_height is not None:
+            config.task_config.disturbances.downwash[0].pos[-1] = dw_height
+            print('downwash height: ', config.task_config.disturbances.downwash[0].pos)
+        elif dw_height_scale is not None:
+            max_dw_height, min_dw_height = 3, 0.5
+            dw_height_space = max_dw_height - min_dw_height
+            traj_center = config.task_config.task_info.trajectory_position_offset[1] # 1 [m] by default
+            config.task_config.disturbances.downwash[0].pos[-1] = traj_center + min_dw_height + \
+                                                                dw_height_scale * dw_height_space
+            print(f'dw_height_scale: {dw_height_scale:.2f}')
+            print('downwash height: ', config.task_config.disturbances.downwash[0].pos[-1])
     
     # Create an environment
     env_func = partial(make,
@@ -231,6 +238,7 @@ def run(gui=False, n_episodes=1, n_steps=None, save_data=True,
 
 
         # Close environments
+        experiment.close()
         static_env.close()
         static_train_env.close()
 

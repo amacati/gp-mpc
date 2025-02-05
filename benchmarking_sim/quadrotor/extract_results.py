@@ -239,16 +239,16 @@ else:
     # ctrl = 'linear_mpc_acados'
     # ctrl = 'mpc_acados'
     ctrl = 'gpmpc_acados_TP'
-
-# SYS = 'quadrotor_2D_attitude'
-SYS = 'quadrotor_3D_attitude'
+gp_model_tag = '100_200'
+SYS = 'quadrotor_2D_attitude'
+# SYS = 'quadrotor_3D_attitude'
 
 # for additional in ['_9', '_11', '_13', '_15']:
 # for additional in ['_11', '_12', '_13', '_14', '_15']:
 for additional in ['_9', '_10', '_11', '_12', '_13', '_14', '_15']:
     data_folder = f'results_rollout_{SYS}{additional}/temp'
     if ctrl in ['gpmpc_acados_TP']:
-        GPMPC_option = '100_200'
+        GPMPC_option = f'{gp_model_tag}'
         data_folder = f'results/{GPMPC_option}_rollout_{SYS}{additional}/temp'
     # traj_resutls, metrics = extract_rollouts(notebook_dir, data_folder, ctrl, additional)
     if additional == '_11':
