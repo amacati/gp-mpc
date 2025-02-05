@@ -9,7 +9,7 @@ PPO_dict = {
     'clip_param': {'values': [0.1, 0.2, 0.3, 0.4], 'scale': 'uniform', 'type': float, 'cat': 'discrete'},
     'opt_epochs': {'values': [1, 5, 10, 20, 25], 'scale': 'uniform', 'type': int, 'cat': 'discrete'},
     'mini_batch_size': {'values': [32, 64, 128, 256], 'scale': 'uniform', 'type': int, 'cat': 'discrete'},
-    'max_env_steps': {'values': [30000, 72000, 114000, 156000, 216000, 276000, 336000, 396000], 'scale': 'uniform', 'type': int, 'cat': 'discrete'},
+    'max_env_steps': {'values': [30000, 72000, 114000, 156000, 216000, 336000, 456000, 540000, 660000], 'scale': 'uniform', 'type': int, 'cat': 'discrete'},
     'activation': {'values': ['tanh', 'relu', 'leaky_relu'], 'scale': 'uniform', 'type': str, 'cat': 'categorical'},
     'target_kl': {'values': [0.00000001, 0.8], 'scale': 'uniform', 'type': float, 'cat': 'float'},
     'entropy_coef': {'values': [0.00000001, 0.1], 'scale': 'log', 'type': float, 'cat': 'float'},  # log-scaled
@@ -28,7 +28,7 @@ PPO_SF_dict = {
     'clip_param': {'values': [0.1, 0.2, 0.3, 0.4], 'scale': 'uniform', 'type': float, 'cat': 'discrete'},
     'opt_epochs': {'values': [1, 5, 10, 20, 25], 'scale': 'uniform', 'type': int, 'cat': 'discrete'},
     'mini_batch_size': {'values': [32, 64, 128, 256], 'scale': 'uniform', 'type': int, 'cat': 'discrete'},
-    'max_env_steps': {'values': [30000, 72000, 114000, 156000, 216000, 276000, 336000, 396000], 'scale': 'uniform', 'type': int, 'cat': 'discrete'},
+    'max_env_steps': {'values': [30000, 72000, 114000, 156000, 216000, 336000, 456000, 540000, 660000], 'scale': 'uniform', 'type': int, 'cat': 'discrete'},
     'activation': {'values': ['tanh', 'relu', 'leaky_relu'], 'scale': 'uniform', 'type': str, 'cat': 'categorical'},
     'target_kl': {'values': [0.00000001, 0.8], 'scale': 'uniform', 'type': float, 'cat': 'float'},
     'entropy_coef': {'values': [0.00000001, 0.1], 'scale': 'log', 'type': float, 'cat': 'float'},  # log-scaled
@@ -49,7 +49,7 @@ SAC_dict = {
     'gamma': {'values': [0.9, 0.95, 0.98, 0.99, 0.995, 0.999, 0.9999], 'scale': 'uniform', 'type': float, 'cat': 'discrete'},
     'train_interval': {'values': [10, 100, 200, 500, 1000, 1500, 2000], 'scale': 'uniform', 'type': int, 'cat': 'discrete'},
     'train_batch_size': {'values': [32, 64, 128, 256, 512, 1024], 'scale': 'uniform', 'type': int, 'cat': 'discrete'},
-    'max_env_steps': {'values': [30000, 72000, 114000, 156000, 216000, 276000, 336000, 396000], 'scale': 'uniform', 'type': int, 'cat': 'discrete'},
+    'max_env_steps': {'values': [30000, 72000, 114000, 156000, 216000, 336000, 456000, 540000, 660000], 'scale': 'uniform', 'type': int, 'cat': 'discrete'},
     'warm_up_steps': {'values': [500, 1000, 2000, 4000], 'scale': 'uniform', 'type': int, 'cat': 'discrete'},
     'max_buffer_size': {'values': [20000, 50000, 100000, 150000, 200000, 350000], 'scale': 'uniform', 'type': int, 'cat': 'discrete'},
     'activation': {'values': ['tanh', 'relu', 'leaky_relu'], 'scale': 'uniform', 'type': str, 'cat': 'categorical'},
@@ -69,7 +69,7 @@ DPPO_dict = {
     'clip_param': {'values': [0.1, 0.2, 0.3, 0.4], 'scale': 'uniform', 'type': float, 'cat': 'discrete'},
     'opt_epochs': {'values': [1, 5, 10, 20, 25], 'scale': 'uniform', 'type': int, 'cat': 'discrete'},
     'mini_batch_size': {'values': [32, 64, 128, 256], 'scale': 'uniform', 'type': int, 'cat': 'discrete'},
-    'max_env_steps': {'values': [30000, 72000, 114000, 156000, 216000, 276000, 336000, 396000], 'scale': 'uniform', 'type': int, 'cat': 'discrete'},
+    'max_env_steps': {'values': [30000, 72000, 114000, 156000, 216000, 336000, 456000, 540000, 660000], 'scale': 'uniform', 'type': int, 'cat': 'discrete'},
     'activation': {'values': ['tanh', 'relu', 'leaky_relu'], 'scale': 'uniform', 'type': str, 'cat': 'categorical'},
     'target_kl': {'values': [0.00000001, 0.8], 'scale': 'uniform', 'type': float, 'cat': 'float'},
     'entropy_coef': {'values': [0.00000001, 0.1], 'scale': 'log', 'type': float, 'cat': 'float'},  # log-scaled
