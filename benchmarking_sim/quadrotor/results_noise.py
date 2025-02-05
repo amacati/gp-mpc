@@ -25,7 +25,7 @@ s = 2 # times of std
 # algo = sys.argv[3]
 # noise_factor = int(sys.argv[4])
 algo = sys.argv[1]
-
+gp_model_tag = sys.argv[2]
 # task_description = munch.munchify({
 #     'additional': additional,
 #     'algo': algo,
@@ -51,6 +51,7 @@ for noise_factor in noise_factor_list:
             'start_seed': start_seed,
             # 'SYS': 'quadrotor_3D_attitude',
             'SYS': 'quadrotor_2D_attitude', 
+            'gp_model_tag': gp_model_tag,
             })
         run_rollouts(task_description)
         
@@ -66,5 +67,6 @@ for noise_factor in noise_factor_list:
             'start_seed': start_seed,
             # 'SYS': 'quadrotor_3D_attitude',
             'SYS': 'quadrotor_2D_attitude', 
+            'gp_model_tag': gp_model_tag,
             })
         run_rollouts(task_description)
