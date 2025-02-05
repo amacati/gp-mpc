@@ -32,7 +32,7 @@ hpo_config:
     critic_lr: 0.001
 
     # runner args
-    max_env_steps: 336000
+    max_env_steps: 660000
     rollout_batch_size: 5
 
     # objective
