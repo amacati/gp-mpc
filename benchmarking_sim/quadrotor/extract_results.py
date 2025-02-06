@@ -245,7 +245,9 @@ SYS = 'quadrotor_2D_attitude'
 
 # for additional in ['_9', '_11', '_13', '_15']:
 # for additional in ['_11', '_12', '_13', '_14', '_15']:
-for additional in ['_9', '_10', '_11', '_12', '_13', '_14', '_15']:
+results = {}
+for additional in ['9', '10', '11', '12', '13', '14', '15']:
+    additional = '_' + additional
     data_folder = f'results_rollout_{SYS}{additional}/temp'
     if ctrl in ['gpmpc_acados_TP']:
         GPMPC_option = f'{gp_model_tag}'
@@ -255,7 +257,13 @@ for additional in ['_9', '_10', '_11', '_12', '_13', '_14', '_15']:
         metrics, timing_data = extract_rollouts(notebook_dir, data_folder, ctrl, additional)
     else:
         metrics, _ = extract_rollouts(notebook_dir, data_folder, ctrl, additional)
-
+    mean_rmse = np.mean(metrics)
+    std_rmse = np.std(metrics)
+    results[additional] = {'mean_rmse': mean_rmse, 'std_rmse': std_rmse}
+results['inference_time'] = np.mean(timing_data)
+print('results', results)
+np.save(f'data/{ctrl}_{SYS}_gen_results.npy', results)
+# print('metrics', metrics)
 # time_vector = (np.squeeze(timing_data)).flatten()
 # mean_exec_time = np.mean(time_vector)
 # std_exec_time = np.std(time_vector)
