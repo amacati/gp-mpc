@@ -1,6 +1,7 @@
 """Evaluation of hyperparameter optimization results."""
 
 import numpy as np
+from matplotlib.colors import to_rgba
 
 from safe_control_gym.hyperparameters.base_hpo import BaseHPO
 
@@ -29,50 +30,34 @@ class HPOEval(BaseHPO):
         '''
         super(HPOEval, self).__init__(hpo_config, task_config, algo_config, algo, task, output_dir, safety_filter, sf_config, False, False)
 
-        if 'vizier_hps' in self.hpo_config:
-            self.vizier_hps = self.hpo_config['vizier_hps']
-        if 'optuna_hps' in self.hpo_config:
-            self.optuna_hps = self.hpo_config['optuna_hps']
+        self.hp_eval_list = self.hpo_config.hp_eval_list
+
+    def interpolate_color(self, base_color, light_color, index, total):
+        '''
+        Interpolates between base_color and light_color based on index.
+        '''
+        base_rgba = np.array(to_rgba(base_color))
+        light_rgba = np.array(to_rgba(light_color))
+        return tuple((1 - index / (total - 1)) * base_rgba + (index / (total - 1)) * light_rgba)
 
     def hp_evaluation(self):
         '''Evaluate the handtuned/optimized hyperparameters and make the comparison.'''
-        
-        # evaluate handtuned hyperparameters
-        handtuned_hps = self.config_to_param(self.hps_config)
-        np.random.seed(self.hpo_config.seed)
-        self.evaluate(handtuned_hps)
-        handtuned_trajs_data_list = self.trajs_data_list
-        handtuned_metrics_list = self.metrics_list
-        self.plot_results(handtuned_trajs_data_list, handtuned_metrics_list, self.output_dir, '(handtuned hps)')
 
-        # evaluate vizier hyperparameters
-        if 'vizier_hps' in self.hpo_config:
-            vizier_hps = self.config_to_param(self.vizier_hps)
-            np.random.seed(self.hpo_config.seed)
-            self.evaluate(vizier_hps)
-            vizier_trajs_data_list = self.trajs_data_list
-            vizier_metrics_list = self.metrics_list
-            self.plot_results(vizier_trajs_data_list, vizier_metrics_list, self.output_dir, '(vizier hps)')
-        
-        # evaluate optuna hyperparameters
-        if 'optuna_hps' in self.hpo_config:
-            optuna_hps = self.config_to_param(self.optuna_hps)
-            np.random.seed(self.hpo_config.seed)
-            self.evaluate(optuna_hps)
-            optuna_trajs_data_list = self.trajs_data_list
-            optuna_metrics_list = self.metrics_list
-            self.plot_results(optuna_trajs_data_list, optuna_metrics_list, self.output_dir, '(optuna hps)')
+        trajs_dict = {}
+        metrics_dict = {}
 
-        trajs_dict = {
-            'handtuned hps': handtuned_trajs_data_list,
-            'vizier hps': vizier_trajs_data_list if 'vizier_hps' in self.hpo_config else None,
-            'optuna hps': optuna_trajs_data_list if 'optuna_hps' in self.hpo_config else None,
-        }
-        metrics_dict = {
-            'handtuned hps': handtuned_metrics_list,
-            'vizier hps': vizier_metrics_list if 'vizier_hps' in self.hpo_config else None,
-            'optuna hps': optuna_metrics_list if 'optuna_hps' in self.hpo_config else None,
-        }
+        # evaluate hyperparameters specified in hp_eval_list
+        for hp_name in self.hp_eval_list:
+            hp_eval = self.hpo_config[hp_name]
+            hps = self.config_to_param(hp_eval)
+            np.random.seed(self.hpo_config.seed)
+            self.evaluate(hps)
+            trajs_data_list = self.trajs_data_list
+            metrics_list = self.metrics_list
+            self.plot_results(trajs_data_list, metrics_list, self.output_dir, f'({hp_name})')
+
+            trajs_dict[hp_name] = trajs_data_list
+            metrics_dict[hp_name] = metrics_list        
 
         # Remove None values
         trajs_dict = {k: v for k, v in trajs_dict.items() if v is not None}
