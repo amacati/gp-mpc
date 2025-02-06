@@ -37,10 +37,10 @@ def run(gui=False, n_episodes=1, n_steps=None, save_data=True, seed=2):
         ALGO = sys.argv[1]
         ADDITIONAL = sys.argv[2] if len(sys.argv) > 2 else ''
     else:
-        # ALGO = 'ilqr'
+        ALGO = 'ilqr'
         # ALGO = 'gp_mpc'
         # ALGO = 'gpmpc_acados'
-        ALGO = 'gpmpc_acados_TP'
+        # ALGO = 'gpmpc_acados_TP'
         # ALGO = 'gpmpc_acados_TRP'
         # ALGO = 'mpc'
         # ALGO = 'mpc_acados'
@@ -56,6 +56,10 @@ def run(gui=False, n_episodes=1, n_steps=None, save_data=True, seed=2):
     SYS = 'quadrotor_2D_attitude'
     # SYS = 'quadrotor_3D_attitude'
     TASK = 'tracking'
+
+    # generate_reference = False
+    generate_reference = True
+
     # TASK = 'stab'
     # PRIOR = '200'
     # PRIOR = '150'
@@ -110,6 +114,11 @@ def run(gui=False, n_episodes=1, n_steps=None, save_data=True, seed=2):
     set_dir_from_config(config)
     config.algo_config.output_dir = config.output_dir
     mkdirs(config.output_dir)
+    if generate_reference:
+        # reconfigure the trajectory length for generating reference
+        target_traj_length = config.task_config.episode_len_sec
+        ref_traj_length = target_traj_length * 1.5
+        config.task_config.episode_len_sec = ref_traj_length
 
     # Create an environment
     env_func = partial(make,
@@ -207,7 +216,9 @@ def run(gui=False, n_episodes=1, n_steps=None, save_data=True, seed=2):
     random_env.close()
     metrics = experiment.compute_metrics(all_trajs)
     all_trajs = dict(all_trajs)
-    # np.save(f'./data/{ALGO}_ref_traj.npy', all_trajs, allow_pickle=True)
+    if generate_reference:
+        np.save(f'./data/{ALGO}_{SYS}_{target_traj_length}_ref_traj.npy', \
+                all_trajs, allow_pickle=True)
     
     if hasattr(experiment.env, 'dw_model'):
         force_log = experiment.env.dw_model.get_force_log()
