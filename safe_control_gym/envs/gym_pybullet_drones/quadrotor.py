@@ -1551,14 +1551,14 @@ class Quadrotor(BaseAviary):
         self.R = np.diag(self.rew_act_weight)
         if self.COST == Cost.QUADRATIC:
             if self.TASK == Task.STABILIZATION:
-                return float(self.symbolic.loss(x=self.state,
+                return float(-1 * self.symbolic.loss(x=self.state,
                                                 Xr=self.X_GOAL,
                                                 u=self.current_clipped_action,
                                                 Ur=self.U_GOAL,
                                                 Q=self.Q,
                                                 R=self.R)['l'])
             if self.TASK == Task.TRAJ_TRACKING:
-                return float(self.symbolic.loss(x=self.state,
+                return float(-1 * self.symbolic.loss(x=self.state,
                                                 Xr=self.X_GOAL[self.ctrl_step_counter + 1, :],  # +1 because state has already advanced but counter not incremented.
                                                 u=self.current_clipped_action,
                                                 Ur=self.U_GOAL,
