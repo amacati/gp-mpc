@@ -599,11 +599,8 @@ class BaseHPO(ABC):
             axes = np.expand_dims(axes, axis=-1)
 
         # Define a base color for each hyperparameter set
-        hps_colors = {
-            'handtuned hps': 'blue',
-            'vizier hps': 'green',
-            'optuna hps': 'orange'
-        }
+        color_palette = plt.get_cmap('tab10')
+        hps_colors = {tag: color_palette(i) for i, tag in enumerate(self.hp_eval_list)}
 
         # Iterate over tags and data
         for col_idx, (tag, trajs_data_list) in enumerate(trajs_dict.items()):

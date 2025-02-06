@@ -107,7 +107,7 @@ def eval(config):
             config.algo_config.penalize_sf_diff = False
             config.algo_config.sf_penalty = 0.03
             # config.algo_config.training = True
-    elif config.algo == 'fmpc' or config.algo == 'gp_mpc' or config.algo == 'gpmpc_acados' or config.algo == 'gpmpc_acados_TP' or config.algo == 'linear_mpc' or config.algo == 'mpc_acados':
+    elif config.algo == 'fmpc' or config.algo == 'gp_mpc' or config.algo == 'gpmpc_acados' or config.algo == 'gpmpc_acados_TP' or config.algo == 'linear_mpc' or config.algo == 'linear_mpc_acados' or config.algo == 'mpc_acados':
         pass
     elif config.algo == 'pid' or config.algo == 'lqr' or config.algo == 'ilqr':
         pass
