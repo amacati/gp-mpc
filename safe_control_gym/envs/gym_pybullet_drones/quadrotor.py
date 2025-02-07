@@ -396,7 +396,7 @@ class Quadrotor(BaseAviary):
                     traj_tag = '2D_attitude' if self.QUAD_TYPE == QuadType.TWO_D_ATTITUDE else '3D_attitude'
                     traj_data = np.load(os.path.join(script_dir, \
                                                      '../../../benchmarking_sim/quadrotor/data', \
-                                                     f'mpc_acados_quadrotor_{traj_tag}_{self.episode_len}_ref_traj.npy'),\
+                                                     f'ilqr_quadrotor_{traj_tag}_{self.episode_len}_ref_traj.npy'),\
                                         allow_pickle=True).item()
                 # max_ref_steps = self.PYB_FREQ * self.episode_len
                 # ref_traj_steps = traj_data['obs'][0].shape[0]
