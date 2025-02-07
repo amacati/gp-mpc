@@ -38,7 +38,7 @@ class ConfigFactory:
         self.add_argument('--use_gpu', action='store_true', help='added to use gpu (if available)')
         self.add_argument('--output_dir', type=str, help='output saving folder')
         self.add_argument('--pretrain_path', type=str, help='path to pretrained model')
-        self.add_argument('--experiment_type', type=str, default='performance', help='type of experiment to run')
+        self.add_argument('--experiment_type', type=str, default='basic', help='type of experiment to run')
         self.add_argument('--restore', type=str, help='folder to reload from')
         # Need to explicitly provide from command line (if training for the 1st time).
         self.add_argument('--algo', type=str, help='algorithm/controller')
