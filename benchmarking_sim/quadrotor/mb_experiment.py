@@ -35,15 +35,18 @@ def run(gui=False, n_episodes=1, n_steps=None, save_data=True, seed=2):
     if len(sys.argv) > 1:
         print('sys.argv', sys.argv)
         ALGO = sys.argv[1]
-        ADDITIONAL = sys.argv[2] if len(sys.argv) > 2 else ''
+        # TRAJ_LEN = sys.argv[2] if len(sys.argv) > 2 else None
+        # TRAJ_LEN = int(TRAJ_LEN) 
+        # ADDITIONAL = sys.argv[2] if len(sys.argv) > 2 else ''
+
     else:
-        ALGO = 'ilqr'
+        # ALGO = 'ilqr'
         # ALGO = 'gp_mpc'
         # ALGO = 'gpmpc_acados'
         # ALGO = 'gpmpc_acados_TP'
         # ALGO = 'gpmpc_acados_TRP'
         # ALGO = 'mpc'
-        # ALGO = 'mpc_acados'
+        ALGO = 'mpc_acados'
         # ALGO = 'linear_mpc_acados'
         # ALGO = 'linear_mpc'
         # ALGO = 'lqr'
@@ -52,13 +55,16 @@ def run(gui=False, n_episodes=1, n_steps=None, save_data=True, seed=2):
         # ALGO = 'fmpc'
         ADDITIONAL = ''
     CTRL_ADD = ''
+    ADDITIONAL = ''
     # CTRL_ADD = '_tr'
     SYS = 'quadrotor_2D_attitude'
     # SYS = 'quadrotor_3D_attitude'
     TASK = 'tracking'
 
-    # generate_reference = False
-    generate_reference = True
+    generate_reference = False
+    # generate_reference = True
+    if generate_reference:
+        ALGO = 'mpc_acados'
 
     # TASK = 'stab'
     # PRIOR = '200'
@@ -115,10 +121,14 @@ def run(gui=False, n_episodes=1, n_steps=None, save_data=True, seed=2):
     config.algo_config.output_dir = config.output_dir
     mkdirs(config.output_dir)
     if generate_reference:
+        if locals().get('TRAJ_LEN') is not None:
+            config.task_config.episode_len_sec = int(TRAJ_LEN)
         # reconfigure the trajectory length for generating reference
         target_traj_length = config.task_config.episode_len_sec
         ref_traj_length = target_traj_length * 1.5
+        config.task_config.task_info.num_cycles *= 1.5
         config.task_config.episode_len_sec = ref_traj_length
+        config.algo_config.horizon = int(ref_traj_length * config.task_config.ctrl_freq)
 
     # Create an environment
     env_func = partial(make,
@@ -217,8 +227,11 @@ def run(gui=False, n_episodes=1, n_steps=None, save_data=True, seed=2):
     metrics = experiment.compute_metrics(all_trajs)
     all_trajs = dict(all_trajs)
     if generate_reference:
+        ref_data={'obs': all_trajs['obs'][0], 
+                  'action': all_trajs['action'][0],
+                  'rmse': metrics['rmse']}
         np.save(f'./data/{ALGO}_{SYS}_{target_traj_length}_ref_traj.npy', \
-                all_trajs, allow_pickle=True)
+                ref_data, allow_pickle=True)
     
     if hasattr(experiment.env, 'dw_model'):
         force_log = experiment.env.dw_model.get_force_log()
@@ -269,6 +282,7 @@ def plot_quad_eval(state_stack, input_stack, env, save_path=None):
     reference = env.X_GOAL
     if env.TASK == Task.STABILIZATION:
         reference = np.tile(reference.reshape(1, model.nx), (plot_length, 1))
+    action_bound = env.action_space
 
     # Plot states
     fig, axs = plt.subplots(model.nx, figsize=(8, model.nx*1))
@@ -295,6 +309,8 @@ def plot_quad_eval(state_stack, input_stack, env, save_path=None):
         axs[k].plot(times, np.array(input_stack).transpose()[k, 0:plot_length])
         # axs[k].plot(times, np.array(clipped_action_stack).transpose()[k, 0:plot_length], color='r')
         axs[k].set(ylabel=f'input {k}')
+        axs[k].hlines(action_bound.high[k], 0, times[-1], color='gray', linestyle='--')
+        axs[k].hlines(action_bound.low[k], 0, times[-1], color='gray', linestyle='--')
         axs[k].set(ylabel=env.ACTION_LABELS[k] + f'\n[{env.ACTION_UNITS[k]}]')
         axs[k].yaxis.set_major_formatter(FormatStrFormatter('%.1f'))
     axs[0].set_title('Input Trajectories')
