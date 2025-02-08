@@ -37,8 +37,10 @@ gp_model_tag = sys.argv[2] if len(sys.argv) > 2 else ''
 # noise factor test
 additional = '_11'
 # noise_factor_list = np.arange(1, 201, 10)
-noise_factor_list = np.arange(0, 201, 10)
-noise_factor_list[0] = 1
+# noise_factor_list = np.arange(0, 201, 10)
+noise_factor_list = [0,1,2,3,4,5,10,15,20,25,\
+                     30,40,50,60,70,80,90,100]
+# noise_factor_list[0] = 1
 # for algo in ['pid', 'lqr', 'ilqr']:
 for noise_factor in noise_factor_list:
     for start_seed in range(1, 11):
