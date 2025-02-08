@@ -43,12 +43,8 @@ task_config:
     trajectory_plane: 'xz'
     trajectory_position_offset: [0, 1.]
     trajectory_scale: 1.0
-    # ilqr_ref: True
-    # # pitch_ref: True
-    # pitch_ref: False
-    # # ilqr_traj_data: /home/mingxuan/Repositories/scg_tsung/benchmarking_sim/quadrotor/data/ilqr_ref_traj.npy
-    # ilqr_traj_data: /home/mingxuan/Repositories/scg_tsung/benchmarking_sim/quadrotor/data/mpc_acados_ref_traj.npy
-  
+    ilqr_ref: True
+
   inertial_prop:
     M: 0.033
     Iyy: 1.4e-05
@@ -60,20 +56,11 @@ task_config:
     alpha_3: 124.8
     pitch_bias: 0.0 # in radian
 
-  # randomized_taks_length: True
-  # task_length_randomization_info:
-  #   value: [9, 11, 15]
-  # randomized_disturbance: True
-  # disturbance_randomization_info:
-  #   dynamics:
-  #     - scale: [5, 15, 25]
-  #   observation:
-  #     - scale: [5, 15, 25]
-  #   downwash:
-      # - scale: [1.5, 2.5, 4.0]
-
   episode_len_sec: 11
   cost: quadratic
+
+  rew_state_weight: [20, 0.1, 20, 0.1, 0.5, 0.01]
+  rew_act_weight: [3, 2]
 
   constraints:
     - constraint_form: default_constraint
