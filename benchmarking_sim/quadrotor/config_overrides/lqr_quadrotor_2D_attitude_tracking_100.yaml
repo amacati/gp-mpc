@@ -1,7 +1,7 @@
 algo: lqr
 algo_config:
   # Cost parameters
-  q_lqr: [10, 0.1, 10, 0.1, 0.5, 0.01]
+  q_lqr: [20, 0.1, 20, 0.1, 0.5, 0.01]
   r_lqr: [3, 2]
 
   # Model arguments
@@ -10,7 +10,3 @@ algo_config:
   discrete_dynamics: True
   output_dir: ./lqr/results
 
-  # prior_info:
-  #   prior_prop:
-  #     M: 0.054 # Must be capitcal M
-  #     Iyy: 1.4e-05
