@@ -8,6 +8,29 @@ from matplotlib.patches import Polygon
 
 from benchmarking_sim.quadrotor.mb_experiment_rollout import run
 
+def load_gym_data(data_dir):
+    traj_data = np.load(data_dir, allow_pickle=True)
+    obs = traj_data['trajs_data']['obs'][0]
+    state = traj_data['trajs_data']['state'][0]
+    act = traj_data['trajs_data']['action'][0]
+    rew = traj_data['trajs_data']['reward'][0]
+    ref = traj_data['trajs_data']['info'][0][0]['x_reference']
+    error = []
+    for i in range(1, len(traj_data['trajs_data']['info'][0])):
+        error.append(np.sqrt(traj_data['trajs_data']['info'][0][i]['mse']))
+    error = np.array(error)
+    # = traj_data['trajs_data']['info'][0][0]['error']
+    rmse = traj_data['metrics']['rmse']
+    results = {'obs': obs, 
+               'state': state, 
+               'action': act, 
+               'rew': rew,
+               'ref': ref,
+               'rmse': rmse,
+               'error': error,
+               }
+    return results
+
 def extract_rollouts(notebook_dir, data_folder, controller_name, additional=''):
     # print('notebook_dir', notebook_dir)
     data_folder_path = os.path.join(notebook_dir, controller_name, data_folder)
@@ -66,6 +89,7 @@ def run_rollouts(task_description):
     dw_height = getattr(task_description, 'dw_height', None)
     dw_height_scale = getattr(task_description, 'dw_height_scale', None)
     gp_model_tag = getattr(task_description, 'gp_model_tag', '')
+    ctrl_tag = getattr(task_description, 'ctrl_tag', '')
     
     for seed in range(start_seed, num_seed + start_seed):
         run(n_episodes=num_runs_per_seed,

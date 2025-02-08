@@ -22,7 +22,7 @@ from safe_control_gym.utils.gpmpc_plotting import make_quad_plots
 script_path = os.path.dirname(os.path.realpath(__file__))
 
 @timing
-def run(gui=False, n_episodes=1, n_steps=None, save_data=True, seed=2):
+def run(gui=False, n_episodes=1, n_steps=None, save_data=True, seed=1):
     '''The main function running experiments for model-based methods.
 
     Args:
@@ -34,19 +34,19 @@ def run(gui=False, n_episodes=1, n_steps=None, save_data=True, seed=2):
     # read the additional arguments
     if len(sys.argv) > 1:
         print('sys.argv', sys.argv)
-        ALGO = sys.argv[1]
-        # TRAJ_LEN = sys.argv[2] if len(sys.argv) > 2 else None
-        # TRAJ_LEN = int(TRAJ_LEN) 
+        ALGO = sys.argv[1] 
+        TRAJ_LEN = sys.argv[2] if len(sys.argv) > 2 else None
+        TRAJ_LEN = int(TRAJ_LEN) if TRAJ_LEN is not None else None
         # ADDITIONAL = sys.argv[2] if len(sys.argv) > 2 else ''
 
     else:
-        # ALGO = 'ilqr'
+        ALGO = 'ilqr'
         # ALGO = 'gp_mpc'
         # ALGO = 'gpmpc_acados'
         # ALGO = 'gpmpc_acados_TP'
         # ALGO = 'gpmpc_acados_TRP'
         # ALGO = 'mpc'
-        ALGO = 'mpc_acados'
+        # ALGO = 'mpc_acados'
         # ALGO = 'linear_mpc_acados'
         # ALGO = 'linear_mpc'
         # ALGO = 'lqr'
@@ -64,7 +64,8 @@ def run(gui=False, n_episodes=1, n_steps=None, save_data=True, seed=2):
     generate_reference = False
     # generate_reference = True
     if generate_reference:
-        ALGO = 'mpc_acados'
+        ALGO = 'ilqr'
+        # ALGO = 'mpc_acados'
 
     # TASK = 'stab'
     # PRIOR = '200'
@@ -128,7 +129,8 @@ def run(gui=False, n_episodes=1, n_steps=None, save_data=True, seed=2):
         ref_traj_length = target_traj_length * 1.5
         config.task_config.task_info.num_cycles *= 1.5
         config.task_config.episode_len_sec = ref_traj_length
-        config.algo_config.horizon = int(ref_traj_length * config.task_config.ctrl_freq)
+        if ALGO == 'mpc_acados':
+            config.algo_config.horizon = int(ref_traj_length * config.task_config.ctrl_freq)
 
     # Create an environment
     env_func = partial(make,
@@ -206,12 +208,6 @@ def run(gui=False, n_episodes=1, n_steps=None, save_data=True, seed=2):
                                     train_runs=train_runs, 
                                     trajectory=ctrl.traj.T,
                                     dir=ctrl.output_dir)
-        if not isinstance(config.task_config.episode_len_sec, list):
-            plot_quad_eval(trajs_data['obs'][0], 
-                        trajs_data['action'][0], 
-                        #    trajs_data['current_clipped_action'][0],
-                        experiment.env, 
-                        config.output_dir)
 
 
         # Close environments
@@ -254,19 +250,25 @@ def run(gui=False, n_episodes=1, n_steps=None, save_data=True, seed=2):
 
     print('FINAL METRICS - ' + ', '.join([f'{key}: {value}' for key, value in metrics.items()]))
     print(f'pyb_client: {ctrl.env.PYB_CLIENT}')
+    if not isinstance(config.task_config.episode_len_sec, list):
+        plot_quad_eval(results, 
+                    experiment.env, 
+                    config.output_dir)
     if hasattr(ctrl, 'rand_hist'):
         with open(f'./{config.output_dir}/rand_hist.txt', 'w') as file:
             for key, value in ctrl.rand_hist.items():
                 file.write(f'{key}: {value}\n')
 
 # def plot_quad_eval(state_stack, input_stack, clipped_action_stack, env, save_path=None):
-def plot_quad_eval(state_stack, input_stack, env, save_path=None):
+def plot_quad_eval(res, env, save_path=None):
     '''Plots the input and states to determine success.
 
     Args:
         state_stack (ndarray): The list of observations in the latest run.
         input_stack (ndarray): The list of inputs of in the latest run.
     '''
+    state_stack = res['trajs_data']['obs'][0]
+    input_stack = res['trajs_data']['action'][0]
     model = env.symbolic
     if env.QUAD_TYPE == QuadType.TWO_D_ATTITUDE:
         x_idx, z_idx = 0, 2
@@ -321,15 +323,27 @@ def plot_quad_eval(state_stack, input_stack, env, save_path=None):
         plt.savefig(os.path.join(save_path, 'input_trajectories.png'))
 
     # plot the figure-eight
-    fig, axs = plt.subplots(1)
-    axs.plot(np.array(state_stack).transpose()[x_idx, 0:plot_length], 
+    fig, axs = plt.subplots(2, figsize=(8, 8))
+    axs[0].plot(np.array(state_stack).transpose()[x_idx, 0:plot_length], 
              np.array(state_stack).transpose()[z_idx, 0:plot_length], label='actual')
-    axs.plot(reference.transpose()[x_idx, 0:plot_length], 
+    axs[0].plot(reference.transpose()[x_idx, 0:plot_length], 
              reference.transpose()[z_idx, 0:plot_length], color='r', label='desired')
-    axs.set_xlabel('x [m]')
-    axs.set_ylabel('z [m]')
-    axs.set_title('State path in x-z plane')
-    axs.legend()
+    axs[0].set_xlabel('x [m]')
+    axs[0].set_ylabel('z [m]')
+    axs[0].set_title('State path in x-z plane')
+    axs[0].legend()
+
+    error = []
+    for i in range(1, len(res['trajs_data']['info'][0])):
+        error.append(np.sqrt(res['trajs_data']['info'][0][i]['mse']))
+    error = np.array(error)
+    rmse = res['metrics']['rmse']
+    # plot the tracking error
+    axs[1].plot(times, error)
+    axs[1].set_xlabel('time [s]')
+    axs[1].set_ylabel('tracking error [m]')
+    axs[1].set_title(f'Tracking error {rmse:.4f} m')
+
     fig.tight_layout()
 
     if save_path is not None:

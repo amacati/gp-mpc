@@ -7,11 +7,8 @@ from functools import partial
 
 import matplotlib.pyplot as plt
 import numpy as np
-from matplotlib.ticker import FormatStrFormatter
 
-from safe_control_gym.envs.benchmark_env import Task
 from safe_control_gym.experiments.base_experiment import BaseExperiment
-from safe_control_gym.experiments.epoch_experiments import EpochExperiment
 from safe_control_gym.utils.configuration import ConfigFactory
 from safe_control_gym.utils.registration import make
 from safe_control_gym.utils.utils import mkdirs, set_dir_from_config, timing
@@ -29,6 +26,7 @@ def run(gui=False, n_episodes=1, n_steps=None, save_data=True,
         dw_height=None, dw_height_scale=None, 
         eval_task=None,
         gp_model_tag='',
+        ctrl_tag='',
         ):
     '''The main function running experiments for model-based methods.
 
@@ -110,13 +108,13 @@ def run(gui=False, n_episodes=1, n_steps=None, save_data=True,
         #     config.algo_config.gp_model_path = gp_model_dirs[seed%10-1]
     # else:
     if eval_task == 'rollout':
-        config.output_dir = config.output_dir + f'_rollout_{SYS}{ADDITIONAL}'
+        config.output_dir = config.output_dir + f'{ctrl_tag}_rollout_{SYS}{ADDITIONAL}'
     elif eval_task == 'obs_noise':
-        config.output_dir = config.output_dir + f'_obs_noise_{SYS}/' + f'seed_{seed}'
+        config.output_dir = config.output_dir + f'{ctrl_tag}_obs_noise_{SYS}/' + f'seed_{seed}'
     elif eval_task == 'proc_noise':
-        config.output_dir = config.output_dir + f'_proc_noise_{SYS}/' + f'seed_{seed}'
+        config.output_dir = config.output_dir + f'{ctrl_tag}_proc_noise_{SYS}/' + f'seed_{seed}'
     elif eval_task == 'downwash':
-        config.output_dir = config.output_dir + f'_downwash_{SYS}/' + f'seed_{seed}'
+        config.output_dir = config.output_dir + f'{ctrl_tag}_downwash_{SYS}/' + f'seed_{seed}'
     else:
         raise ValueError('eval_task not recognized')
         
@@ -224,17 +222,6 @@ def run(gui=False, n_episodes=1, n_steps=None, save_data=True,
         else:
             trajs_data, _ = experiment.run_evaluation(training=True, n_steps=n_steps)
 
-        # plotting training and evaluation results
-        # training
-        if isinstance(ctrl, GPMPC) and \
-           config.algo_config.gp_model_path is None and \
-           config.algo_config.num_epochs > 1:
-                if isinstance(static_env, Quadrotor):
-                    make_quad_plots(test_runs=test_runs, 
-                                    train_runs=train_runs, 
-                                    trajectory=ctrl.traj.T,
-                                    dir=ctrl.output_dir)
-        plot_quad_eval(trajs_data['obs'][0], trajs_data['action'][0], ctrl.env, config.output_dir)
 
 
         # Close environments
@@ -250,6 +237,7 @@ def run(gui=False, n_episodes=1, n_steps=None, save_data=True,
     random_env.close()
     metrics = experiment.compute_metrics(all_trajs)
     metrics['noise_factor'] = noise_factor
+    metrics['dw_height'] = dw_height
     metrics['dw_height_scale'] = dw_height_scale
     max_dw_force = None
     if hasattr(experiment.env, 'dw_model'):
@@ -280,6 +268,8 @@ def run(gui=False, n_episodes=1, n_steps=None, save_data=True,
             print(f'Metrics saved to ./{config.output_dir}/metrics.txt')
 
     print('FINAL METRICS - ' + ', '.join([f'{key}: {value}' for key, value in metrics.items()]))
+    # plotting training and evaluation results
+    plot_quad_eval(results, ctrl.env, config.output_dir)
 
 if __name__ == '__main__':
 

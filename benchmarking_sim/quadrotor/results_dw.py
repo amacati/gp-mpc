@@ -14,7 +14,7 @@ print('notebook_dir', notebook_dir)
 # algo = sys.argv[3]
 # noise_factor = int(sys.argv[4])
 algo = sys.argv[1]
-gp_model_tag = sys.argv[2]
+gp_model_tag = sys.argv[2] if len(sys.argv) > 2 else ''
 
 # noise factor test
 # additional = ''
