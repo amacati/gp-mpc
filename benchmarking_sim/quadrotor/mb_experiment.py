@@ -31,12 +31,15 @@ def run(gui=False, n_episodes=1, n_steps=None, save_data=True, seed=1):
         n_steps (int): The total number of steps to execute.
         save_data (bool): Whether to save the collected experiment data.
     '''
+    generate_reference = False
+    # generate_reference = True
     # read the additional arguments
     if len(sys.argv) > 1:
         print('sys.argv', sys.argv)
         ALGO = sys.argv[1] 
-        TRAJ_LEN = sys.argv[2] if len(sys.argv) > 2 else None
-        TRAJ_LEN = int(TRAJ_LEN) if TRAJ_LEN is not None else None
+        if generate_reference:
+            TRAJ_LEN = sys.argv[2] if len(sys.argv) > 2 else None
+            TRAJ_LEN = int(TRAJ_LEN) if TRAJ_LEN is not None else None
         # ADDITIONAL = sys.argv[2] if len(sys.argv) > 2 else ''
 
     else:
@@ -61,8 +64,6 @@ def run(gui=False, n_episodes=1, n_steps=None, save_data=True, seed=1):
     # SYS = 'quadrotor_3D_attitude'
     TASK = 'tracking'
 
-    generate_reference = False
-    # generate_reference = True
     if generate_reference:
         ALGO = 'ilqr'
         # ALGO = 'mpc_acados'
