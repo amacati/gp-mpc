@@ -240,13 +240,9 @@ def run(gui=False, n_episodes=1, n_steps=None, save_data=True,
     metrics['dw_height'] = dw_height
     metrics['dw_height_scale'] = dw_height_scale
     max_dw_force = None
-    if hasattr(experiment.env, 'dw_model'):
-        dw_force_log = experiment.env.dw_model.get_force_log()
-        max_dw_force = np.max(dw_force_log)
-    metrics['max_dw_force'] = max_dw_force    
-    all_trajs = dict(all_trajs)
-    
-    if hasattr(experiment.env, 'dw_model'):
+    if hasattr(experiment.env, 'dw_model') and eval_task == 'downwash':
+        force_log = experiment.env.dw_model.get_force_log()
+        max_dw_force = np.max(force_log)
         force_log = experiment.env.dw_model.get_force_log()
         fig, ax = plt.subplots()
         ax.plot(np.arange(len(force_log))/60, force_log)
@@ -254,6 +250,8 @@ def run(gui=False, n_episodes=1, n_steps=None, save_data=True,
         ax.set_ylabel('Downwash force [N]')
         ax.set_title('Downwash force')
         fig.savefig(f'./{config.output_dir}/downwash_force.png')
+    metrics['max_dw_force'] = max_dw_force    
+    all_trajs = dict(all_trajs)
 
 
     if save_data:
