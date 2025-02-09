@@ -19,7 +19,7 @@ if __name__ == '__main__':
     # print(f'Average runtime for {num_seed} runs: \
     #       {np.mean(runtime_list):.3f} sec')
     ALGO = sys.argv[1]
-    ADDITIONAL = sys.argv[2]
+    ADDITIONAL = sys.argv[2] if len(sys.argv) > 2 else ''
 
     runtime_list = []
     num_seed = 50

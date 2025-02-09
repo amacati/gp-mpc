@@ -40,7 +40,7 @@ def run(gui=False, n_episodes=1, n_steps=None, save_data=True, seed=1):
         if generate_reference:
             TRAJ_LEN = sys.argv[2] if len(sys.argv) > 2 else None
             TRAJ_LEN = int(TRAJ_LEN) if TRAJ_LEN is not None else None
-        # ADDITIONAL = sys.argv[2] if len(sys.argv) > 2 else ''
+        ADDITIONAL = sys.argv[2] if len(sys.argv) > 2 else ''
 
     else:
         ALGO = 'ilqr'
@@ -58,7 +58,7 @@ def run(gui=False, n_episodes=1, n_steps=None, save_data=True, seed=1):
         # ALGO = 'fmpc'
         ADDITIONAL = ''
     CTRL_ADD = ''
-    ADDITIONAL = ''
+    # ADDITIONAL = ''
     # CTRL_ADD = '_tr'
     SYS = 'quadrotor_2D_attitude'
     # SYS = 'quadrotor_3D_attitude'
