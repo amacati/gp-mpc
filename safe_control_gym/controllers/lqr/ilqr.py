@@ -378,6 +378,10 @@ class iLQR(BaseController):
     def reset(self):
         '''Prepares for evaluation.'''
         self.env.reset()
+        # self.env.Q = self.Q
+        # self.env.R = self.R
+        self.env.rew_state_weight = np.diag(self.Q)
+        self.env.rew_act_weight= np.diag(self.R)
         self.ite_counter = 0
         self.traj_step = 0
 
