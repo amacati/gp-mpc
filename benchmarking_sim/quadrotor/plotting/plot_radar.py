@@ -6,6 +6,19 @@ from matplotlib import pyplot as plt
 import pandas as pd
 
 script_dir = os.path.dirname(__file__)
+def load_metric(transfer_metric, method):
+    ctrl = tag_ctrl_list[method]
+    res = np.load(
+        f'{script_dir}/../data/{ctrl}_{SYS}_gen_results.npy', allow_pickle=True).item()
+    transfer_metric[method] = {'rmse': [], 'rmse_std': [], 'inference_time': []}
+    for T in episode_len_list:
+        T = '_'+str(T)
+        transfer_metric[method]['rmse'].append(res[T]['mean_rmse'])
+        transfer_metric[method]['rmse_std'].append(res[T]['std_rmse'])
+    transfer_metric[method]['rmse'] = np.array(transfer_metric[method]['rmse'])
+    transfer_metric[method]['rmse_std'] = np.array(transfer_metric[method]['rmse_std'])
+    transfer_metric[method]['inference_time'] = np.mean(res['inference_time'])
+    return transfer_metric
 
 # get the pyplot default color wheel
 prop_cycle = plt.rcParams['axes.prop_cycle']
@@ -21,6 +34,25 @@ prop_cycle = plt.rcParams['axes.prop_cycle']
 #     'MAX': 'none',
 #     'MIN': 'none',
 # }
+SYS = 'quadrotor_2D_attitude'
+tag_ctrl_list = {
+    'iLQR': 'ilqr',
+    'LQR': 'lqr',
+    'PID': 'pid',
+    'Linear MPC': 'linear_mpc_acados',
+    'Nonlinear MPC': 'mpc_acados',
+    'F-MPC': 'fmpc',
+    'GP-MPC': 'gpmpc_acados_TP' if SYS == 'quadrotor_2D_attitude' else 'gpmpc_acados_TRP',
+}
+transfer_metric = {}
+episode_len_list = [9, 10, 11, 12, 13, 14, 15]
+transfer_metric = load_metric(transfer_metric, 'iLQR')
+transfer_metric = load_metric(transfer_metric, 'F-MPC')
+transfer_metric = load_metric(transfer_metric, 'Nonlinear MPC')
+transfer_metric = load_metric(transfer_metric, 'Linear MPC')
+transfer_metric = load_metric(transfer_metric, 'PID')
+transfer_metric = load_metric(transfer_metric, 'LQR')
+transfer_metric = load_metric(transfer_metric, 'GP-MPC')
 
 plot_colors = {
     'GP-MPC': 'royalblue',
@@ -146,46 +178,71 @@ def spider(df, *, id_column, title=None, subtitle=None, max_values=None, padding
     if title is not None: plt.suptitle(title, fontsize=supertitle_fontsize)
     if subtitle is not None: plt.title(subtitle, fontsize=subtitle_fontsize)
     # plt.show()
-    fig_save_path = os.path.join(script_dir, f'{plt_name}_radar.pdf')
+    fig_save_path = os.path.join(script_dir, f'radar_{plt_name}.pdf')
     fig.savefig(fig_save_path, dpi=300, bbox_inches='tight')
+    fig.savefig(fig_save_path.replace('.pdf', '.png'), dpi=300, bbox_inches='tight')
     print(f'figure saved as {fig_save_path}')
 
 
 radar = spider
 
 num_axis = 6
-gen_performance = [0.07240253210609013, 0.031425261835490235,  # GP-MPC
-                   0.09475888182425916, 0.034306490036127714,  # Linear-MPC
-                   0.06669989755434953, 0.023313325828377546,  # MPC
-                   0.07809048366149708, 0.03448930158456177, # F-MPC
-                   0.09449988, 0.09940848,  # PPO
-                   0.13622967, 0.0933615,  # SAC
-                   0.08832988, 0.08935109,  # DPPO
-                   0.175546733464246, 0.06473299142106152, # PID
-                   0.48860034297750127, 0.026522666742796974, # iLQR
-                   0.21703079983074353, 0.044875452075620124, # LQR
+
+
+
+gen_performance = [transfer_metric['GP-MPC']['rmse'][0], 
+                   transfer_metric['GP-MPC']['rmse'][-1],  # GP-MPC
+                   transfer_metric['Linear MPC']['rmse'][0], 
+                   transfer_metric['Linear MPC']['rmse'][-1], # Linear-MPC
+                   transfer_metric['Nonlinear MPC']['rmse'][0], 
+                   transfer_metric['Nonlinear MPC']['rmse'][-1],  # MPC
+                   transfer_metric['F-MPC']['rmse'][0], 
+                   transfer_metric['F-MPC']['rmse'][-1], # F-MPC
+                   0.14263671, 0.10946506,  # PPO
+                   0.11052249, 0.07096967,  # SAC
+                   0.14777681, 0.11818952,  # DPPO
+                   transfer_metric['PID']['rmse'][0], 
+                   transfer_metric['PID']['rmse'][-1], # PID
+                   transfer_metric['iLQR']['rmse'][0], 
+                   transfer_metric['iLQR']['rmse'][-1], # iLQR
+                   transfer_metric['LQR']['rmse'][0], 
+                   transfer_metric['LQR']['rmse'][-1], # LQR
                    ]
-performance = [0.049872511450839645, 0.049872511450839645,  # GP-MPC
-               0.06284182159429033, 0.06284182159429033,  # Linear-MPC
-               0.04421752503119518, 0.04421752503119518,  # MPC
-               0.05599325343755744, 0.05599325343755744,  # F-MPC
-               0.038755992462007574, 0.038755992462007574,  # PPO
-               0.07543519125158074, 0.07543519125158074,  # SAC
-               0.03779299107037847, 0.03779299107037847,  # DPPO
-               0.1128442698191488, 0.1128442698191488, # PID
-               0.0492655107844662, 0.04752121868080676, # iLQR
-               0.12846739566058812, 0.12846739566058812, # LQR
+performance = [transfer_metric['GP-MPC']['rmse'][2], 
+               transfer_metric['GP-MPC']['rmse'][2],  # GP-MPC
+               transfer_metric['Linear MPC']['rmse'][2], 
+               transfer_metric['Linear MPC']['rmse'][2],  # Linear-MPC
+               transfer_metric['Nonlinear MPC']['rmse'][2], 
+               transfer_metric['Nonlinear MPC']['rmse'][2],  # MPC
+               transfer_metric['F-MPC']['rmse'][2], 
+               transfer_metric['F-MPC']['rmse'][2],  # F-MPC
+               0.04944359, 0.04944359,  # PPO
+               0.06911531, 0.06911531,  # SAC
+               0.05183557, 0.05183557,  # DPPO
+               transfer_metric['PID']['rmse'][2], 
+               transfer_metric['PID']['rmse'][2], # PID
+               transfer_metric['iLQR']['rmse'][2], 
+               transfer_metric['iLQR']['rmse'][2], # iLQR
+               transfer_metric['LQR']['rmse'][2], 
+               transfer_metric['LQR']['rmse'][2], # LQR
                ]
-inference_time = [0.0090775150246974736, 0.0090775150246974736, # GP-MPC
-                  0.00159305, 0.00159305, # Linear-MPC
-                  0.0061547613, 0.0061547613, # MPC
-                  0.0054, 0.0054, # F-MPC
+inference_time = [transfer_metric['GP-MPC']['inference_time'], 
+                  transfer_metric['GP-MPC']['inference_time'], # GP-MPC
+                  transfer_metric['Linear MPC']['inference_time'], 
+                  transfer_metric['Linear MPC']['inference_time'], # Linear-MPC
+                  transfer_metric['Nonlinear MPC']['inference_time'], 
+                  transfer_metric['Nonlinear MPC']['inference_time'], # MPC
+                  transfer_metric['F-MPC']['inference_time'], 
+                  transfer_metric['F-MPC']['inference_time'], # F-MPC
                   0.00020738168999000832, 0.00020738168999000832, # PPO
                   0.00024354409288477016, 0.00024354409288477016, # SAC
                   0.0001976909460844817, 0.0001976909460844817, # DPPO
-                  0.0003089414, 0.0003089414, # PID
-                  3.943804538999999e-06, 3.943804538999999e-06, # iLQR
-                  4.951303655e-06, 4.951303655e-06, # LQR
+                  transfer_metric['PID']['inference_time'], 
+                  transfer_metric['PID']['inference_time'], # PID
+                  transfer_metric['iLQR']['inference_time'], 
+                  transfer_metric['iLQR']['inference_time'], # iLQR
+                  transfer_metric['LQR']['inference_time'], 
+                  transfer_metric['LQR']['inference_time'], # LQR
                   ]
 model_complexity = [80, 80, # GP-MPC
                     40, 40, # Linear-MPC
@@ -198,26 +255,26 @@ model_complexity = [80, 80, # GP-MPC
                     80, 80, # iLQR
                     40, 40, # LQR 
                     ]
-sampling_complexity = [int(660), int(660),
+sampling_complexity = [int(1320), int(1320),
                        int(1), int(1),
                        int(1), int(1),
                        int(1), int(1),
-                       int(4 * 1e5), int(4 * 1e5), # PPO
+                       int(0.5 * 1e5), int(0.5 * 1e5), # PPO
                        int(2 * 1e5), int(2 * 1e5), # SAC
-                       int(5 * 1e5), int(5 * 1e5), # DPPO
+                       int(1 * 1e5), int(1 * 1e5), # DPPO
                        int(1), int(1),
                        int(1), int(1),
                        int(1), int(1),
                        ]
-robustness = [120, 120,
-              90, 90,
+robustness = [100, 100,
               90, 90,
               100, 100,
+              100, 100,
               10, 10,
-              30, 30,
-              20, 20,
-              110, 110,
-              40, 40,
+              50, 50,
+              10, 10,
+              100, 100,
+              70, 70,
               100, 100,
               ]
 data = [gen_performance, performance, inference_time, model_complexity, sampling_complexity, robustness]
@@ -243,22 +300,44 @@ algos = ['GP-MPC', 'GP-MPC',
 
 # read the argv
 if len(sys.argv) > 1:
-    masks_algo = [int(i) for i in sys.argv[1:]]
-    masks_algo.append(6)
-    masks_algo.append(7)
+    # masks_algo = [int(i) for i in sys.argv[1:]]
+    algo = sys.argv[1]
+    # masks_algo.append(6)
+    # masks_algo.append(7)
+    if algo == 'GP-MPC':
+        masks_algo = [0, 1, -2, -1]
+    elif algo == 'PPO':
+        masks_algo = [8, 9, -2, -1]
+    elif algo == 'SAC':
+        masks_algo = [10, 11, -2, -1]
+    elif algo == 'DPPO':
+        masks_algo = [12, 13, -2, -1]
+    elif algo == 'PID':
+        masks_algo = [14, 15, -2, -1]
+    elif algo == 'iLQR':
+        masks_algo = [16, 17, -2, -1]
+    elif algo == 'LQR':
+        masks_algo = [18, 19, -2, -1]
+    elif algo == 'F-MPC':
+        masks_algo = [6, 7, -2, -1]
+    elif algo == 'Nonlinear-MPC':
+        masks_algo = [4, 5, -2, -1]
+    elif algo == 'Linear-MPC':
+        masks_algo = [2, 3, -2, -1]
+
 else:
-    # masks_algo = [8, 9, -2, -1]
     # masks_algo = [18, 19, -2, -1] # LQR
+    masks_algo = [8, 9, -2, -1]
     # masks_algo = [16, 17, -2, -1] # iLQR
     # masks_algo = [14, 15, -2, -1] # PID
     # masks_algo = [12, 13, -2, -1] # DPPO
     # masks_algo = [10, 11, -2, -1] # SAC
-    # masks_algo = [8, 9, -2, -1] # PPO
+    masks_algo = [8, 9, -2, -1] # PPO
     # masks_algo = [6, 7, -2, -1] # F-MPC
     # masks_algo = [4, 5, -2, -1] # Nonlinear MPC
     # masks_algo = [2, 3, -2, -1] # Linear MPC
     # masks_algo = [0, 1, -2, -1] # GP-MPC
-    masks_algo = [6, 7, -2, -1] # F-MPC
+    # masks_algo = [6, 7, -2, -1] # F-MPC
 data = np.array(data)[:, masks_algo]
 data = data.tolist()
 algos = [algos[i] for i in masks_algo]
