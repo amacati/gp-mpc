@@ -17,16 +17,16 @@ do
     # python3 results_dw.py 'gpmpc_acados_TP' $RAND_TYPE
     # python3 results_noise.py 'gpmpc_acados_TP' 'obs_noise' $RAND_TYPE
     # python3 results_noise.py 'gpmpc_acados_TP' 'proc_noise' $RAND_TYPE 
-    for ADDITIOANL in '_9' '_10' '_11' '_12' '_13' '_14' '_15'
-    do
-        for STARTSEED in 1 11 21 31 41 # 51 61 71 81 91 
-        do 
-            for algo in 'gpmpc_acados_TP'
-            do
-                python3 results_rollout.py $ADDITIOANL $STARTSEED $algo $RAND_TYPE
-            done
-        done
-    done
+    # for ADDITIOANL in '_9' '_10' '_11' '_12' '_13' '_14' '_15'
+    # do
+    #     for STARTSEED in 1 11 21 31 41 # 51 61 71 81 91 
+    #     do 
+    #         for algo in 'gpmpc_acados_TP'
+    #         do
+    #             python3 results_rollout.py $ADDITIOANL $STARTSEED $algo $RAND_TYPE
+    #         done
+    #     done
+    # done
 done
 
 python3 ../del_acados_files.py
