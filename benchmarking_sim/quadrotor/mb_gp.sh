@@ -14,8 +14,8 @@ do
     done
 
     # python3 results_dw.py 'gpmpc_acados_TP' $GP_TAG
-    # python3 results_noise.py 'gpmpc_acados_TP' $GP_TAG 'obs_noise'
-    # python3 results_noise.py 'gpmpc_acados_TP' $GP_TAG 'proc_noise'
+    # python3 results_noise.py 'gpmpc_acados_TP' 'obs_noise' $GP_TAG
+    # python3 results_noise.py 'gpmpc_acados_TP' 'proc_noise' $GP_TAG 
     # for ADDITIOANL in '_9' '_10' '_11' '_12' '_13' '_14' '_15'
     # do
     #     for STARTSEED in 1 11 21 31 41 # 51 61 71 81 91 

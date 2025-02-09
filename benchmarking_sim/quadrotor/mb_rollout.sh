@@ -1,4 +1,17 @@
 
+# for algo in 'ilqr'
+# for algo in 'pid'
+for algo in 'mpc_acados' 'fmpc' 'linear_mpc_acados' 'lqr' 'ilqr' 'pid'
+do
+    python3 results_noise.py $algo 'obs_noise'
+    python3 results_noise.py $algo 'proc_noise'
+
+for algo in 'mpc_acados' 'fmpc' 'linear_mpc_acados' 'lqr' 'ilqr' 'pid'
+do
+    python3 results_dw.py $algo
+done
+
+done
 # for ADDITIOANL in '_9' '_11' '_13' '_15'
 # for ADDITIOANL in '_10' '_12' '_14'
 for ADDITIOANL in '_9' '_10' '_11' '_12' '_13' '_14' '_15'
@@ -10,23 +23,9 @@ do
         # for algo in 'linear_mpc' 
         # for algo in 'ilqr' # 'lqr'
         # for algo in 'pid'
-        for algo in 'gpmpc_acados_TP' 'mpc_acados' 'fmpc' 'linear_mpc_acados' 'lqr' 'ilqr' 'pid'
+        for algo in 'mpc_acados' 'fmpc' 'linear_mpc_acados' 'lqr' 'ilqr' 'pid'
         do
             python3 results_rollout.py $ADDITIOANL $STARTSEED $algo 1
         done
     done
-done
-
-# for algo in 'ilqr'
-# for algo in 'pid'
-for algo in 'gpmpc_acados_TP' 'mpc_acados' 'fmpc' 'linear_mpc_acados' 'lqr' 'ilqr' 'pid'
-do
-    python3 results_dw.py $algo
-done
-
-# for algo in 'ilqr'
-# for algo in 'pid'
-for algo in 'gpmpc_acados_TP' 'mpc_acados' 'fmpc' 'linear_mpc_acados' 'lqr' 'ilqr' 'pid'
-do
-    python3 results_noise.py $algo
 done
