@@ -11,6 +11,7 @@ hpo_config:
   save_n_best_hps: 1
   # budget
   trials: 60
+  hp_eval_list: ['hps_config', 'ob_ns=5', 'dw_h=1dot5']
 
   # hyperparameters
   hps_config:
@@ -38,28 +39,52 @@ hpo_config:
     # objective
     rew_state_weight: [10.0, 0.1, 10.0, 0.1, 0.1, 0.001]
     rew_act_weight: [0.1, 0.1]
-  vizier_hps:
+  ob_ns=5:
     activation: relu
-    actor_lr: 0.0008983071385131106
+    actor_lr: 0.0007911446393303
     clip_param: 0.2
-    critic_lr: 0.0010604750567992504
-    entropy_coef: 0.027168142112125156
+    critic_lr: 0.0006602258672531
+    entropy_coef: 0.0069447363830184
     gae_lambda: 0.92
-    gamma: 0.98
+    gamma: 0.99
     hidden_dim: 64
-    max_env_steps: 336000
+    max_env_steps: 660000
     mini_batch_size: 256
     opt_epochs: 20
     rew_act_weight:
-    - 0.004342434109985312
-    - 0.16308846035025895
+    - 0.0001
+    - 0.9638035469124284
     rew_state_weight:
-    - 8.681025660217175
-    - 0.007712483036226952
-    - 8.684351881484186
-    - 0.25416422315600956
-    - 0.2089113565062738
-    - 0.042781113613173966
+    - 10.376120167287265
+    - 0.9353162582268919
+    - 9.200662129471361
+    - 0.705439715618293
+    - 0.027187712459770596
+    - 1.8322150860979494
     rollout_batch_size: 5
-    target_kl: 0.003516987203810008
+    target_kl: 0.0108054512685956
+  dw_h=1dot5:
+    activation: relu
+    actor_lr: 8.49806507266946e-05
+    clip_param: 0.2
+    critic_lr: 0.0006582567361998
+    entropy_coef: 0.0002374007347582
+    gae_lambda: 0.95
+    gamma: 0.99
+    hidden_dim: 128
+    max_env_steps: 540000
+    mini_batch_size: 256
+    opt_epochs: 20
+    rew_act_weight:
+    - 0.0001
+    - 0.0001
+    rew_state_weight:
+    - 12.129651328264147
+    - 1.2182672110238633
+    - 5.466532398113849
+    - 1.7328436783338095
+    - 5.275858023649492
+    - 1.1995820342319166
+    rollout_batch_size: 5
+    target_kl: 1.0e-08
 

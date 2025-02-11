@@ -87,6 +87,11 @@ def eval(config):
     Usage:
         * to evaluate hyperparameters, use with `--func eval`.
     '''
+
+    # initialize safety filter
+    if 'safety_filter' not in config:
+        config.safety_filter = None
+        config.sf_config = None
     
     # change the cost function for rl methods
     if config.algo == 'ppo' or config.algo == 'sac' or config.algo == 'dppo':
@@ -114,11 +119,9 @@ def eval(config):
     else:
         raise ValueError('Only ppo, sac, dppo, fmpc, gp_mpc, gpmpc_acados, linear_mpc, mpc_acados, ilqr, lqr, pid are supported for now.')
 
-    # initialize safety filter
-    if 'safety_filter' not in config:
-        config.safety_filter = None
-        config.sf_config = None
-
+    appended_folder = config.overrides[0].split('quadrotor_2D_attitude_tracking')[-1].split('.')[0]
+    config.output_dir += f'/{appended_folder}'
+    
     hpo_eval = HPOEval(config.hpo_config,
                        config.task_config,
                        config.algo_config,
