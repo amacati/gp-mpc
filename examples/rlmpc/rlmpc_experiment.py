@@ -44,6 +44,7 @@ def run(plot=True, training=False, n_episodes=1, n_steps=None, curr_path='.'):
     ctrl = make(config.algo,
                 env_func,
                 **config.algo_config,
+                seed=config.seed,
                 output_dir=curr_path + '/temp')
 
     # Run without safety filter

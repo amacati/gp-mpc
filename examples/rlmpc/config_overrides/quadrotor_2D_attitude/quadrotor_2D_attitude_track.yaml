@@ -59,7 +59,7 @@ task_config:
   cost: rl_reward
   obs_goal_horizon: 1
 
-  rew_state_weight: [25.0, 0.1, 25.0, 0.1, 0.1, 0.01]
+  rew_state_weight: [5.0, 0.1, 5.0, 0.1, 0.1, 0.01]
   rew_act_weight: [0.1, 0.1]
   rew_exponential: True
 
