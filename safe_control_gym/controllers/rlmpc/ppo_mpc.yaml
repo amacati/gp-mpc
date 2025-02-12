@@ -11,6 +11,7 @@ ac_config:
   horizon: 10
   q_mpc: [ 1.]
   r_mpc: [ 1.]
+  qt_mpc: [ 1.]
   model_param: [ 12.1432, 1.8118, 0.0, 72.08, 7.5755, 39.8653, 0.0 ]
   warmstart: True
   n_workers: 8

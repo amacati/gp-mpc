@@ -32,6 +32,7 @@ class PPO_MPC(BaseController):
                  seed=0,
                  **kwargs):
         super().__init__(env_func, training, checkpoint_path, output_dir, use_gpu, seed, **kwargs)
+        torch.manual_seed(seed=seed)
 
         # Task.
         self.env = env_func()
@@ -260,6 +261,7 @@ class PPO_MPC(BaseController):
                     terminal_obs_tensor = torch.FloatTensor(terminal_obs).unsqueeze(0).to(self.device)
                     terminal_val = self.agent.ac.critic(terminal_obs_tensor).squeeze().detach().cpu().numpy()
                     terminal_v[idx] = terminal_val
+                    self.agent.reset()
             rollouts.push(
                 {'obs': obs, 'act': act, 'rew': rew, 'mask': mask, 'v': v, 'logp': logp, 'terminal_v': terminal_v,
                  'info': agent_info, 'results_dict': results_dict, 'optimal': optimal}
