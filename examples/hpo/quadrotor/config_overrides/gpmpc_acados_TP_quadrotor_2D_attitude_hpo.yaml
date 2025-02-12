@@ -4,9 +4,9 @@ hpo_config:
   objective: [exponentiated_rmse, exponentiated_rms_action_change] # [other metrics defined in base_experiment.py]
   objective_bounds: [[0.0, 1.0], [0.0, 1.0]] # [bounds for each objective]. Worse value will be assigned if objective evaluation is None
   direction: [maximize, maximize] # [minimize, maximize]
-  repetitions: 5 # number of samples of performance for each objective query
+  repetitions: 2 # number of samples of performance for each objective query
   n_episodes: 5 # number of episodes to evaluate each policy
-  use_gpu: True
+  use_gpu: False
   seed: 24
   save_n_best_hps: 1
   # budget
@@ -26,26 +26,6 @@ hpo_config:
     num_samples: 50
     q_mpc: [18, 0.1, 18, 0.1, 0.5, 0.01]
     r_mpc: [15., 5.]
-  vizier_hps:
-    horizon: 25
-    learning_rate:
-    - 0.001295064632205154
-    - 0.001295064632205154
-    n_ind_points: 40
-    num_epochs: 2
-    num_samples: 80
-    optimization_iterations:
-    - 1000
-    - 1000
-    q_mpc:
-    - 15.0
-    - 0.0001
-    - 15.0
-    - 2.125483674492009
-    - 0.0001
-    - 0.0001
-    r_mpc:
-    - 15.0
-    - 5.983763933381028
+
 
 
