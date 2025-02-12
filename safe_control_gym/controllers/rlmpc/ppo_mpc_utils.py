@@ -108,10 +108,14 @@ class PPO_MPC_Agent:
         info = batch['info']
         (action_th, dist, logp, nabla_pi_ref,
          nabla_pi_cost, nabla_pi_model, optimal) = self.ac.actor.forward_train(obs, act, info)
+
         # Policy.
         ratio = torch.exp(logp - logp_old)
         clip_adv = torch.clamp(ratio, 1 - self.clip_param, 1 + self.clip_param) * adv
-        policy_loss = torch.where(optimal > 0.9, -torch.min(ratio * adv, clip_adv), torch.nan).nanmean()
+        policy_loss = -torch.min(ratio * adv, clip_adv)
+        # mask = ratio*adv > clip_adv
+        # policy_loss[mask] = 0.0
+        policy_loss = torch.where(optimal > 0.9, policy_loss, torch.nan).nanmean()
         # Entropy.
         entropy_loss = torch.where(optimal > 0.9, -dist.entropy(), torch.nan).nanmean()
         # KL/trust region.
@@ -149,23 +153,18 @@ class PPO_MPC_Agent:
                     # Update only when no KL constraint or constraint is satisfied.
                     if (self.target_kl <= 0) or (self.target_kl > 0 and approx_kl <= 1.5 * self.target_kl):
                         self.actor_opt.zero_grad()
-                        theta = self.ac.actor.pre_pi_net(batch_th['obs'])
+                        theta = self.ac.actor.linear_param.repeat(batch_th['obs'].shape[0], 1)
                         (policy_loss + self.entropy_coef * entropy_loss).backward()
+
                         temp1 = action_th.grad.unsqueeze(1) @ torch.FloatTensor(np.array(nabla_pi_cost))
-                        temp1 @= (theta[:, :self.ac.actor.pi_net.param_dict['l'].shape[0]].unsqueeze(2))
+                        temp1 @= (theta[:, :self.ac.actor.mpc.param_dict['l'].shape[0]].unsqueeze(2))
                         temp2 = action_th.grad.unsqueeze(1) @ torch.FloatTensor(np.array(nabla_pi_model))
-                        temp2 @= (theta[:, self.ac.actor.pi_net.param_dict['l'].shape[0]:].unsqueeze(2))
+                        temp2 @= (theta[:, self.ac.actor.mpc.param_dict['l'].shape[0]:].unsqueeze(2))
                         # temp3 = action_th.grad.unsqueeze(1) @ torch.FloatTensor(np.array(nabla_pi_ref))
-                        # temp3 @= (theta[:, self.ac.actor.pi_net.param_dict['l'].shape[0]:].unsqueeze(2))
+                        # temp3 @= (theta[:, self.ac.actor.mpc.param_dict['l'].shape[0]:].unsqueeze(2))
                         (temp1.mean() + temp2.mean()).backward()
                         self.actor_opt.step()
 
-                        # temp1 = np.matmul(action_th.grad.unsqueeze(1).numpy(), nabla_pi_cost).squeeze(1).mean(axis=0)
-                        # temp2 = 0*np.matmul(action_th.grad.unsqueeze(1).numpy(), nabla_pi_model).squeeze(1).mean(axis=0)
-                        # grads = {'l': temp1, 'f': temp2}
-                        # self.ac.actor.pi_net.param_dict = self.actor_mpc_opt.update_params(
-                        #     self.ac.actor.pi_net.param_dict, grads
-                        # )
                         p_loss_epoch += policy_loss.item()
                         e_loss_epoch += entropy_loss.item()
                         kl_epoch += approx_kl.item()
@@ -184,7 +183,8 @@ class PPO_MPC_Agent:
             results['approx_kl'].append(kl_epoch / num_mini_batch)
             results['cost_loss'].append(cost_loss_epoch / num_mini_batch)
             results['model_loss'].append(model_loss_epoch / num_mini_batch)
-            print(self.ac.actor.pi_net.param_dict)
+        # print(self.ac.actor.pi_net.param_dict)
+        print(self.ac.actor.linear_param.detach().numpy())
         results = {k: sum(v) / len(v) for k, v in results.items()}
         return results
 
@@ -259,26 +259,27 @@ class MPCActor(nn.Module):
 
     def __init__(self, env, obs_dim, act_dim, hidden_dims, activation, gamma, model, actor_config):
         super().__init__()
-        self.pi_net = MPCPolicyFunction(env, gamma, model, **actor_config)
+        self.mpc = MPCPolicyFunction(env, gamma, model, **actor_config)
         self.n_learnable_param = 0
-        for k in self.pi_net.param_dict.keys():
-            self.n_learnable_param += self.pi_net.param_dict[k].shape[0]
-        self.pre_pi_net = MLP(obs_dim, self.n_learnable_param, hidden_dims, activation)
-        self.traj_change = nn.Parameter(torch.zeros(self.pi_net.traj.shape))
+        for k in self.mpc.param_dict.keys():
+            self.n_learnable_param += self.mpc.param_dict[k].shape[0]
+        self.linear_param = nn.Parameter(torch.zeros(self.n_learnable_param))
+        self.param_net = MLP(obs_dim, self.n_learnable_param, hidden_dims, activation)
+        self.traj_ref = nn.Parameter(torch.zeros(self.mpc.traj.shape))
 
         # Construct output action distribution.
-        self.logstd = nn.Parameter(-0.5 * torch.ones(act_dim))
+        self.logstd = nn.Parameter(-2.0 * torch.ones(act_dim))
         self.dist_fn = lambda x: Normal(x, self.logstd.exp())
 
     def forward(self, obs, act=None):
-        theta = self.pre_pi_net(torch.FloatTensor(obs))
+        theta = self.linear_param.repeat(obs.shape[0], 1)
         if obs.ndim > 1:
-            action, info, results_dict, optimal_flag = self.pi_net.select_action_batch(
-                obs, theta.numpy(), self.traj_change.numpy()
+            action, info, results_dict, optimal_flag = self.mpc.select_action_batch(
+                obs, theta.numpy(), self.traj_ref.numpy()
             )
         else:
-            action, info, results_dict, optimal_flag = self.pi_net.select_action(
-                obs, theta.numpy(), self.traj_change.numpy()
+            action, info, results_dict, optimal_flag = self.mpc.select_action(
+                obs, theta.numpy(), self.traj_ref.numpy()
             )
             action = torch.FloatTensor(action)
         dist = self.dist_fn(action)
@@ -288,9 +289,9 @@ class MPCActor(nn.Module):
         return dist, logp_a, info, results_dict, optimal_flag
 
     def forward_train(self, obs, act, info):
-        theta = self.pre_pi_net(torch.FloatTensor(obs))
-        action, nabla_pi_ref, nabla_pi_cost, nabla_pi_model, optimal_flag = self.pi_net.select_action_batch_train(
-            obs, theta.detach().numpy(), self.traj_change.detach().numpy(), info
+        theta = self.linear_param.repeat(obs.shape[0], 1)
+        action, nabla_pi_ref, nabla_pi_cost, nabla_pi_model, optimal_flag = self.mpc.select_action_batch_train(
+            obs, theta.detach().numpy(), self.traj_ref.detach().numpy(), info
         )
         action_th = action
         action_th.requires_grad_()
@@ -299,7 +300,7 @@ class MPCActor(nn.Module):
         return action_th, dist, logp_a, nabla_pi_ref, nabla_pi_cost, nabla_pi_model, optimal_flag
 
     def reset(self):
-        self.pi_net.reset()
+        self.mpc.reset()
 
 
 class MPCPolicyFunction:
@@ -310,6 +311,7 @@ class MPCPolicyFunction:
                  horizon: int = 5,
                  q_mpc: list = [2],
                  r_mpc: list = [1],
+                 qt_mpc: list = [2],
                  model_param: list = [],
                  warmstart: bool = True,
                  soft_constraints: bool = True,
@@ -322,11 +324,7 @@ class MPCPolicyFunction:
         self.dt = self.model.dt
         self.T = horizon
         self.gamma = gamma
-        self.q_mpc, self.r_mpc = q_mpc, r_mpc
-        self.target_q_mpc, self.target_r_mpc = q_mpc, r_mpc
-        self.Q = get_cost_weight_matrix(self.q_mpc, self.model.nx)
-        self.R = get_cost_weight_matrix(self.r_mpc, self.model.nu)
-        self.Qt = get_cost_weight_matrix(self.q_mpc, self.model.nx)
+        self.q_mpc, self.r_mpc, self.qt_mpc = q_mpc, r_mpc, qt_mpc
         self.model_param = np.array(model_param)
         self.update_step_count = 0
         self.soft_constraints = soft_constraints
@@ -524,9 +522,10 @@ class MPCPolicyFunction:
 
         # Create solver (IPOPT solver in this version)
         opts_setting = {
-            'ipopt.max_iter': 1000,
+            'ipopt.max_iter': 200,
             'ipopt.print_level': 0,
             'print_time': 0,
+            'record_time': True,
             'ipopt.mu_target': etau,
             'ipopt.mu_init': etau,
             'ipopt.acceptable_tol': 1e-4,
@@ -628,21 +627,16 @@ class MPCPolicyFunction:
             end = min(traj_step + self.T + 1, self.traj.shape[-1])
             remain = max(0, self.T + 1 - (end - start))
             goal_states = np.concatenate([
-                self.traj[:, start:end] + 0.1 * traj_change[:, start:end],
-                np.tile(self.traj[:, -1:] + 0.1 * traj_change[:, -1:], (1, remain))
+                self.traj[:, start:end] + 1.0 * traj_change[:, start:end],
+                np.tile(self.traj[:, -1:] + 1.0 * traj_change[:, -1:], (1, remain))
             ], -1)
         else:
             raise Exception('Reference for this mode is not implemented.')
         return goal_states  # (nx, T+1).
 
     def _init_param_val(self):
-        # self.theta_param_ = torch.FloatTensor(np.concatenate((self.q_mpc, self.r_mpc)))
-        # self.target_theta_param_ = torch.FloatTensor(np.concatenate((self.q_mpc, self.r_mpc)))
-        # self.theta_param_.requires_grad_()
-        # self.solver_dict['theta_param_val'] = np.concatenate((self.q_mpc, self.r_mpc, self.q_mpc)).copy()
-        self.param_dict = {'l': np.concatenate((self.q_mpc, self.r_mpc, self.q_mpc)).copy(),
+        self.param_dict = {'l': np.concatenate((self.q_mpc, self.r_mpc, self.qt_mpc)).copy(),
                            'f': self.model_param.copy()}
-        # self.solver_dict['target_theta_param_val'] = np.concatenate((self.q_mpc, self.r_mpc)).copy()
 
     def select_action(self, obs, theta, traj_change, info=None, mode='eval'):
         """Solves nonlinear mpc problem to get next action.
@@ -667,8 +661,8 @@ class MPCPolicyFunction:
         fixed_param = obs[:self.model.nx, None]
         ref_param = goal_states.T.reshape(-1, 1)
         # Collect learnable parameters
-        cost_param = (self.param_dict['l'] + 0. * theta[:self.param_dict['l'].shape[0]])[:, None]
-        model_param = (self.param_dict['f'] + 0. * theta[self.param_dict['l'].shape[0]:])[:, None]
+        cost_param = (self.param_dict['l'] + 1.0 * theta[0, :self.param_dict['l'].shape[0]])[:, None]
+        model_param = (self.param_dict['f'] + 1.0 * theta[0, self.param_dict['l'].shape[0]:])[:, None]
         if self.mode == 'tracking':
             self.traj_step += 1
 
@@ -693,8 +687,7 @@ class MPCPolicyFunction:
         self.u_prev = u_val.full()
         self.sigma_prev = sigma_val.full()
         results_dict = {'horizon_states': deepcopy(self.x_prev), 'horizon_inputs': deepcopy(self.u_prev),
-                        'goal_states': deepcopy(ref_param)}
-        # results_dict['t_wall'].append(opti.stats()['t_wall_total'])
+                        'goal_states': deepcopy(ref_param), 't_wall': solver.stats()['t_wall_total']}
 
         # Take the first action from the solved action sequence.
         if self.u_prev.ndim > 1:
@@ -730,8 +723,8 @@ class MPCPolicyFunction:
         for i, obs in enumerate(obs_batch):
             fixed_param = obs[:self.model.nx, None]
             ref_param = goal_states.T.reshape(-1, 1)
-            cost_param = (self.param_dict['l'] + 0.1 * theta[i, :self.param_dict['l'].shape[0]])[:, None]
-            model_param = (self.param_dict['f'] + 0.1 * theta[i, self.param_dict['l'].shape[0]:])[:, None]
+            cost_param = (self.param_dict['l'] + 1.0 * theta[i, :self.param_dict['l'].shape[0]])[:, None]
+            model_param = (self.param_dict['f'] + 1.0 * theta[i, self.param_dict['l'].shape[0]:])[:, None]
 
             opt_vars_init = np.zeros((solver_dict['opt_vars'].shape[0], solver_dict['opt_vars'].shape[1]))
             if self.infos is not None:
@@ -801,16 +794,14 @@ class MPCPolicyFunction:
 
         eval_data_batch = []
         for i, obs in enumerate(obs_batch):
-            opt_vars_init = np.zeros((solver_dict['opt_vars'].shape[0], solver_dict['opt_vars'].shape[1]))
             info = info_batch[i]
             traj_step, soln = info['traj_step'], info['soln']
             opt_vars_init = soln['x'].full()
             goal_states = self.get_references(traj_step, traj_change)
-            #fixed_param = np.concatenate((obs[:self.model.nx, None], goal_states.T.reshape(-1, 1)))
             fixed_param = np.array(obs)[:self.model.nx, None]
             ref_param = goal_states.T.reshape(-1, 1)
-            cost_param = (self.param_dict['l'] + 0.1 * theta[i, :self.param_dict['l'].shape[0]])[:, None]
-            model_param = (self.param_dict['f'] + 0.1 * theta[i, self.param_dict['l'].shape[0]:])[:, None]
+            cost_param = (self.param_dict['l'] + 1.0 * theta[i, :self.param_dict['l'].shape[0]])[:, None]
+            model_param = (self.param_dict['f'] + 1.0 * theta[i, self.param_dict['l'].shape[0]:])[:, None]
             temp = [solver, opt_vars_init, fixed_param, ref_param, cost_param, model_param,
                     lbg, ubg, opt_vars_fn, dpi, dpi_cost, dpi_model]
             eval_data_batch.append(temp)

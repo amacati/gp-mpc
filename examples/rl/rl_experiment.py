@@ -52,6 +52,7 @@ def run(gui=False, plot=True, n_episodes=10, n_steps=None, curr_path='.'):
         config.task_config.disturbances.downwash[0].pos[2] = config.task_config.external_param
     elif config.experiment_type == 'generalization':
         config.task_config.episode_len_sec = config.task_config.external_param
+        config.task_config.task_info.pop('ilqr_traj_data', None)
 
     env_func = partial(make,
                        config.task,
@@ -96,6 +97,7 @@ def run(gui=False, plot=True, n_episodes=10, n_steps=None, curr_path='.'):
     elif config.experiment_type == "robustness_ps":
         metrics['noise_scale'] = config.task_config.external_param
         temp = config.pretrain_path+"/robust_metric_ps_"+str(config.task_config.external_param)+".npy"
+        np.save(temp, metrics, allow_pickle=True)
     elif config.experiment_type == "robustness_dw":
         metrics['downwash_height'] = config.task_config.external_param
         temp = config.pretrain_path+"/robust_metric_dw_"+str(config.task_config.external_param)+".npy"
