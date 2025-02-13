@@ -75,6 +75,7 @@ class BaseHPO(ABC):
         self.algo = algo
         self.task = task
         self.output_dir = output_dir
+        self.exp_name = output_dir.split('/')[-2]
         self.task_config = task_config
         self.hpo_config = hpo_config
         self.algo_config = algo_config
@@ -85,9 +86,9 @@ class BaseHPO(ABC):
             self.search_space_key = 'ilqr_sf'
         elif self.safety_filter == 'nl_mpsc' and self.algo == 'ppo':
             self.search_space_key = 'ppo_mpsf'
-            self.study_name = algo + '_mpsf_hpo'
+            self.study_name = algo + '_mpsf_hpo' + f'_{self.exp_name}'
         else:
-            self.study_name = algo + '_hpo'
+            self.study_name = algo + '_hpo' + f'_{self.exp_name}'
             self.search_space_key = self.algo
         self.logger = ExperimentLogger(output_dir)
         self.load_study = load_study
