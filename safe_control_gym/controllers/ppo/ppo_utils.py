@@ -134,6 +134,7 @@ class PPOAgent:
                 self.critic_opt.zero_grad()
                 value_loss.backward()
                 self.critic_opt.step()
+                # logging
                 p_loss_epoch += policy_loss.item()
                 v_loss_epoch += value_loss.item()
                 e_loss_epoch += entropy_loss.item()
@@ -231,10 +232,15 @@ class MLPActorCritic(nn.Module):
         return a.cpu().numpy(), v.cpu().numpy(), logp_a.cpu().numpy()
 
     def act(self,
-            obs
+            obs,
+            extra_info=False
             ):
         dist, _ = self.actor(obs)
         a = dist.mode()
+        logp_a = dist.log_prob(a)
+        v = self.critic(obs)
+        if extra_info:
+            return a.cpu().numpy(), v.cpu().numpy(), logp_a.cpu().numpy()
         return a.cpu().numpy()
 
 

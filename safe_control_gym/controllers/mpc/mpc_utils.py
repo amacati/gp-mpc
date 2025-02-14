@@ -99,7 +99,6 @@ def set_acados_constraint_bound(constraint,
                                 bound_value=None,
                                 ):
     '''Set the acados constraint bound.
-
     Args:
         constraint (casadi expression): Constraint expression.
         bound_type (str): Type of bound (lb, ub).
@@ -124,6 +123,7 @@ def set_acados_constraint_bound(constraint,
 
 
 def plot_open_loop_sol(ctrl):
+
     ''' Plot the open loop prediction of the MPC controller.
 
     Args:

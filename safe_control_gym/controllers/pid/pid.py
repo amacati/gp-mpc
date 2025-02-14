@@ -5,6 +5,7 @@ Based on work conducted at UTIAS' DSL by SiQi Zhou and James Xu.
 
 import math
 import os
+import time
 
 import numpy as np
 import pybullet as p
@@ -77,6 +78,7 @@ class PID(BaseController):
 
         self.control_timestep = self.env.CTRL_TIMESTEP
         self.reference = self.env.X_GOAL
+        self.last_action = None
 
         self.reset()
 
@@ -94,16 +96,16 @@ class PID(BaseController):
         step = self.extract_step(info)
 
         # Step the environment and print all returned information.
-        if self.env.QUAD_TYPE == 2:
+        if self.env.QUAD_TYPE in [2, 4]:
             cur_pos = np.array([obs[0], 0, obs[2]])
             cur_quat = np.array(p.getQuaternionFromEuler([0, obs[4], 0]))
             cur_vel = np.array([obs[1], 0, obs[3]])
-        elif self.env.QUAD_TYPE == 3:
+        elif self.env.QUAD_TYPE in [3, 6, 8]:
             cur_pos = np.array([obs[0], obs[2], obs[4]])
             cur_quat = np.array(p.getQuaternionFromEuler([obs[6], obs[7], obs[8]]))
             cur_vel = np.array([obs[1], obs[3], obs[5]])
 
-        if self.env.QUAD_TYPE == 2:
+        if self.env.QUAD_TYPE in [2, 4]:
             if self.env.TASK == Task.TRAJ_TRACKING:
                 target_pos = np.array([self.reference[step, 0],
                                        0,
@@ -114,7 +116,7 @@ class PID(BaseController):
             elif self.env.TASK == Task.STABILIZATION:
                 target_pos = np.array([self.reference[0], 0, self.reference[2]])
                 target_vel = np.array([0, 0, 0])
-        elif self.env.QUAD_TYPE == 3:
+        elif self.env.QUAD_TYPE in [3, 6, 8]:
             if self.env.TASK == Task.TRAJ_TRACKING:
                 target_pos = np.array([self.reference[step, 0],
                                        self.reference[step, 2],
@@ -130,24 +132,43 @@ class PID(BaseController):
         target_rpy_rates = np.zeros(3)
 
         # Compute the next action.
-        thrust, computed_target_rpy, _ = self._dslPIDPositionControl(cur_pos,
-                                                                     cur_quat,
-                                                                     cur_vel,
-                                                                     target_pos,
-                                                                     target_rpy,
-                                                                     target_vel
-                                                                     )
-        rpm = self._dslPIDAttitudeControl(thrust,
-                                          cur_quat,
-                                          computed_target_rpy,
-                                          target_rpy_rates
-                                          )
-
+        time_before = time.perf_counter()
+        try:
+            thrust, computed_target_rpy, _ = self._dslPIDPositionControl(cur_pos,
+                                                                        cur_quat,
+                                                                        cur_vel,
+                                                                        target_pos,
+                                                                        target_rpy,
+                                                                        target_vel
+                                                                        )
+            rpm = self._dslPIDAttitudeControl(thrust,
+                                            cur_quat,
+                                            computed_target_rpy,
+                                            target_rpy_rates
+                                            )
+        except ValueError as e:
+            print(e)
+            print('Error in Control._dslPIDPositionControl() or Control._dslPIDAttitudeControl()')
+            print('Returning last action')
+            rpm = self.last_action
+        time_after = time.perf_counter()
+        self.results_dict['inference_time'].append(time_after - time_before)
         action = rpm
         action = self.KF * action**2
         if self.env.QUAD_TYPE == 2:
             action = np.array([action[0] + action[3], action[1] + action[2]])
-
+        elif self.env.QUAD_TYPE == 4:  # 2D quadrotor with attitude control
+            action = np.array([self.env.attitude_control.pwm2thrust(thrust/3)*4, computed_target_rpy[1]])
+        elif self.env.QUAD_TYPE == 6:  # 3D quadrotor with attitude control
+            action = np.array([self.env.attitude_control.pwm2thrust(thrust/3)*4,
+                               computed_target_rpy[0],
+                               computed_target_rpy[1],
+                               computed_target_rpy[2]])
+        elif self.env.QUAD_TYPE == 8:  # 3D quadrotor with attitude control
+            action = np.array([self.env.attitude_control.pwm2thrust(thrust/3)*4,
+                               computed_target_rpy[0],
+                               computed_target_rpy[1],])
+        self.last_action = action
         return action
 
     def _dslPIDPositionControl(self,
@@ -286,3 +307,9 @@ class PID(BaseController):
             path (str): The path where the integral errors are saved.
         '''
         self.integral_pos_e, self.last_rpy, self.integral_rpy_e = np.load(path)
+
+    def setup_results_dict(self):
+        '''Setup the results dictionary to store run information.'''
+        self.results_dict = {
+            'inference_time': []
+            }

@@ -1,7 +1,7 @@
-'''Base environment class module.
+"""Base environment class module.
 
 This module also contains enumerations for cost functions, tasks, disturbances, and quadrotor types.
-'''
+"""
 
 import copy
 import os
@@ -16,31 +16,34 @@ from matplotlib import pyplot as plt
 
 from safe_control_gym.envs.constraints import create_constraint_list
 from safe_control_gym.envs.disturbances import create_disturbance_list
+from safe_control_gym.envs.gym_pybullet_drones.trajectory_utils import (Waypoint,
+                                                                        compute_trajectory_derivatives,
+                                                                        generate_trajectory)
 
 
 class Cost(str, Enum):
-    '''Reward/cost functions enumeration class.'''
+    """Reward/cost functions enumeration class."""
 
     RL_REWARD = 'rl_reward'  # Default RL reward function.
     QUADRATIC = 'quadratic'  # Quadratic cost.
 
 
 class Task(str, Enum):
-    '''Environment tasks enumeration class.'''
+    """Environment tasks enumeration class."""
 
     STABILIZATION = 'stabilization'  # Stabilization task.
     TRAJ_TRACKING = 'traj_tracking'  # Trajectory tracking task.
 
 
 class Environment(str, Enum):
-    '''Environment enumeration class.'''
+    """Environment enumeration class."""
 
     CARTPOLE = 'cartpole'  # Cartpole system
     QUADROTOR = 'quadrotor'  # Quadrotor, both 1D and 2D
 
 
 class BenchmarkEnv(gym.Env, ABC):
-    '''Benchmark environment base class.'''
+    """Benchmark environment base class."""
 
     _count = 0  # Class variable, count env instance in current process.
     NAME = 'base'  # Environment name.
@@ -74,6 +77,8 @@ class BenchmarkEnv(gym.Env, ABC):
                  inertial_prop=None,
                  randomized_inertial_prop: bool = False,
                  inertial_prop_randomization_info=None,
+                 randomized_disturbance = False,
+                 disturbance_randomization_info = None,
                  # Constraint.
                  constraints=None,
                  done_on_violation: bool = False,
@@ -86,7 +91,7 @@ class BenchmarkEnv(gym.Env, ABC):
                  adversary_disturbance_scale=0.01,
                  **kwargs
                  ):
-        '''Initialization method for BenchmarkEnv.
+        """Initialization method for BenchmarkEnv.
 
         Args:
             output_dir (str, optional): Path to directory to save any env outputs.
@@ -94,7 +99,7 @@ class BenchmarkEnv(gym.Env, ABC):
             info_in_reset (bool, optional): Whether .reset() returns a dictionary with the
                                             environment's symbolic model.
             gui (bool, optional): Whether to show PyBullet's GUI.
-            verbose (bool, optional): If to suppress environment print statetments.
+            verbose (bool, optional): If to suppress environment print statements.
             normalized_rl_action_space (bool, optional): Whether to normalize the action space.
             task: (Task, optional): The environment's task (stabilization or traj. tracking).
             task_info (dict, optional): A dictionary with the information used to generate the
@@ -112,6 +117,8 @@ class BenchmarkEnv(gym.Env, ABC):
             randomized_inertial_prop (bool, optional): Whether to randomize the inertial properties.
             inertial_prop_randomization_info (dict, optional): A dictionary with information used
                 to randomize the inert. properties.
+            randomized_noise (bool, optional): Whether to randomize the noise.
+            disturbance_randomization_info (dict, optional): A dictionary with information used to randomize the noise.
             constraints (Dict, optional): Dictionary to specify the constraints being used.
             done_on_violation (bool, optional): Whether to return done==True on a constraint violation.
             use_constraint_penalty (bool, optional): If to use shaped reward to penalize potential
@@ -124,7 +131,7 @@ class BenchmarkEnv(gym.Env, ABC):
 
         Attributes:
             idx (int): Unique identifier of the current env instance (among other instances).
-        '''
+        """
         # Assign unique ID based on env instance count.
         self.idx = self.__class__._count
         self.__class__._count += 1
@@ -160,6 +167,9 @@ class BenchmarkEnv(gym.Env, ABC):
         self.RANDOMIZED_INERTIAL_PROP = randomized_inertial_prop
         if inertial_prop_randomization_info is not None:
             self.INERTIAL_PROP_RAND_INFO = inertial_prop_randomization_info
+        self.RANDOMIZED_DISTURBANCE = randomized_disturbance
+        if disturbance_randomization_info is not None:
+            self.DISTURBABCE_RAND_INFO = disturbance_randomization_info
         # Set up action and observation space.
         self.NORMALIZED_RL_ACTION_SPACE = normalized_rl_action_space
         # Define cost-related quantities.
@@ -201,7 +211,7 @@ class BenchmarkEnv(gym.Env, ABC):
     def seed(self,
              seed=None
              ):
-        '''Sets up a random number generator for a given seed.
+        """Sets up a random number generator for a given seed.
 
         Remember to seed all random generators, currently in
         - env
@@ -213,7 +223,7 @@ class BenchmarkEnv(gym.Env, ABC):
 
         Returns:
             seeds (list): A list containing the seed.
-        '''
+        """
 
         self.np_random, seed = seeding.np_random(seed)
         self.action_space.seed(seed)
@@ -221,16 +231,13 @@ class BenchmarkEnv(gym.Env, ABC):
             disturbs.seed(self)
         return [seed]
 
-    def set_cost_function_param(self,
-                                Q,
-                                R
-                                ):
-        '''Set the cost function parameters.
+    def set_cost_function_param(self, Q, R):
+        """Set the cost function parameters.
 
         Args:
             Q (ndarray): State weight matrix (nx by nx).
             R (ndarray): Input weight matrix (nu by nu).
-        '''
+        """
 
         if not self.initial_reset:
             self.Q = Q
@@ -241,11 +248,11 @@ class BenchmarkEnv(gym.Env, ABC):
             )
 
     def set_adversary_control(self, action):
-        '''Sets disturbance by an adversary controller, called before (each) step().
+        """Sets disturbance by an adversary controller, called before (each) step().
 
         Args:
             action (ndarray): The action.
-        '''
+        """
         if self.adversary_disturbance is not None:
             clipped_adv_action = np.clip(action, self.adversary_action_space.low, self.adversary_action_space.high)
             self.adv_action = clipped_adv_action * self.adversary_disturbance_scale + self.adversary_disturbance_offset
@@ -255,7 +262,7 @@ class BenchmarkEnv(gym.Env, ABC):
             )
 
     def _check_initial_reset(self):
-        '''Makes sure that .reset() is called at least once before .step().'''
+        """Makes sure that .reset() is called at least once before .step()."""
         if not self.initial_reset:
             raise RuntimeError(
                 '[ERROR] You must call env.reset() at least once before using env.step().'
@@ -265,16 +272,16 @@ class BenchmarkEnv(gym.Env, ABC):
                                   original_values,
                                   randomization_info
                                   ):
-        '''Randomizes a list of values according to desired distributions.
+        """Randomizes a list of values according to desired distributions.
 
         Args:
-            original_values (dict): A dict of orginal values.
+            original_values (dict): A dict of original values.
             randomization_info (dict): A dictionary containing information about the distributions
                                        used to randomize original_values.
 
         Returns:
             randomized_values (dict): A dict of randomized values.
-        '''
+        """
 
         # Start from a copy of the original values.
         randomized_values = copy.deepcopy(original_values)
@@ -296,15 +303,15 @@ class BenchmarkEnv(gym.Env, ABC):
 
     @abstractmethod
     def _setup_symbolic(self, prior_prop={}, **kwargs):
-        '''Creates a symbolic (CasADi) model for dynamics and cost.
+        """Creates a symbolic (CasADi) model for dynamics and cost.
 
         Args:
             prior_prop (dict): specify the prior inertial prop to use in the symbolic model.
-        '''
+        """
         raise NotImplementedError
 
     def _setup_disturbances(self):
-        '''Creates attributes and action spaces for the disturbances.'''
+        """Creates attributes and action spaces for the disturbances."""
         # Default: no passive disturbances.
         self.disturbances = {}
         if self.DISTURBANCES is not None:
@@ -322,7 +329,7 @@ class BenchmarkEnv(gym.Env, ABC):
             self.adversary_observation_space = self.observation_space
 
     def _setup_constraints(self):
-        '''Creates a list of constraints as an attribute.'''
+        """Creates a list of constraints as an attribute."""
         self.constraints = None
         self.num_constraints = 0
         if self.CONSTRAINTS is not None:
@@ -331,25 +338,25 @@ class BenchmarkEnv(gym.Env, ABC):
 
     @abstractmethod
     def _set_action_space(self):
-        '''Defines the action space of the environment.'''
+        """Defines the action space of the environment."""
         raise NotImplementedError
 
     @abstractmethod
     def _set_observation_space(self):
-        '''Defines the observation space of the environment.
+        """Defines the observation space of the environment.
 
         Sets `self.observation_space`, if observation is not identical to state,
         e.g. in RL where obs is [state, goal] or angle is converted to sine & cosine,
         additionally sets a `self.state_space`.
-        '''
+        """
         raise NotImplementedError
 
     def before_reset(self, seed=None):
-        '''Pre-processing before calling `.reset()`.
+        """Pre-processing before calling `.reset()`.
 
         Args:
             seed (int): Number to reset the env with a new random seed.
-        '''
+        """
         # Housekeeping variables.
         self.initial_reset = True
         self.at_reset = True
@@ -368,7 +375,7 @@ class BenchmarkEnv(gym.Env, ABC):
             self.seed(seed)
 
     def after_reset(self, obs, info):
-        '''Post-processing after calling `.reset()`.
+        """Post-processing after calling `.reset()`.
 
         Args:
             obs (ndarray): The first observation.
@@ -377,7 +384,7 @@ class BenchmarkEnv(gym.Env, ABC):
         Returns:
             obs (ndarray): The updated first observation.
             info (dict): The updated first info.
-        '''
+        """
         # Add initial constraint info (no action/input yet, so only state-based constraints)
         info['current_step'] = 0
         if self.constraints is not None and not (self.constraints.state_constraints == []):
@@ -387,7 +394,7 @@ class BenchmarkEnv(gym.Env, ABC):
 
     @abstractmethod
     def _preprocess_control(self, action):
-        '''Pre-processes the action passed to `.step()`, default is identity.
+        """Pre-processes the action passed to `.step()`, default is identity.
 
         It's suggested that you set `self.current_clipped_action` here,
         if you ever need to use it later on (e.g. to compute reward/cost).
@@ -397,42 +404,42 @@ class BenchmarkEnv(gym.Env, ABC):
 
         Returns:
             action (ndarray): The processed action to be executed.
-        '''
+        """
         raise NotImplementedError
 
     @abstractmethod
     def normalize_action(self, action):
-        '''Converts a physical action into an normalized action if necessary.
+        """Converts a physical action into an normalized action if necessary.
 
         Args:
             action (ndarray): The action to be converted.
 
         Returns:
             normalized_action (ndarray): The action in the correct action space.
-        '''
+        """
         raise NotImplementedError
 
     @abstractmethod
     def denormalize_action(self, action):
-        '''Converts a normalized action into a physical action if necessary.
+        """Converts a normalized action into a physical action if necessary.
 
         Args:
             action (ndarray): The action to be converted.
 
         Returns:
             physical_action (ndarray): The physical action.
-        '''
+        """
         raise NotImplementedError
 
     def before_step(self, action):
-        '''Pre-processing before calling `.step()`.
+        """Pre-processing before calling `.step()`.
 
         Args:
             action (ndarray): The raw action returned by the controller.
 
         Returns:
             action (ndarray): The processed action to be executed.
-        '''
+        """
         # Sanity check (reset at least once).
         self._check_initial_reset()
         # Save the raw input action.
@@ -443,11 +450,11 @@ class BenchmarkEnv(gym.Env, ABC):
 
         self.current_raw_action = action
         # Pre-process/clip the action
-        processed_action = self._preprocess_control(action)
-        return processed_action
+        # processed_action = self._preprocess_control(action)
+        return action
 
     def extend_obs(self, obs, next_step):
-        '''Extends an observation with the next self.obs_goal_horizon reference points.
+        """Extends an observation with the next self.obs_goal_horizon reference points.
 
         Args:
             obs (ndarray): The observation to be extended.
@@ -455,7 +462,7 @@ class BenchmarkEnv(gym.Env, ABC):
 
         Returns:
             extended_obs (ndarray): The extended observation.
-        '''
+        """
         if self.COST == Cost.RL_REWARD and self.TASK == Task.TRAJ_TRACKING and self.obs_goal_horizon > 0:
             wp_idx = [
                 min(next_step + i, self.X_GOAL.shape[0] - 1)
@@ -472,7 +479,7 @@ class BenchmarkEnv(gym.Env, ABC):
         return extended_obs
 
     def after_step(self, obs, rew, done, info):
-        '''Post-processing after calling `.step()`.
+        """Post-processing after calling `.step()`.
 
         Args:
             obs (ndarray): The observation after this step.
@@ -481,11 +488,11 @@ class BenchmarkEnv(gym.Env, ABC):
             info (dict): The info after this step.
 
         Returns:
-            obs (ndarray): The udpdated observation after this step.
-            rew (float): The udpdated reward after this step.
+            obs (ndarray): The updated observation after this step.
+            rew (float): The updated reward after this step.
             done (bool): Whether the evaluation is done.
-            info (dict): The udpdated info after this step.
-        '''
+            info (dict): The updated info after this step.
+        """
         # Increment counters
         self.pyb_step_counter += self.PYB_STEPS_PER_CTRL
         self.ctrl_step_counter += 1
@@ -521,7 +528,8 @@ class BenchmarkEnv(gym.Env, ABC):
 
         # Terminate when reaching time limit,
         # but distinguish between done due to true termination or time limit reached
-        if self.ctrl_step_counter >= self.CTRL_STEPS:
+        # if self.ctrl_step_counter >= self.CTRL_STEPS:
+        if self.ctrl_step_counter >= self.episode_len * self.CTRL_FREQ:
             info['TimeLimit.truncated'] = not done
             done = True
         return obs, rew, done, info
@@ -533,8 +541,10 @@ class BenchmarkEnv(gym.Env, ABC):
                              traj_plane='xy',
                              position_offset=np.array([0, 0]),
                              scaling=1.0,
-                             sample_time=0.01):
-        '''Generates a 2D trajectory.
+                             sample_time=0.01,
+                             waypoint_list=None
+                             ):
+        """Generates a 2D trajectory.
 
         Args:
             traj_type (str, optional): The type of trajectory (circle, square, figure8).
@@ -549,17 +559,18 @@ class BenchmarkEnv(gym.Env, ABC):
             ndarray: The positions in x, y, z of the trajectory sampled for its entire duration.
             ndarray: The velocities in x, y, z of the trajectory sampled for its entire duration.
             ndarray: The scalar speed of the trajectory sampled for its entire duration.
-        '''
+        """
 
         # Get trajectory type.
-        valid_traj_type = ['circle', 'square', 'figure8']
+        valid_traj_type = ['circle', 'square', 'figure8', 'snap_figure8', 'snap_custom']
         if traj_type not in valid_traj_type:
-            raise ValueError('Trajectory type should be one of [circle, square, figure8].')
+            raise ValueError(
+                'Trajectory type should be one of [circle, square, figure8, snap_figure8, snap_custom].'
+            )
         traj_period = traj_length / num_cycles
         direction_list = ['x', 'y', 'z']
         # Get coordinates indexes.
-        if traj_plane[0] in direction_list and traj_plane[
-                1] in direction_list and traj_plane[0] != traj_plane[1]:
+        if traj_plane[0] in direction_list and traj_plane[1] in direction_list and traj_plane[0] != traj_plane[1]:
             coord_index_a = direction_list.index(traj_plane[0])
             coord_index_b = direction_list.index(traj_plane[1])
         else:
@@ -569,17 +580,81 @@ class BenchmarkEnv(gym.Env, ABC):
         pos_ref_traj = np.zeros((len(times), 3))
         vel_ref_traj = np.zeros((len(times), 3))
         speed_traj = np.zeros((len(times), 1))
-        # Compute trajectory points.
-        for t in enumerate(times):
-            pos_ref_traj[t[0]], vel_ref_traj[t[0]] = self._get_coordinates(t[1],
-                                                                           traj_type,
-                                                                           traj_period,
-                                                                           coord_index_a,
-                                                                           coord_index_b,
-                                                                           position_offset[0],
-                                                                           position_offset[1],
-                                                                           scaling)
-            speed_traj[t[0]] = np.linalg.norm(vel_ref_traj[t[0]])
+        # Initial trajectory for snap trajectory
+        if traj_type == 'snap_figure8':
+            num_waypoints = 20
+            waypoint_times = np.arange(0, traj_length + traj_length / num_waypoints, traj_length / num_waypoints)
+            waypoints = self._init_figure8(waypoint_times, traj_type, traj_period, coord_index_a,
+                                           coord_index_b, position_offset[0], position_offset[1], scaling)
+            polys = generate_trajectory(
+                waypoints,
+                degree=5,  # Polynomial degree
+                idx_minimized_orders=4,  # Minimize derivatives in these orders (>= 2)
+                num_continuous_orders=3,  # Constrain continuity of derivatives up to order (>= 3)
+                algorithm='closed-form'   # "closed-form" Or "constrained"
+                # algorithm='constrained'   
+            )
+            # return information up to velocity (2nd derivative)
+            pva = compute_trajectory_derivatives(polys, times, 3)
+            pos_ref_traj = pva[0, :, :]
+            vel_ref_traj = pva[1, :, :]
+            acc_ref_traj = pva[2, :, :]
+            speed_traj = np.linalg.norm(vel_ref_traj, axis=1)
+            acc_mag = np.linalg.norm(acc_ref_traj, axis=1)
+            print(f"Max acceleration: {np.max(acc_mag)}")
+            print(f"Acc bound is: {0.3 * 9.81} to {1.8 * 9.81}")
+            print(f"Max velocity: {np.max(speed_traj)}")
+            print()
+            
+
+        elif traj_type == 'snap_custom':
+            if waypoint_list is None:
+                raise ValueError('No waypoints defined for trajectory type snap_custom')
+            waypoints = self._init_custom(waypoint_list)
+            polys = generate_trajectory(
+                waypoints,
+                degree=6,  # Polynomial degree
+                idx_minimized_orders=4,  # Minimize derivatives in these orders (>= 2)
+                num_continuous_orders=3,  # Constrain continuity of derivatives up to order (>= 3)
+                algorithm='constrained'   # "closed-form" Or "constrained"
+            )
+            pva = compute_trajectory_derivatives(polys, times, 2)
+            pos_ref_traj = pva[0, :, :]
+            vel_ref_traj = pva[1, :, :]
+            acc_ref_traj = pva[2, :, :]
+            speed_traj = np.linalg.norm(vel_ref_traj, axis=1)
+            acc_mag = np.linalg.norm(acc_ref_traj, axis=1)
+            print(f"Max acceleration: {np.max(acc_mag)}")
+            print(f"Max velocity: {np.max(speed_traj)}")
+            print()
+            
+
+        else:
+            # Compute trajectory points.
+            for t in enumerate(times):
+                pos_ref_traj[t[0]], vel_ref_traj[t[0]] = self._get_coordinates(t[1],
+                                                                               traj_type,
+                                                                               traj_period,
+                                                                               coord_index_a,
+                                                                               coord_index_b,
+                                                                               position_offset[0],
+                                                                               position_offset[1],
+                                                                               scaling)
+                speed_traj[t[0]] = np.linalg.norm(vel_ref_traj[t[0]])
+        # 
+        # NOTE: update 25.11.24: manually shift the z axis to 1.0 if not in the traj plane
+        #       ptherwise flying on the floor with z=0.0 
+        if 'z' not in traj_plane:
+            pos_ref_traj[:, 2] = 1.0
+            vel_ref_traj[:, 2] = 0.0
+
+        # # calculate the maximul acceleration and velocity
+        # max_vel = np.max(speed_traj)
+        # max_acc = np.max(np.diff(speed_traj) / sample_time)
+        # print(colored(f"Max velocity: {max_vel}, Max acceleration: {max_acc}", 'green'))
+        # if max_acc > 1.8 * 9.81 or max_acc < 0.3 * 9.81:
+        #     raise ValueError(f"Max acceleration is not in the range of 0.3g to 1.8g")
+            
         return pos_ref_traj, vel_ref_traj, speed_traj
 
     def _get_coordinates(self,
@@ -592,7 +667,7 @@ class BenchmarkEnv(gym.Env, ABC):
                          position_offset_b,
                          scaling
                          ):
-        '''Computes the coordinates of a specified trajectory at time t.
+        """Computes the coordinates of a specified trajectory at time t.
 
         Args:
             t (float): The time at which we want to sample one trajectory point.
@@ -607,7 +682,7 @@ class BenchmarkEnv(gym.Env, ABC):
         Returns:
             pos_ref (ndarray): The position in x, y, z, at time t.
             vel_ref (ndarray): The velocity in x, y, z, at time t.
-        '''
+        """
 
         # Get coordinates for the trajectory chosen.
         if traj_type == 'figure8':
@@ -618,6 +693,9 @@ class BenchmarkEnv(gym.Env, ABC):
                 t, traj_period, scaling)
         elif traj_type == 'square':
             coords_a, coords_b, coords_a_dot, coords_b_dot = self._square(
+                t, traj_period, scaling)
+        elif traj_type == 'snap_figure8':
+            coords_a, coords_b, coords_a_dot, coords_b_dot = self._figure8(
                 t, traj_period, scaling)
         # Initialize position and velocity references.
         pos_ref = np.zeros((3,))
@@ -634,7 +712,7 @@ class BenchmarkEnv(gym.Env, ABC):
                  traj_period,
                  scaling
                  ):
-        '''Computes the coordinates of a figure8 trajectory at time t.
+        """Computes the coordinates of a figure8 trajectory at time t.
 
         Args:
             t (float): The time at which we want to sample one trajectory point.
@@ -646,7 +724,7 @@ class BenchmarkEnv(gym.Env, ABC):
             coords_b (float): The position in the second coordinate.
             coords_a_dot (float): The velocity in the first coordinate.
             coords_b_dot (float): The velocity in the second coordinate.
-        '''
+        """
 
         traj_freq = 2.0 * np.pi / traj_period
         coords_a = scaling * np.sin(traj_freq * t)
@@ -660,7 +738,7 @@ class BenchmarkEnv(gym.Env, ABC):
                 traj_period,
                 scaling
                 ):
-        '''Computes the coordinates of a circle trajectory at time t.
+        """Computes the coordinates of a circle trajectory at time t.
 
         Args:
             t (float): The time at which we want to sample one trajectory point.
@@ -672,7 +750,7 @@ class BenchmarkEnv(gym.Env, ABC):
             coords_b (float): The position in the second coordinate.
             coords_a_dot (float): The velocity in the first coordinate.
             coords_b_dot (float): The velocity in the second coordinate.
-        '''
+        """
 
         traj_freq = 2.0 * np.pi / traj_period
         coords_a = scaling * np.cos(traj_freq * t)
@@ -686,7 +764,7 @@ class BenchmarkEnv(gym.Env, ABC):
                 traj_period,
                 scaling
                 ):
-        '''Computes the coordinates of a square trajectory at time t.
+        """Computes the coordinates of a square trajectory at time t.
 
         Args:
             t (float): The time at which we want to sample one trajectory point.
@@ -698,7 +776,7 @@ class BenchmarkEnv(gym.Env, ABC):
             coords_b (float): The position in the second coordinate.
             coords_a_dot (float): The velocity in the first coordinate.
             coords_b_dot (float): The velocity in the second coordinate.
-        '''
+        """
 
         # Compute time for each segment to complete.
         segment_period = traj_period / 4.0
@@ -737,6 +815,48 @@ class BenchmarkEnv(gym.Env, ABC):
             coords_b_dot = 0.0
         return coords_a, coords_b, coords_a_dot, coords_b_dot
 
+    def _init_figure8(self,
+                      times,
+                      traj_type,
+                      traj_period,
+                      coord_index_a,
+                      coord_index_b,
+                      position_offset_a,
+                      position_offset_b,
+                      scaling
+                      ):
+        waypoint = []
+        for t in enumerate(times):
+            pos_waypoint, vel_waypoint = self._get_coordinates(t[1],
+                                                               traj_type,
+                                                               traj_period,
+                                                               coord_index_a,
+                                                               coord_index_b,
+                                                               position_offset_a,
+                                                               position_offset_b,
+                                                               scaling)
+            waypoint.append(
+                Waypoint(
+                    time=t[1],
+                    position=pos_waypoint,
+                    # velocity=vel_waypoint,
+                )
+            )
+        return waypoint
+
+    def _init_custom(self, waypoint_):
+        waypoint = []
+        for data in waypoint_:
+            t = data['time']
+            pos_waypoint = data['position']
+            waypoint.append(
+                Waypoint(
+                    time=t,
+                    position=pos_waypoint,
+                )
+            )
+        return waypoint
+
     def _plot_trajectory(self,
                          traj_type,
                          traj_plane,
@@ -746,7 +866,7 @@ class BenchmarkEnv(gym.Env, ABC):
                          vel_ref_traj,
                          speed_traj
                          ):
-        '''Plots a trajectory along x, y, z, and in a 3D projection.
+        """Plots a trajectory along x, y, z, and in a 3D projection.
 
         Args:
             traj_type (str, optional): The type of trajectory (circle, square, figure8).
@@ -756,7 +876,7 @@ class BenchmarkEnv(gym.Env, ABC):
             pos_ref_traj (ndarray): The positions in x, y, z of the trajectory sampled for its entire duration.
             vel_ref_traj (ndarray): The velocities in x, y, z of the trajectory sampled for its entire duration.
             speed_traj (ndarray): The scalar speed of the trajectory sampled for its entire duration.
-        '''
+        """
 
         # Print basic properties.
         print(f'Trajectory type: {traj_type}')

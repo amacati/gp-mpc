@@ -16,6 +16,7 @@ class Cost_Function(str, Enum):
     '''MPSC Cost functions enumeration class.'''
 
     ONE_STEP_COST = 'one_step_cost'         # Default MPSC cost function.
+    PRECOMPUTED_COST = 'precomputed_cost'   # Smooth cost based on precomputed future states
 
 
 def compute_RPI_set(Acl,
@@ -56,8 +57,9 @@ def compute_RPI_set(Acl,
         if 'optimal' not in prob.status:
             raise cp.SolverError
     except cp.SolverError:
-        print('[ERROR] RPI Computation failed. Ensure you have the MOSEK solver. Otherwise, error unknown.')
-        exit()
+        msg = '[ERROR] RPI Computation failed. Ensure you have the MOSEK solver. Otherwise, error unknown.'
+        print(msg)
+        raise Exception(msg) from None
     return P.value
 
 
@@ -142,3 +144,16 @@ def get_trajectory_on_horizon(env, iteration, horizon):
         clipped_X_GOAL = env.X_GOAL
 
     return clipped_X_GOAL
+
+
+def get_discrete_derivative(signal, ctrl_freq):
+    '''Calculates the discrete derivative of a signal.
+
+    Args:
+        signal (np.ndarray): A array of values.
+
+    Returns:
+        discrete_derivative (float): The discrete_derivative of the signal.
+    '''
+    discrete_derivative = (signal[1:, :] - signal[:-1, :]) * ctrl_freq
+    return discrete_derivative

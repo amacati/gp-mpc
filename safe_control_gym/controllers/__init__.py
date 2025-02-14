@@ -34,6 +34,10 @@ register(idx='sac',
          entry_point='safe_control_gym.controllers.sac.sac:SAC',
          config_entry_point='safe_control_gym.controllers.sac:sac.yaml')
 
+register(idx='td3',
+         entry_point='safe_control_gym.controllers.td3.td3:TD3',
+         config_entry_point='safe_control_gym.controllers.td3:td3.yaml')
+
 register(idx='ddpg',
          entry_point='safe_control_gym.controllers.ddpg.ddpg:DDPG',
          config_entry_point='safe_control_gym.controllers.ddpg:ddpg.yaml')
@@ -41,6 +45,10 @@ register(idx='ddpg',
 register(idx='safe_explorer_ppo',
          entry_point='safe_control_gym.controllers.safe_explorer.safe_ppo:SafeExplorerPPO',
          config_entry_point='safe_control_gym.controllers.safe_explorer:safe_ppo.yaml')
+
+register(idx='dppo',
+         entry_point='safe_control_gym.controllers.dppo.dppo:DPPO',
+         config_entry_point='safe_control_gym.controllers.dppo:dppo.yaml')
 
 register(idx='rarl',
          entry_point='safe_control_gym.controllers.rarl.rarl:RARL',
@@ -50,6 +58,46 @@ register(idx='rap',
          entry_point='safe_control_gym.controllers.rarl.rap:RAP',
          config_entry_point='safe_control_gym.controllers.rarl:rap.yaml')
 
+register(idx='sqp_mpc',
+         entry_point='safe_control_gym.controllers.mpc.sqp_mpc:SQPMPC',
+         config_entry_point='safe_control_gym.controllers.mpc:sqp_mpc.yaml')
+
+register(idx='sqp_gp_mpc',
+            entry_point='safe_control_gym.controllers.mpc.sqp_gp_mpc:SQPGPMPC',
+            config_entry_point='safe_control_gym.controllers.mpc:sqp_gp_mpc.yaml')
+
 register(idx='mpc_acados',
-         entry_point='safe_control_gym.controllers.mpc.mpc_acados:MPC_ACADOS',
-         config_entry_point='safe_control_gym.controllers.mpc:mpc_acados.yaml')
+            entry_point='safe_control_gym.controllers.mpc.mpc_acados:MPC_ACADOS',
+            config_entry_point='safe_control_gym.controllers.mpc:mpc_acados.yaml')
+
+register(idx='gpmpc_acados',
+            entry_point='safe_control_gym.controllers.mpc.gpmpc_acados:GPMPC_ACADOS',
+            config_entry_point='safe_control_gym.controllers.mpc:gpmpc_acados.yaml')
+
+register(idx='lqr_c',
+            entry_point='safe_control_gym.controllers.lqr.lqr_c:LQR_C',
+            config_entry_point='safe_control_gym.controllers.lqr:lqr_c.yaml')
+
+register(idx='gpmpc_casadi',
+         entry_point='safe_control_gym.controllers.mpc.gpmpc_casadi:GPMPC_CASADI',
+         config_entry_point='safe_control_gym.controllers.mpc:gpmpc_casadi.yaml')
+
+register(idx='gpmpc_acados_TP',
+            entry_point='safe_control_gym.controllers.mpc.gpmpc_acados_TP:GPMPC_ACADOS_TP',
+            config_entry_point='safe_control_gym.controllers.mpc:gpmpc_acados_TP.yaml')
+
+register(idx='linear_mpc_acados',
+            entry_point='safe_control_gym.controllers.mpc.linear_mpc_acados:LinearMPC_ACADOS',
+            config_entry_point='safe_control_gym.controllers.mpc:linear_mpc_acados.yaml')
+
+register(idx='gpmpc_acados_TRP',
+            entry_point='safe_control_gym.controllers.mpc.gpmpc_acados_TRP:GPMPC_ACADOS_TRP',
+            config_entry_point='safe_control_gym.controllers.mpc:gpmpc_acados_TRP.yaml')
+
+register(idx='fmpc',
+         entry_point='safe_control_gym.controllers.mpc.fmpc:FlatMPC',
+         config_entry_point='safe_control_gym.controllers.mpc:fmpc.yaml')
+
+register(idx='ppo_mpc',
+         entry_point='safe_control_gym.controllers.rlmpc.ppo_mpc:PPO_MPC',
+         config_entry_point='safe_control_gym.controllers.rlmpc:ppo_mpc.yaml')

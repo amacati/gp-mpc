@@ -13,6 +13,7 @@ from safe_control_gym.controllers.mpc.mpc_utils import (compute_discrete_lqr_gai
 from safe_control_gym.envs.benchmark_env import Task
 from safe_control_gym.envs.constraints import GENERAL_CONSTRAINTS, create_constraint_list
 from safe_control_gym.utils.utils import timing
+from numpy.linalg import LinAlgError
 
 
 class MPC(BaseController):
@@ -167,11 +168,26 @@ class MPC(BaseController):
                                                 ['xf'])
         self.dfdx = dfdx
         self.dfdu = dfdu
-        self.lqr_gain, _, _, self.P = compute_discrete_lqr_gain_from_cont_linear_system(dfdx,
-                                                                                        dfdu,
-                                                                                        self.Q,
-                                                                                        self.R,
-                                                                                        self.dt)
+        # # check controlled system is stabilizable
+        # A = dfdx
+        # B = dfdu
+        # n = self.model.nx
+        # m = self.model.nu
+        # import control
+        # ctrb = control.ctrb(A, B)
+        # if np.linalg.matrix_rank(ctrb) != n:
+        #     raise Exception('System is not stabilizable')
+        try:
+            self.lqr_gain, _, _, self.P = \
+                compute_discrete_lqr_gain_from_cont_linear_system(dfdx,
+                                                                  dfdu,
+                                                                  self.Q,
+                                                                  self.R,
+                                                                  self.dt)
+        except LinAlgError:
+            print(colored('LQR gain computation failed', 'red'))
+            print(colored('Using the LQR gain and terminal cost in the MPC is disabled', 'yellow'))
+            self.use_lqr_gain_and_terminal_cost = False
         # nonlinear dynamics
         self.dynamics_func = rk_discrete(self.model.fc_func,
                                          self.model.nx,
@@ -394,6 +410,7 @@ class MPC(BaseController):
             action += self.lqr_gain @ (obs - x_val[:, 0])
         self.prev_action = action
         return action
+    @timing
 
     def get_references(self):
         '''Constructs reference states along mpc horizon.(nx, T+1).'''
@@ -401,13 +418,25 @@ class MPC(BaseController):
             # Repeat goal state for horizon steps.
             goal_states = np.tile(self.env.X_GOAL.reshape(-1, 1), (1, self.T + 1))
         elif self.env.TASK == Task.TRAJ_TRACKING:
+            # if the task is to track a periodic trajectory (circle, square, figure 8)
+            # append the T+1 states of the trajectory to the goal_states 
+            # such that the vel states won't drop at the end of an episode
+            self.extended_ref_traj = deepcopy(self.traj)
+            if self.env.TASK_INFO['trajectory_type'] in ['circle', 'square', 'figure8'] and \
+                not ('ilqr_ref' in self.env.TASK_INFO.keys() and self.env.TASK_INFO['ilqr_ref']):
+                self.extended_ref_traj = np.concatenate([self.extended_ref_traj, self.extended_ref_traj[:, :self.T+1]], axis=1)
             # Slice trajectory for horizon steps, if not long enough, repeat last state.
-            start = min(self.traj_step, self.traj.shape[-1])
-            end = min(self.traj_step + self.T + 1, self.traj.shape[-1])
-            remain = max(0, self.T + 1 - (end - start))
+            start = min(self.traj_step, self.extended_ref_traj.shape[-1])
+            end = min(self.traj_step + self.T + 1, self.extended_ref_traj.shape[-1])
+            remain = max(0, self.T + 1 - (end - start)) 
+            '''
+            TODO: if using the extended reference trajectory, 
+            variable remain will always be 0. Consider removing it.
+            '''
+            # print('start:', start, 'end:', end, 'remain:', remain)
             goal_states = np.concatenate([
-                self.traj[:, start:end],
-                np.tile(self.traj[:, -1:], (1, remain))
+                self.extended_ref_traj[:, start:end],
+                np.tile(self.extended_ref_traj[:, -1:], (1, remain))
             ], -1)
         else:
             raise Exception('Reference for this mode is not implemented.')
@@ -428,7 +457,7 @@ class MPC(BaseController):
                              'common_cost': [],
                              'state': [],
                              'state_error': [],
-                             't_wall': []
+                             'inference_time': []
                              }
 
     def run(self,
@@ -448,7 +477,7 @@ class MPC(BaseController):
             dict: evaluation statisitcs, rendered frames.
         '''
         if env is None:
-            env = self.env
+            env = self.env  
         if terminate_run_on_done is None:
             terminate_run_on_done = self.terminate_run_on_done
 
@@ -456,8 +485,8 @@ class MPC(BaseController):
         self.u_prev = None
         if not env.initial_reset:
             env.set_cost_function_param(self.Q, self.R)
-        # obs, info = env.reset()
-        obs = env.reset()
+        obs, info = env.reset()
+        # obs = env.reset()
         print('Init State:')
         print(obs)
         ep_returns, ep_lengths = [], []
@@ -531,12 +560,12 @@ class MPC(BaseController):
                             'Check to make sure initial conditions are feasible.')
         return deepcopy(self.results_dict)
 
-    def reset_before_run(self, obs, info=None, env=None):
-        '''Reinitialize just the controller before a new run.
+    # def reset_before_run(self, obs, info=None, env=None):
+    #     '''Reinitialize just the controller before a new run.
 
-        Args:
-            obs (ndarray): The initial observation for the new run.
-            info (dict): The first info of the new run.
-            env (BenchmarkEnv): The environment to be used for the new run.
-        '''
-        self.reset()
+    #     Args:
+    #         obs (ndarray): The initial observation for the new run.
+    #         info (dict): The first info of the new run.
+    #         env (BenchmarkEnv): The environment to be used for the new run.
+    #     '''
+    #     self.reset()

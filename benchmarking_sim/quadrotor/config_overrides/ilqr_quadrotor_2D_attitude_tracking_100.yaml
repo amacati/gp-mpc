@@ -1,0 +1,18 @@
+algo: ilqr
+algo_config:
+  # Cost parameters
+  q_lqr: [20, 0.1, 20, 0.1, 0.5, 0.01]
+  r_lqr: [3, 2]
+  # Model arguments
+  # Note: Higher simulation frequency is required if using controller designed
+  #       based on the continuous-time model
+  discrete_dynamics: True
+
+  # iLQR arguments
+  max_iterations: 15
+  lamb_factor: 10
+  lamb_max: 4000
+  epsilon: 0.001
+  warm_start_traj: /home/mingxuan/Repositories/scg_tsung/benchmarking_sim/quadrotor/data/mpc_acados_quadrotor_2D_attitude_9_ref_traj.npy
+
+  output_dir: ./ilqr/results

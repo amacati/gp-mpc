@@ -7,8 +7,8 @@ import os
 import random
 import subprocess
 import sys
-import time
 from functools import wraps
+import time
 
 import gymnasium as gym
 import imageio
@@ -17,7 +17,6 @@ import numpy as np
 import torch
 import yaml
 from termcolor import colored
-
 
 def mkdirs(*paths):
     '''Makes a list of directories.'''
@@ -200,7 +199,8 @@ def is_wrapped(env, wrapper_class):
 
 def timing(f):
     '''Decorator for measuring the time of a function.
-       The elapsed time is stored in the function object.
+       The elapsed time is stored in the function object. 
+
     '''
     @wraps(f)
     def wrap(*args, **kw):
@@ -208,6 +208,7 @@ def timing(f):
         result = f(*args, **kw)
         te = time.time()
         wrap.elapsed_time = te - ts
-        print(colored(f'func:{f.__name__} took: {wrap.elapsed_time:.3f} sec', 'blue'))
+
+        print(colored(f'func:{f.__name__} took: {wrap.elapsed_time:.4f} sec', 'blue' ))
         return result
     return wrap

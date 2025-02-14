@@ -1,6 +1,10 @@
 '''Model Predictive Control using Acados.'''
 
+import os
+import shutil
 from copy import deepcopy
+from datetime import datetime
+
 
 import casadi as cs
 import numpy as np
@@ -80,12 +84,15 @@ class MPC_ACADOS(MPC):
             constraint_tol=constraint_tol,
             output_dir=output_dir,
             additional_constraints=additional_constraints,
-            # compute_initial_guess_method='ipopt',  # use ipopt initial guess by default
+            compute_initial_guess_method='ipopt',  # use ipopt initial guess by default
             use_lqr_gain_and_terminal_cost=use_lqr_gain_and_terminal_cost,
             use_gpu=use_gpu,
             seed=seed,
             **kwargs
         )
+
+        self.x_guess = None
+        self.u_guess = None
         # acados settings
         self.use_RTI = use_RTI
 
@@ -93,16 +100,29 @@ class MPC_ACADOS(MPC):
     def reset(self):
         '''Prepares for training or evaluation.'''
         print(colored('Resetting MPC', 'green'))
-        self.x_guess = None
-        self.u_guess = None
+
         super().reset()
-        self.acados_model = None
-        self.ocp = None
-        self.acados_ocp_solver = None
+        # self.acados_model = None
+        # self.ocp = None
+        # self.acados_ocp_solver = None
+        if hasattr(self, 'acados_model'):
+            del self.acados_model
+        if hasattr(self, 'ocp'):
+            del self.ocp
+        if hasattr(self, 'acados_ocp_solver'):
+            del self.acados_ocp_solver
+
+        # delete the generated c code directory
+        if os.path.exists(self.output_dir + '/mpc_c_generated_code'):
+            print('deleting the generated MPC c code directory')
+            shutil.rmtree(self.output_dir + '/mpc_c_generated_code')
+            assert not os.path.exists(self.output_dir + '/mpc_c_generated_code'), 'Failed to delete the generated c code directory'
+
         # Dynamics model.
         self.setup_acados_model()
         # Acados optimizer.
         self.setup_acados_optimizer()
+
         self.acados_ocp_solver = AcadosOcpSolver(self.ocp)
 
     def setup_acados_model(self) -> AcadosModel:
@@ -123,15 +143,25 @@ class MPC_ACADOS(MPC):
         acados_model.u = self.model.u_sym
         acados_model.name = self.env.NAME
 
+
+        # continuous-time dynamics
+        fc_func = self.model.fc_func
         # set up rk4 (acados need symbolic expression of dynamics, not function)
-        k1 = self.model.fc_func(acados_model.x, acados_model.u)
-        k2 = self.model.fc_func(acados_model.x + self.dt / 2 * k1, acados_model.u)
-        k3 = self.model.fc_func(acados_model.x + self.dt / 2 * k2, acados_model.u)
-        k4 = self.model.fc_func(acados_model.x + self.dt * k3, acados_model.u)
-        f_disc = acados_model.x + self.dt / 6 * (k1 + 2 * k2 + 2 * k3 + k4)
+        k1 = fc_func(acados_model.x, acados_model.u)
+        k2 = fc_func(acados_model.x + self.dt / 2 * k1, acados_model.u)
+        k3 = fc_func(acados_model.x + self.dt / 2 * k2, acados_model.u)
+        k4 = fc_func(acados_model.x + self.dt * k3, acados_model.u)
+
+        f_disc = acados_model.x + self.dt / 6 * (k1 + 2 * k2 + 2 * k3 + k4) 
 
         acados_model.disc_dyn_expr = f_disc
-
+        '''
+        Other options to set up the model:
+        f_expl = self.model.x_dot (explicit continuous-time dynamics)
+        f_impl = self.model.x_dot_acados - f_expl (implicit continuous-time dynamics)
+        model.f_impl_expr = f_impl
+        model.f_expl_expr = f_expl
+        '''
         # store meta information # NOTE: unit is missing
         acados_model.x_labels = self.env.STATE_LABELS
         acados_model.u_labels = self.env.ACTION_LABELS
@@ -226,8 +256,10 @@ class MPC_ACADOS(MPC):
         ocp.solver_options.integrator_type = 'DISCRETE'
         ocp.solver_options.nlp_solver_type = 'SQP' if not self.use_RTI else 'SQP_RTI'
         ocp.solver_options.nlp_solver_max_iter = 25 if not self.use_RTI else 1
-        ocp.solver_options.globalization = 'MERIT_BACKTRACKING'
         # ocp.solver_options.globalization = 'FUNNEL_L1PEN_LINESEARCH' if not self.use_RTI else 'MERIT_BACKTRACKING'
+        # ocp.solver_options.globalization = 'MERIT_BACKTRACKING'
+
+
         ocp.solver_options.tf = self.T * self.dt  # prediction horizon
 
         # c code generation
@@ -336,6 +368,7 @@ class MPC_ACADOS(MPC):
         if self.mode == 'tracking':
             self.traj_step += 1
 
+
         y_ref = np.concatenate((goal_states[:, :-1],
                                 np.repeat(self.U_EQ.reshape(-1, 1), self.T, axis=1)), axis=0)
         for idx in range(self.T):
@@ -344,31 +377,56 @@ class MPC_ACADOS(MPC):
         self.acados_ocp_solver.set(self.T, 'yref', y_ref_e)
 
         # solve the optimization problem
-        if self.use_RTI:
-            # preparation phase
-            self.acados_ocp_solver.options_set('rti_phase', 1)
-            status = self.acados_ocp_solver.solve()
 
-            # feedback phase
-            self.acados_ocp_solver.options_set('rti_phase', 2)
-            status = self.acados_ocp_solver.solve()
+        try:
+            if self.use_RTI:
+                # preparation phase
+                self.acados_ocp_solver.options_set('rti_phase', 1)
+                status = self.acados_ocp_solver.solve()
 
-            if status not in [0, 2]:
-                self.acados_ocp_solver.print_statistics()
-                raise Exception(f'acados returned status {status}. Exiting.')
-            if status == 2:
-                print(f'acados returned status {status}. ')
+                # feedback phase
+                self.acados_ocp_solver.options_set('rti_phase', 2)
+                status = self.acados_ocp_solver.solve()
+            else:
+                status = self.acados_ocp_solver.solve()
 
-            action = self.acados_ocp_solver.get(0, 'u')
+            # get the open-loop solution
+            if self.x_prev is None and self.u_prev is None:
+                self.x_prev = np.zeros((nx, self.T + 1))
+                self.u_prev = np.zeros((nu, self.T))
+            if self.u_prev is not None and nu == 1:
+                self.u_prev = self.u_prev.reshape((1, -1))
+            for i in range(self.T + 1):
+                self.x_prev[:, i] = self.acados_ocp_solver.get(i, 'x')
+            for i in range(self.T):
+                self.u_prev[:, i] = self.acados_ocp_solver.get(i, 'u')
+            if nu == 1:
+                self.u_prev = self.u_prev.flatten()
 
-        elif not self.use_RTI:
-            status = self.acados_ocp_solver.solve()
-            if status not in [0, 2]:
-                self.acados_ocp_solver.print_statistics()
-                raise Exception(f'acados returned status {status}. Exiting.')
-            if status == 2:
-                print(f'acados returned status {status}. ')
-            action = self.acados_ocp_solver.get(0, 'u')
+            # get the solver status
+            n_sqp_iter = self.acados_ocp_solver.get_stats('sqp_iter')
+            n_qp_iter = self.acados_ocp_solver.get_stats('qp_iter')
+            print(f'acados returned status {status}. SQP iterations: {n_sqp_iter}. QP iterations: {n_qp_iter}.')
+
+        except Exception:
+            print(colored('Infeasible MPC Problem', 'red'))
+            # get the solver status
+            self.acados_ocp_solver.print_statistics()
+            status = self.acados_ocp_solver.get_stats('status')
+            print(f'acados returned status {status}. ')
+            # OPTIONAL: shift the x_prev and u_prev and copy the last state
+            # self.x_prev = np.concatenate((self.x_guess[:, 1:], np.atleast_2d(self.x_guess[:, -1]).T), axis=1)
+            # self.u_prev = np.concatenate((self.u_guess[:, 1:], np.atleast_2d(self.u_guess[:, -1]).T), axis=1)
+        action = self.acados_ocp_solver.get(0, 'u')
+
+        self.x_guess = self.x_prev
+        self.u_guess = self.u_prev
+        self.results_dict['horizon_states'].append(deepcopy(self.x_prev))
+        self.results_dict['horizon_inputs'].append(deepcopy(self.u_prev))
+        self.results_dict['goal_states'].append(deepcopy(goal_states))
+        self.results_dict['inference_time'].append(self.acados_ocp_solver.get_stats("time_tot"))
+
+        self.prev_action = action
 
         # get the open-loop solution
         if self.x_prev is None and self.u_prev is None:

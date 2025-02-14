@@ -21,7 +21,9 @@ class BaseExperiment:
                  ctrl,
                  train_env=None,
                  safety_filter=None,
+                 learn_safety_filter=False,
                  verbose: bool = False,
+                 reset_when_created: bool = True,
                  ):
         '''Creates a generic experiment class to run evaluations and collect standard metrics.
 
@@ -36,7 +38,11 @@ class BaseExperiment:
         self.metric_extractor = MetricExtractor()
         self.verbose = verbose
         self.env = env
-        self.MAX_STEPS = int(self.env.CTRL_FREQ * self.env.EPISODE_LEN_SEC)
+        # NOTE: a hack for task randomization, need to be removed
+        if isinstance(self.env.EPISODE_LEN_SEC, list):
+            self.MAX_STEPS = int(self.env.CTRL_FREQ * max(self.env.EPISODE_LEN_SEC))
+        else:
+            self.MAX_STEPS = int(self.env.CTRL_FREQ * self.env.EPISODE_LEN_SEC) 
         if not is_wrapped(self.env, RecordDataWrapper):
             self.env = RecordDataWrapper(self.env)
         self.ctrl = ctrl
@@ -45,8 +51,10 @@ class BaseExperiment:
         if train_env is not None and not is_wrapped(self.train_env, RecordDataWrapper):
             self.train_env = RecordDataWrapper(self.train_env)
         self.safety_filter = safety_filter
+        self.learn_safety_filter = learn_safety_filter
 
-        self.reset()
+        if reset_when_created:
+            self.reset()
 
     def run_evaluation(self, training=False, n_episodes=None, n_steps=None, done_on_max_steps=None, log_freq=None, verbose=True, **kwargs):
         '''Evaluate a trained controller.
@@ -108,10 +116,13 @@ class BaseExperiment:
         obs, info = self._evaluation_reset(ctrl_data=None, sf_data=None, seed=seed)
         ctrl_data = defaultdict(list)
         sf_data = defaultdict(list)
+        inference_time_data = []
 
         if n_episodes is not None:
             while trajs < n_episodes:
+                time_start = time()
                 action = self._select_action(obs=obs, info=info)
+                inference_time_data.append(time() - time_start)
                 # inner sim loop to accomodate different control frequencies
                 for _ in range(sim_steps):
                     steps += 1
@@ -128,7 +139,9 @@ class BaseExperiment:
                         break
         elif n_steps is not None:
             while steps < n_steps:
+                time_start = time()
                 action = self._select_action(obs=obs, info=info)
+                inference_time_data.append(time() - time_start)
                 # inner sim loop to accomodate different control frequencies
                 for _ in range(sim_steps):
                     steps += 1
@@ -151,6 +164,7 @@ class BaseExperiment:
 
         trajs_data = self.env.data
         trajs_data['controller_data'].append(munchify(dict(ctrl_data)))
+        trajs_data['inference_time_data'].append(inference_time_data)
         if self.safety_filter is not None:
             trajs_data['safety_filter_data'].append(munchify(dict(sf_data)))
         return munchify(trajs_data)
@@ -199,6 +213,7 @@ class BaseExperiment:
         if sf_data is not None and self.safety_filter is not None:
             for data_key, data_val in self.safety_filter.results_dict.items():
                 sf_data[data_key].append(np.array(deepcopy(data_val)))
+        self.ctrl.reset()
         self.ctrl.reset_before_run(obs, info, env=self.env)
         if self.safety_filter is not None:
             self.safety_filter.reset_before_run(env=self.env)
@@ -214,7 +229,7 @@ class BaseExperiment:
         self.reset()
         self.ctrl.learn(env=self.train_env, **kwargs)
 
-        if self.safety_filter:
+        if self.safety_filter and self.learn_safety_filter:
             self.safety_filter.learn(env=self.train_env, **kwargs)
 
         print('Training done.')
@@ -234,7 +249,9 @@ class BaseExperiment:
             metrics (dict): The metrics calculated from the raw data.
         '''
 
-        metrics = self.metric_extractor.compute_metrics(data=trajs_data, verbose=self.verbose)
+        metrics = self.metric_extractor.compute_metrics(data=trajs_data, 
+                                                        max_steps=self.MAX_STEPS,
+                                                        verbose=self.verbose)
 
         return metrics
 
@@ -382,7 +399,7 @@ class MetricExtractor:
         (how many constraint violations happened in each episode)
     '''
 
-    def compute_metrics(self, data, verbose=False):
+    def compute_metrics(self, data, max_steps, verbose=False):
         '''Compute all standard metrics on the given trajectory data.
 
         Args:
@@ -395,20 +412,27 @@ class MetricExtractor:
 
         self.data = data
         self.verbose = verbose
+        self.max_steps = max_steps
 
         # collect & compute all sorts of metrics here
         metrics = {
             'average_length': np.asarray(self.get_episode_lengths()).mean(),
             'length': self.get_episode_lengths() if len(self.get_episode_lengths()) > 1 else self.get_episode_lengths()[0],
+            'rms_action_change': np.asarray(self.get_episode_rms_action_change()).mean(),
             'average_return': np.asarray(self.get_episode_returns()).mean(),
             'average_rmse': np.asarray(self.get_episode_rmse()).mean(),
             'rmse': np.asarray(self.get_episode_rmse()) if len(self.get_episode_rmse()) > 1 else self.get_episode_rmse()[0],
             'rmse_std': np.asarray(self.get_episode_rmse()).std(),
+            'exponentiated_rmse': np.asarray(self.get_episode_exponentiated_rmse()).mean(),
+            'exponentiated_rms_action_change': np.asarray(self.get_episode_exponentiated_rms_action_change()).mean(),
             'worst_case_rmse_at_0.5': compute_cvar(np.asarray(self.get_episode_rmse()), 0.5, lower_range=False),
             'failure_rate': np.asarray(self.get_episode_constraint_violations()).mean(),
+            'failure_rates': np.asarray(self.get_episode_constraint_violations()),
             'average_constraint_violation': np.asarray(self.get_episode_constraint_violation_steps()).mean(),
             'constraint_violation_std': np.asarray(self.get_episode_constraint_violation_steps()).std(),
             'constraint_violation': np.asarray(self.get_episode_constraint_violation_steps()) if len(self.get_episode_constraint_violation_steps()) > 1 else self.get_episode_constraint_violation_steps()[0],
+            'avarage_inference_time': np.asarray(self.get_episode_inference_time()),
+            'early_stop': np.asarray(self.get_episode_early_stop()),
             # others ???
         }
         return metrics
@@ -456,6 +480,27 @@ class MetricExtractor:
             episode_rewards (list): The total reward of each episode.
         '''
         return self.get_episode_data('reward', postprocess_func=sum)
+    
+    def get_episode_rms_action_change(self):
+        '''Total rms_action_change of episodes.
+
+        Returns:
+            rms_action_change (list): The total reward of each episode.
+        '''
+        return self.get_episode_data('current_physical_action', postprocess_func=lambda x: float(np.sqrt(np.mean(np.sum(np.square(np.diff(x, axis=0)), axis=1)))))
+
+    def get_episode_exponentiated_rms_action_change(self):
+        '''Total rms_action_change of episodes.
+
+        Returns:
+            rms_action_change (list): The total reward of each episode.
+        '''
+        return self.get_episode_data('current_physical_action', postprocess_func=lambda x: float(np.exp(-np.sqrt(np.mean(np.sum(np.square(np.diff(x, axis=0)), axis=1))))))
+
+    def get_episode_exponentiated_rmse(self):
+        '''Total exponentiated rmse of episodes.'''
+
+        return self.get_episode_data('mse', postprocess_func=lambda x: float(np.exp(-np.sqrt(np.mean(x)))))
 
     def get_episode_rmse(self):
         '''Root mean square error of episodes.
@@ -483,3 +528,28 @@ class MetricExtractor:
         '''
         return self.get_episode_data('constraint_violation',
                                      postprocess_func=sum)
+    
+    def get_episode_inference_time(self):
+        '''Average inference time of episodes.
+        
+        Returns:
+            episode_inference_time (double): The average inference time of all episodes.
+        '''
+        # self.data['controller_data'] 
+        if hasattr(self.data['controller_data'][0], 'inference_time'):
+            return self.get_episode_data('controller_data', 
+                                        postprocess_func=lambda x: np.mean(x['inference_time'][0]))
+        else:
+            return self.get_episode_data('inference_time_data', 
+                                        postprocess_func=lambda x: np.mean(x))
+    
+    def get_episode_early_stop(self):
+        '''Occurence of early stop in episodes.
+
+        Returns:
+            episode_early_stop (list): Whether each episode had an early stop. 
+            1 if early stop, 0 otherwise.
+        '''
+        episode_length = self.get_episode_data('length', postprocess_func=sum)
+        num_length_data = len(episode_length)
+        return [1 if episode_length[i] < self.max_steps else 0 for i in range(num_length_data)]

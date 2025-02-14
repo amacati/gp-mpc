@@ -4,6 +4,7 @@
 [2] https://arxiv.org/pdf/1708.09342.pdf
 '''
 
+import time
 import numpy as np
 from termcolor import colored
 
@@ -28,6 +29,7 @@ class iLQR(BaseController):
             lamb_factor: float = 10,
             lamb_max: float = 1000,
             epsilon: float = 0.01,
+            warm_start_traj: str = None,
             **kwargs):
         '''Creates task and controller.
 
@@ -78,7 +80,34 @@ class iLQR(BaseController):
         self.input_ff_best = None
         self.gains_fb_best = None
 
+        # warm start trajectory
+        self.warm_start_traj = warm_start_traj
+        if self.warm_start_traj is not None:
+            self.load_warm_start_traj()
+
         self.reset()
+
+    def load_warm_start_traj(self):
+        max_steps = int(self.env.CTRL_FREQ * self.env.EPISODE_LEN_SEC)
+        # traj_data = np.load(self.warm_start_traj, allow_pickle=True).item()
+        if self.warm_start_traj.endswith('.pkl'):
+            traj_data = np.load(self.warm_start_traj, allow_pickle=True)
+            self.warm_start_action = traj_data['trajs_data']['action'][0]
+            self.warm_start_state = traj_data['trajs_data']['state'][0]
+        elif self.warm_start_traj.endswith('.npy'):
+            # self.warm_start_traj = self.warm_start_traj.replace('_9_', f'_{int(self.env.EPISODE_LEN_SEC/1.5)}_')
+            traj_data = np.load(self.warm_start_traj, allow_pickle=True).item()
+            self.warm_start_action = traj_data['action']
+            self.warm_start_state = traj_data['obs']
+        # check the dimension compatibility
+        assert self.warm_start_action.shape[1] == self.model.nu
+        assert self.warm_start_state.shape[1] == self.model.nx
+        # assert self.warm_start_action.shape[0] <= max_steps, f'warm start length {self.warm_start_action.shape[0]} > max steps {max_steps}'
+        if self.warm_start_action.shape[0] > max_steps:
+            self.warm_start_action = self.warm_start_action[:max_steps]
+            self.warm_start_state = self.warm_start_state[:max_steps]
+            print(colored(f'Warm start trajectory is truncated to {max_steps} steps.', 'yellow'))
+        print(colored(f'Loaded warm start trajectory with {self.warm_start_action.shape[0]} steps.', 'green'))
 
     def close(self):
         '''Cleans up resources.'''
@@ -105,6 +134,8 @@ class iLQR(BaseController):
 
         # determine the maximum number of steps
         self.max_steps = int(self.env.CTRL_FREQ * self.env.EPISODE_LEN_SEC)
+        print(f'Maximum number of steps: {self.max_steps}')
+
 
         # Loop through iLQR iterations
         while self.ite_counter < self.max_iterations:
@@ -113,6 +144,10 @@ class iLQR(BaseController):
 
             # Save data and update policy if iteration is finished.
             self.state_stack = np.vstack((self.state_stack, self.final_obs))
+            if self.warm_start_traj is not None and self.ite_counter == 0:
+                print(colored('Warm start trajectory is used.', 'green'))
+                self.input_stack = self.warm_start_action
+                self.state_stack = self.warm_start_state
 
             print(colored(f'Iteration: {self.ite_counter}, Cost: {self.total_cost}', 'green'))
             print(colored('--------------------------', 'green'))
@@ -182,6 +217,8 @@ class iLQR(BaseController):
                 self.update_policy(env)
 
             self.ite_counter += 1
+        
+        self.reset()
 
         self.reset()
 
@@ -286,11 +323,14 @@ class iLQR(BaseController):
         Args:
             obs (ndarray): The observation at this timestep.
             info (dict): The info at this timestep.
-            training (bool): Whether the algorithm is training or evaluating.
+
+            hardware (bool): Whether the controller is running on hardware.
+
 
         Returns:
             action (ndarray): The action chosen by the controller.
         '''
+        time_before = time.perf_counter()
 
         if training:
             if self.ite_counter == 0:
@@ -308,7 +348,9 @@ class iLQR(BaseController):
             action = self.gains_fb_best[self.traj_step].dot(obs) + self.input_ff_best[:, self.traj_step]
         else:
             action, _, _ = self.calculate_lqr_action(obs, self.traj_step)
-
+        time_after = time.perf_counter()
+        self.results_dict['inference_time'].append(time_after - time_before)
+        
         if self.traj_step < self.max_steps - 1:
             self.traj_step += 1
 
@@ -342,6 +384,10 @@ class iLQR(BaseController):
     def reset(self):
         '''Prepares for evaluation.'''
         self.env.reset()
+        # self.env.Q = self.Q
+        # self.env.R = self.R
+        self.env.rew_state_weight = np.diag(self.Q)
+        self.env.rew_act_weight= np.diag(self.R)
         self.ite_counter = 0
         self.traj_step = 0
 
@@ -386,3 +432,9 @@ class iLQR(BaseController):
         self.final_obs = obs
         self.final_info = info
         self.total_cost = total_cost
+
+    def setup_results_dict(self):
+        '''Setup the results dictionary to store run information.'''
+        self.results_dict = {
+            'inference_time': []
+            }

@@ -1,0 +1,38 @@
+algo: dppo
+algo_config:
+  # Model args
+  hidden_dim: 128
+  activation: tanh
+  norm_obs: False
+  norm_reward: False
+  clip_obs: 10
+  clip_reward: 10
+
+  # Loss args
+  gamma: 0.98
+  use_gae: True
+  gae_lambda: 0.92
+  clip_param: 0.2
+  target_kl: 0.01
+  entropy_coef: 0.01
+  quantile_count: 256
+  value_loss: quantile_l1
+
+  # Optim args
+  opt_epochs: 20
+  mini_batch_size: 256
+  actor_lr: 0.001
+  critic_lr: 0.001
+
+  # Runner args
+  max_env_steps: 336000
+  rollout_batch_size: 5
+  rollout_steps: 660
+
+  # Misc
+  log_interval: 0
+  save_interval: 0
+  num_checkpoints: 0
+  eval_interval: 0
+  eval_save_best: False
+  tensorboard: False

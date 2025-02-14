@@ -6,10 +6,18 @@ examples/mpsc/unsafe_rl_temp_data/
 #
 examples/pid/*data/
 #
+Results/
+#
+experiments/mpsc/results*
+experiments/mpsc/models/rl_models*
+#
 results/
 z_docstring.py
 TODOs.md
-
+#
+hpo_study*/
+hp_study*/
+comparisons/
 
 
 # macOS users
@@ -148,7 +156,21 @@ dmypy.json
 # Pyre type checker
 .pyre/
 
+.idea/
 
-# acados
-acados_ocp_nlp.json
-*c_generated_code
+*c_generated_code/
+*acados_ocp*.json
+gpmpc_update/
+temp
+models/
+
+examples/rl/Data/
+benchmarking_sim/quadrotor/data/traj*
+benchmarking_sim/quadrotor/data/gen*
+benchmarking_sim/quadrotor/data/*results*
+benchmarking_sim/quadrotor/data/*data*
+fmpc_old
+mpc_acados_old
+linear_mpc_old
+benchmarking_sim/quadrotor/mpc_acados
+gym_backup.zip

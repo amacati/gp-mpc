@@ -78,7 +78,8 @@ class LinearMPC(MPC):
             output_dir=output_dir,
             additional_constraints=additional_constraints,
             use_lqr_gain_and_terminal_cost=use_lqr_gain_and_terminal_cost,
-            compute_initial_guess_method=compute_initial_guess_method,
+            compute_initial_guess_method='lqr',  # use lqr initial guess by default
+
             **kwargs
         )
 
@@ -270,7 +271,8 @@ class LinearMPC(MPC):
                     u_val = self.u_prev
                     x_val = self.x_prev
             elif return_status in ['Infeasible_Problem_Detected', 'Infeasible_Problem']:
-                # self.terminate_loop = True
+                self.terminate_loop = True
+
                 u_val = opti.debug.value(u_var)
 
         # take first one from solved action sequence
