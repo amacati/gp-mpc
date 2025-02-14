@@ -196,9 +196,11 @@ def is_wrapped(env, wrapper_class):
     '''Check if a given environment has been wrapped with a given wrapper.'''
     return unwrap_wrapper(env, wrapper_class) is not None
 
+
 def timing(f):
     '''Decorator for measuring the time of a function.
        The elapsed time is stored in the function object. 
+
     '''
     @wraps(f)
     def wrap(*args, **kw):
@@ -206,6 +208,7 @@ def timing(f):
         result = f(*args, **kw)
         te = time.time()
         wrap.elapsed_time = te - ts
+
         print(colored(f'func:{f.__name__} took: {wrap.elapsed_time:.4f} sec', 'blue' ))
         return result
     return wrap

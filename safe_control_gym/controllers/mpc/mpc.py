@@ -15,6 +15,7 @@ from safe_control_gym.envs.constraints import GENERAL_CONSTRAINTS, create_constr
 from safe_control_gym.utils.utils import timing
 from numpy.linalg import LinAlgError
 
+
 class MPC(BaseController):
     '''MPC with full nonlinear model.'''
 
@@ -50,6 +51,7 @@ class MPC(BaseController):
             r_mpc (list): diagonals of input/action cost weight.
             warmstart (bool): if to initialize from previous iteration.
             soft_constraints (bool): Formulate the constraints as soft constraints.
+            soft_penalty (float): Penalty added in the cost function for soft constraints.
             terminate_run_on_done (bool): Terminate the run when the environment returns done or not.
             constraint_tol (float): Tolerance to add the the constraint as sometimes solvers are not exact.
             output_dir (str): output directory to write logs and results.
@@ -186,7 +188,6 @@ class MPC(BaseController):
             print(colored('LQR gain computation failed', 'red'))
             print(colored('Using the LQR gain and terminal cost in the MPC is disabled', 'yellow'))
             self.use_lqr_gain_and_terminal_cost = False
-            
         # nonlinear dynamics
         self.dynamics_func = rk_discrete(self.model.fc_func,
                                          self.model.nx,

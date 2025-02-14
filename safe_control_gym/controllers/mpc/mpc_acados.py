@@ -1,8 +1,10 @@
 '''Model Predictive Control using Acados.'''
+
 import os
 import shutil
 from copy import deepcopy
 from datetime import datetime
+
 
 import casadi as cs
 import numpy as np
@@ -57,6 +59,7 @@ class MPC_ACADOS(MPC):
             r_mpc (list): diagonals of input/action cost weight.
             warmstart (bool): if to initialize from previous iteration.
             soft_constraints (bool): Formulate the constraints as soft constraints.
+            soft_penalty (float): Penalty added to acados formulation for soft constraints.
             terminate_run_on_done (bool): Terminate the run when the environment returns done or not.
             constraint_tol (float): Tolerance to add the the constraint as sometimes solvers are not exact.
             output_dir (str): output directory to write logs and results.
@@ -97,6 +100,7 @@ class MPC_ACADOS(MPC):
     def reset(self):
         '''Prepares for training or evaluation.'''
         print(colored('Resetting MPC', 'green'))
+
         super().reset()
         # self.acados_model = None
         # self.ocp = None
@@ -113,21 +117,32 @@ class MPC_ACADOS(MPC):
             print('deleting the generated MPC c code directory')
             shutil.rmtree(self.output_dir + '/mpc_c_generated_code')
             assert not os.path.exists(self.output_dir + '/mpc_c_generated_code'), 'Failed to delete the generated c code directory'
+
         # Dynamics model.
         self.setup_acados_model()
         # Acados optimizer.
         self.setup_acados_optimizer()
-        # get time in $ymd_HMS format
-        current_time = datetime.now().strftime('%Y%m%d_%H%M%S')
-        self.acados_ocp_solver = AcadosOcpSolver(self.ocp, self.output_dir + f'/mpc_acados_ocp_solver_{current_time}.json')
+
+        self.acados_ocp_solver = AcadosOcpSolver(self.ocp)
 
     def setup_acados_model(self) -> AcadosModel:
-        '''Sets up symbolic model for acados.'''
+        '''Sets up symbolic model for acados.
+
+        Returns:
+            acados_model (AcadosModel): acados model object.
+
+        Other options to set up the model:
+        f_expl = self.model.x_dot (explicit continuous-time dynamics)
+        f_impl = self.model.x_dot_acados - f_expl (implicit continuous-time dynamics)
+        model.f_impl_expr = f_impl
+        model.f_expl_expr = f_expl
+        '''
 
         acados_model = AcadosModel()
         acados_model.x = self.model.x_sym
         acados_model.u = self.model.u_sym
         acados_model.name = self.env.NAME
+
 
         # continuous-time dynamics
         fc_func = self.model.fc_func
@@ -151,15 +166,17 @@ class MPC_ACADOS(MPC):
         acados_model.x_labels = self.env.STATE_LABELS
         acados_model.u_labels = self.env.ACTION_LABELS
         acados_model.t_label = 'time'
-        # get current time stamp in $ymd_HMS format
-        current_time = datetime.now().strftime('%Y%m%d_%H%M%S')
-        acados_model.name = self.env.NAME + '_' + current_time
 
         self.acados_model = acados_model
 
     @timing
     def compute_initial_guess(self, init_state, goal_states=None):
-        '''Use IPOPT to get an initial guess of the solution.'''
+        '''Use IPOPT to get an initial guess of the solution.
+
+        Args:
+            init_state (ndarray): Initial state.
+            goal_states (ndarray): Goal states.
+        '''
         x_val, u_val = super().compute_initial_guess(init_state, goal_states)
         self.x_guess = x_val
         self.u_guess = u_val
@@ -241,6 +258,8 @@ class MPC_ACADOS(MPC):
         ocp.solver_options.nlp_solver_max_iter = 25 if not self.use_RTI else 1
         # ocp.solver_options.globalization = 'FUNNEL_L1PEN_LINESEARCH' if not self.use_RTI else 'MERIT_BACKTRACKING'
         # ocp.solver_options.globalization = 'MERIT_BACKTRACKING'
+
+
         ocp.solver_options.tf = self.T * self.dt  # prediction horizon
 
         # c code generation
@@ -250,13 +269,18 @@ class MPC_ACADOS(MPC):
 
         self.ocp = ocp
 
-    def processing_acados_constraints_expression(self, ocp: AcadosOcp, h0_expr, h_expr, he_expr) -> AcadosOcp:
+    def processing_acados_constraints_expression(self,
+                                                 ocp: AcadosOcp,
+                                                 h0_expr: cs.MX,
+                                                 h_expr: cs.MX,
+                                                 he_expr: cs.MX,
+                                                 ) -> AcadosOcp:
         '''Preprocess the constraints to be compatible with acados.
             Args:
                 ocp (AcadosOcp): acados ocp object
-                h0_expr (casadi expression): initial state constraints
-                h_expr (casadi expression): state and input constraints
-                he_expr (casadi expression): terminal state constraints
+                h0_expr (cs.MX expression): initial state constraints
+                h_expr (cs.MX expression): state and input constraints
+                he_expr (cs.MX expression): terminal state constraints
             Returns:
                 ocp (AcadosOcp): acados ocp object with constraints set.
 
@@ -344,14 +368,16 @@ class MPC_ACADOS(MPC):
         if self.mode == 'tracking':
             self.traj_step += 1
 
-        # y_ref = np.concatenate((goal_states[:, :-1], np.zeros((nu, self.T))))
-        y_ref = np.concatenate((goal_states[:, :-1], np.repeat(self.U_EQ.reshape(-1, 1), self.T, axis=1)), axis=0)
+
+        y_ref = np.concatenate((goal_states[:, :-1],
+                                np.repeat(self.U_EQ.reshape(-1, 1), self.T, axis=1)), axis=0)
         for idx in range(self.T):
             self.acados_ocp_solver.set(idx, 'yref', y_ref[:, idx])
         y_ref_e = goal_states[:, -1]
         self.acados_ocp_solver.set(self.T, 'yref', y_ref_e)
 
         # solve the optimization problem
+
         try:
             if self.use_RTI:
                 # preparation phase

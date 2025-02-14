@@ -136,6 +136,7 @@ class iLQR(BaseController):
         self.max_steps = int(self.env.CTRL_FREQ * self.env.EPISODE_LEN_SEC)
         print(f'Maximum number of steps: {self.max_steps}')
 
+
         # Loop through iLQR iterations
         while self.ite_counter < self.max_iterations:
             self.traj_step = 0
@@ -217,6 +218,8 @@ class iLQR(BaseController):
 
             self.ite_counter += 1
         
+        self.reset()
+
         self.reset()
 
     def update_policy(self, env):
@@ -320,12 +323,15 @@ class iLQR(BaseController):
         Args:
             obs (ndarray): The observation at this timestep.
             info (dict): The info at this timestep.
+
             hardware (bool): Whether the controller is running on hardware.
+
 
         Returns:
             action (ndarray): The action chosen by the controller.
         '''
         time_before = time.perf_counter()
+
         if training:
             if self.ite_counter == 0:
                 action, gains_fb, input_ff = self.calculate_lqr_action(obs, self.traj_step)

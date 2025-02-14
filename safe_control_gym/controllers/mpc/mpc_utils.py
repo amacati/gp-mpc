@@ -99,6 +99,13 @@ def set_acados_constraint_bound(constraint,
                                 bound_value=None,
                                 ):
     '''Set the acados constraint bound.
+    Args:
+        constraint (casadi expression): Constraint expression.
+        bound_type (str): Type of bound (lb, ub).
+        bound_value (float): Value of the bound.
+
+    Returns:
+        bound (np.array): Constraint bound value.
 
     Note:
         all constraints in safe-control-gym are defined as g(x, u) <= constraint_tol
@@ -116,7 +123,8 @@ def set_acados_constraint_bound(constraint,
 
 
 def plot_open_loop_sol(ctrl):
-    ''' Plot the open loop predction of the MPC controller.
+
+    ''' Plot the open loop prediction of the MPC controller.
 
     Args:
         ctrl (MPC): MPC controller object.
