@@ -621,12 +621,12 @@ class GaussianProcessCollection:
             t = np.arange(num_data)
             fig, axs = plt.subplots(num_gps, 1, figsize=(10, 3 * num_gps))
             for gp_ind, gp in enumerate(self.gp_list):
-                # fit a linear model and compare the result
-                linear_model = LinearModel(inputs.numpy(), targets[:, gp_ind].numpy(), feature[gp_ind])
-                linear_model.fit()
-                weights = linear_model.weight()
-                print(f'Linear model weights: {weights}')
-                lr_pred = linear_model.predict(inputs.numpy())
+                # # fit a linear model and compare the result
+                # linear_model = LinearModel(inputs.numpy(), targets[:, gp_ind].numpy(), feature[gp_ind])
+                # linear_model.fit()
+                # weights = linear_model.weight()
+                # print(f'Linear model weights: {weights}')
+                # lr_pred = linear_model.predict(inputs.numpy())
 
                 means, _ , preds = gp.predict(inputs, return_pred=True)
                 lower, upper = preds.confidence_region()
@@ -637,21 +637,21 @@ class GaussianProcessCollection:
                 axs[gp_ind].plot(t, means, 'b', label='GP mean', linewidth=3)
                 axs[gp_ind].fill_between(t, lower, upper, alpha=0.3, label='2 std', color='skyblue')
                 axs[gp_ind].plot(t, residual[:, gp_ind], 'g', label='Residual', linestyle='--', linewidth=3)
-                axs[gp_ind].plot(t, lr_pred, label='Linear model', linestyle='-.', color='orange', linewidth=5)
+                # axs[gp_ind].plot(t, lr_pred, label='Linear model', linestyle='-.', color='orange', linewidth=5)
 
-                # compute the fitting rmse
-                gp_rmse = np.sqrt(np.mean((targets[:, gp_ind].numpy() - means.numpy()) ** 2))
-                lr_rmse = np.sqrt(np.mean((targets[:, gp_ind].numpy() - lr_pred) ** 2))
+                # # compute the fitting rmse
+                # gp_rmse = np.sqrt(np.mean((targets[:, gp_ind].numpy() - means.numpy()) ** 2))
+                # lr_rmse = np.sqrt(np.mean((targets[:, gp_ind].numpy() - lr_pred) ** 2))
 
-                # dump rmse in txt file
-                with open(os.path.join(output_dir, f'rmse_{title}.txt'), 'a') as f:
-                    f.write(f'GP dim {self.target_mask[gp_ind]}, RMSE: {gp_rmse:.4f}, LR RMSE: {lr_rmse:.4f}\n')
+                # # dump rmse in txt file
+                # with open(os.path.join(output_dir, f'rmse_{title}.txt'), 'a') as f:
+                #     f.write(f'GP dim {self.target_mask[gp_ind]}, RMSE: {gp_rmse:.4f}, LR RMSE: {lr_rmse:.4f}\n')
 
-                plt_title = (f'GP dim {self.target_mask[gp_ind]}, {percentage_within_2std:.2f}% within 2 std,\n'
-                             f'GP RMSE: {gp_rmse:.3f}, LR RMSE: {lr_rmse:.3f}, LR weights: {weights}')
-                if title is not None:
-                    plt_title += f', {title}'
-                axs[gp_ind].set_title(plt_title)
+                # plt_title = (f'GP dim {self.target_mask[gp_ind]}, {percentage_within_2std:.2f}% within 2 std,\n'
+                #              f'GP RMSE: {gp_rmse:.3f}, LR RMSE: {lr_rmse:.3f}, LR weights: {weights}')
+                # if title is not None:
+                #     plt_title += f', {title}'
+                # axs[gp_ind].set_title(plt_title)
                 axs[gp_ind].set_ylabel(target_label[gp_ind])
             
             axs[-1].set_xlabel('Data index')

@@ -38,6 +38,8 @@ from safe_control_gym.controllers.mpc.linear_mpc import MPC, LinearMPC
 from safe_control_gym.controllers.lqr.lqr_utils import discretize_linear_system
 from safe_control_gym.envs.benchmark_env import Task
 from safe_control_gym.utils.utils import timing
+from safe_control_gym.experiments.base_experiment import BaseExperiment
+
 
 
 class GPMPC(MPC, ABC):
@@ -672,6 +674,160 @@ class GPMPC(MPC, ABC):
         self.train_gp(input_data=data['data_inputs'], target_data=data['data_targets'], gp_model=gp_model_path)
 
     def learn(self, env=None):
+        '''Performs multiple epochs learning.
+        '''
+
+        train_runs = {0: {}}
+        test_runs = {0: {}}
+        
+        # epoch seed factor 
+        np.random.seed(self.seed)
+        epoch_seeds = np.random.randint(1000, size=self.num_epochs, dtype=int) * self.seed
+        epoch_seeds = [int(seed) for seed in epoch_seeds]
+
+        if self.same_train_initial_state:
+            train_envs = []
+            for epoch in range(self.num_epochs):
+                train_envs.append(self.env_func(randomized_init=True, seed=epoch_seeds[epoch]))
+                train_envs[epoch].action_space.seed(epoch_seeds[epoch])
+        else:
+            train_env = self.env_func(randomized_init=True, seed=epoch_seeds[0])
+            train_env.action_space.seed(epoch_seeds[0])
+            train_envs = [train_env] * self.num_epochs
+        
+        test_envs = []
+        if self.same_test_initial_state:
+            for epoch in range(self.num_epochs):
+                test_envs.append(self.env_func(randomized_init=True, seed=epoch_seeds[epoch]))
+                test_envs[epoch].action_space.seed(epoch_seeds[epoch])
+        else:
+            test_env = self.env_func(randomized_init=True, seed=epoch_seeds[0])
+            test_env.action_space.seed(epoch_seeds[0])
+            test_envs = [test_env] * self.num_epochs
+
+        for env in train_envs:
+            if isinstance(env.EPISODE_LEN_SEC, list):
+                idx = np.random.choice(len(env.EPISODE_LEN_SEC))
+                env.EPISODE_LEN_SEC = env.EPISODE_LEN_SEC[idx]
+        for env in test_envs:
+            if isinstance(env.EPISODE_LEN_SEC, list):
+                idx = np.random.choice(len(env.EPISODE_LEN_SEC))
+                env.EPISODE_LEN_SEC = env.EPISODE_LEN_SEC[idx]
+
+        # creating train and test experiments
+        train_experiments = [BaseExperiment(env=env, ctrl=self, reset_when_created=False) for env in train_envs[1:]]
+        test_experiments = [BaseExperiment(env=env, ctrl=self, reset_when_created=False) for env in test_envs[1:]]
+        # first experiments are for the prior
+        train_experiments.insert(0, BaseExperiment(env=train_envs[0], ctrl=self.prior_ctrl, reset_when_created=False))
+        test_experiments.insert(0, BaseExperiment(env=test_envs[0], ctrl=self.prior_ctrl, reset_when_created=False))
+        
+        for episode in range(self.num_train_episodes_per_epoch):
+            # run_results = self.prior_ctrl.run(env=train_envs[0],
+            #                                   terminate_run_on_done=self.terminate_train_on_done)
+            self.env = train_envs[0]
+            run_results = train_experiments[0].run_evaluation(n_episodes=1)
+            train_runs[0].update({episode: munch.munchify(run_results)})
+            # self.reset()
+        for test_ep in range(self.num_test_episodes_per_epoch):
+            # run_results = self.run(env=test_envs[0],
+            #                        terminate_run_on_done=self.terminate_test_on_done)
+            self.env = test_envs[0]
+            run_results = test_experiments[0].run_evaluation(n_episodes=1)
+            test_runs[0].update({test_ep: munch.munchify(run_results)})
+        # self.reset()
+        
+        training_results = None
+        for epoch in range(1, self.num_epochs):
+            # only take data from the last episode from the last epoch
+            # if self.rand_data_selection:
+            episode_length = train_runs[epoch - 1][self.num_train_episodes_per_epoch - 1][0]['obs'][0].shape[0]
+            if True:
+                x_seq, actions, x_next_seq, x_dot_seq = self.gather_training_samples(train_runs, epoch - 1, self.num_samples, train_envs[epoch - 1].np_random)
+            else:
+                x_seq, actions, x_next_seq, x_dot_seq = self.gather_training_samples(train_runs, epoch - 1, self.num_samples)
+            train_inputs, train_targets = self.preprocess_training_data(x_seq, actions, x_next_seq) # np.ndarray
+            training_results = self.train_gp(input_data=train_inputs, target_data=train_targets)
+            # plot training results
+            if self.plot_trained_gp:
+                self.gaussian_process.plot_trained_gp(train_inputs, train_targets,
+                                                      output_dir=self.output_dir,
+                                                      title=f'epoch_{epoch}',
+                                                      residual_func=self.residual_func
+                                                      )
+            max_steps = train_runs[epoch - 1][episode][0]['obs'][0].shape[0]
+            x_seq, actions, x_next_seq, x_dot_seq = self.gather_training_samples(train_runs, epoch - 1, max_steps)
+            test_inputs, test_outputs = self.preprocess_training_data(x_seq, actions, x_next_seq)
+            if self.plot_trained_gp:
+                self.gaussian_process.plot_trained_gp(test_inputs, test_outputs,
+                                                      output_dir=self.output_dir,
+                                                      title=f'epoch_{epoch}_train',
+                                                      residual_func=self.residual_func
+                                                      )
+                
+            # Test new policy.
+            test_runs[epoch] = {}
+            for test_ep in range(self.num_test_episodes_per_epoch):
+                self.x_prev = test_runs[epoch - 1][episode][0]['obs'][0][:self.T + 1, :].T
+                self.u_prev = test_runs[epoch - 1][episode][0]['action'][0][:self.T, :].T
+                # self.reset()
+                # run_results = self.run(env=test_envs[epoch],
+                #                        terminate_run_on_done=self.terminate_test_on_done)
+                self.env = test_envs[epoch]
+                run_results = test_experiments[epoch].run_evaluation(n_episodes=1)
+                test_runs[epoch].update({test_ep: munch.munchify(run_results)})
+
+            x_seq, actions, x_next_seq, x_dot_seq = self.gather_training_samples(test_runs, epoch - 1, episode_length)
+            train_inputs, train_targets = self.preprocess_training_data(x_seq, actions, x_next_seq) # np.ndarray
+
+            # gather training data
+            train_runs[epoch] = {}
+            for episode in range(self.num_train_episodes_per_epoch):
+                # self.reset()
+                # self.x_prev = train_runs[epoch - 1][episode]['obs'][:self.T + 1, :].T
+                # self.u_prev = train_runs[epoch - 1][episode]['action'][:self.T, :].T
+                # run_results = self.run(env=train_envs[epoch],
+                #                        terminate_run_on_done=self.terminate_train_on_done)
+                self.x_prev = train_runs[epoch - 1][episode][0]['obs'][0][:self.T + 1, :].T
+                self.u_prev = train_runs[epoch - 1][episode][0]['action'][0][:self.T, :].T
+                self.env = train_envs[epoch]
+                run_results = train_experiments[epoch].run_evaluation(n_episodes=1)
+                train_runs[epoch].update({episode: munch.munchify(run_results)})
+
+            # lengthscale, outputscale, noise, kern = self.gaussian_process.get_hyperparameters(as_numpy=True)
+            # compute the condition number of the kernel matrix
+            # self.rand_hist['task_rand'].append(train_envs[epoch].episode_len)
+            # TODO: fix data logging
+            np.savez(os.path.join(self.output_dir, 'epoch_data'),
+                    data_inputs=training_results['train_inputs'],
+                    data_targets=training_results['train_targets'],
+                    train_runs=train_runs,
+                    test_runs=test_runs,
+                    num_epochs=self.num_epochs,
+                    num_train_episodes_per_epoch=self.num_train_episodes_per_epoch,
+                    num_test_episodes_per_epoch=self.num_test_episodes_per_epoch,
+                    num_samples=self.num_samples,
+                    train_data=self.train_data,
+                    test_data=self.test_data,
+                    )
+
+        if training_results:
+            np.savez(os.path.join(self.output_dir, 'data'),
+                    data_inputs=training_results['train_inputs'],
+                    data_targets=training_results['train_targets'])
+
+        # close environments
+        for experiment in train_experiments:
+            experiment.env.close()
+        for experiment in test_experiments:
+            experiment.env.close()
+        # delete c_generated_code folder and acados_ocp_solver.json files
+        os.system(f'rm -rf {self.output_dir}/*c_generated_code*')
+        os.system(f'rm -rf {self.output_dir}/*acados_ocp_solver*')
+
+        self.train_runs = train_runs
+        self.test_runs = test_runs
+
+        return train_runs, test_runs
         '''Performs multiple epochs learning.
         '''
 
