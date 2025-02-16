@@ -473,20 +473,15 @@ class GPMPC(MPC, ABC):
         test_targets_tensor = torch.Tensor(test_targets).double()
 
         # Define likelihood.
-        if self.parallel:
-            likelihood = gpytorch.likelihoods.GaussianLikelihood(batch_shape=torch.Size([len(self.target_mask)]),
-                                                                 noise_constraint=gpytorch.constraints.GreaterThan(1e-6)).double()
-        else:
-            likelihood = gpytorch.likelihoods.GaussianLikelihood(
-                noise_constraint=gpytorch.constraints.GreaterThan(1e-6),
-            ).double()
+        likelihood = gpytorch.likelihoods.GaussianLikelihood(
+            noise_constraint=gpytorch.constraints.GreaterThan(1e-6),
+        ).double()
         self.gaussian_process = GaussianProcessCollection(ZeroMeanIndependentGPModel,
                                                           likelihood,
                                                           len(self.target_mask),
                                                           input_mask=self.input_mask,
                                                           target_mask=self.target_mask,
                                                           kernel=self.kernel,
-                                                          parallel=self.parallel
                                                           )
         if gp_model:
             self.gaussian_process.init_with_hyperparam(train_inputs_tensor,
@@ -524,10 +519,7 @@ class GPMPC(MPC, ABC):
             model_path (str): Path to the pretrained model.
         '''
         data = np.load(f'{model_path}/data.npz')
-        if self.parallel:
-            gp_model_path = f'{model_path}/best_model.pth'
-        else:
-            gp_model_path = f'{model_path}'
+        gp_model_path = f'{model_path}'
         self.train_gp(input_data=data['data_inputs'], target_data=data['data_targets'], gp_model=gp_model_path)
 
     def learn(self, env=None):
