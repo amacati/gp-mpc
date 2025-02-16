@@ -80,7 +80,6 @@ class GPMPC(MPC, ABC):
             prior_param_coeff: float = 1.0,
             terminate_run_on_done: bool = True,
             output_dir: str = 'results/temp',
-            use_linear_prior: bool = True,
             plot_trained_gp: bool = False,
             **kwargs
     ):
@@ -129,7 +128,6 @@ class GPMPC(MPC, ABC):
             self.soft_constraints_params = soft_constraints
 
         print('prior_info[prior_prop]', prior_info['prior_prop'])
-        self.use_linear_prior = use_linear_prior
 
         self.sparse_gp = sparse_gp
         super().__init__(
@@ -305,13 +303,8 @@ class GPMPC(MPC, ABC):
         '''
         # Get the predicted dynamics. This is a linear prior, thus we need to account for the fact that
         # it is linearized about an eq using self.X_GOAL and self.U_GOAL.
-        if self.use_linear_prior:
-            x_pred_seq = self.prior_dynamics_func(x0=x_seq.T - self.prior_ctrl.X_EQ[:, None],
-                                                p=u_seq.T - self.prior_ctrl.U_EQ[:, None])['xf'].toarray()
-            targets = (x_next_seq.T - (x_pred_seq + self.prior_ctrl.X_EQ[:, None])).transpose()  # (N, nx).
-        else:
-            x_pred_seq = self.prior_dynamics_func(x0=x_seq.T, p=u_seq.T)['xf'].toarray()
-            targets = (x_next_seq.T - x_pred_seq).transpose()
+        x_pred_seq = self.prior_dynamics_func(x0=x_seq.T, p=u_seq.T)['xf'].toarray()
+        targets = (x_next_seq.T - x_pred_seq).transpose()
         inputs = np.hstack([x_seq, u_seq])  # (N, nx+nu).
         return inputs, targets
 
@@ -801,8 +794,8 @@ class GPMPC(MPC, ABC):
         for experiment in test_experiments:
             experiment.env.close()
         # delete c_generated_code folder and acados_ocp_solver.json files
-        os.system(f'rm -rf {self.output_dir}/*c_generated_code*')
-        os.system(f'rm -rf {self.output_dir}/*acados_ocp_solver*')
+        # os.system(f'rm -rf {self.output_dir}/*c_generated_code*')
+        # os.system(f'rm -rf {self.output_dir}/*acados_ocp_solver*')
 
         self.train_runs = train_runs
         self.test_runs = test_runs
@@ -946,25 +939,15 @@ class GPMPC(MPC, ABC):
             # This follows the tractable dynamics formulation in Section III.B in Hewing 2019.
             # Note that for the GP approximation, we are purposely using elementwise multiplication *.
             if self.sparse_gp:
-                if self.use_linear_prior:
-                    next_state = self.prior_dynamics_func(x0=x_var[:, i] - self.prior_ctrl.X_EQ[:, None],
-                                                        p=u_var[:, i] - self.prior_ctrl.U_EQ[:, None])['xf'] + \
-                        self.prior_ctrl.X_EQ[:, None] + self.Bd @ cs.sum2(self.K_z_zind_func(z1=z[:, i].T, z2=z_ind)['K'] * mean_post_factor)
-                else:
-                    next_state = self.prior_dynamics_func(x0=x_var[:, i],
-                                                          p=u_var[:, i])['xf'] + \
-                    self.Bd @ cs.sum2(self.K_z_zind_func(z1=z[:, i].T, z2=z_ind)['K'] * mean_post_factor)
+                next_state = self.prior_dynamics_func(x0=x_var[:, i],
+                                                        p=u_var[:, i])['xf'] + \
+                self.Bd @ cs.sum2(self.K_z_zind_func(z1=z[:, i].T, z2=z_ind)['K'] * mean_post_factor)
             else:
                 # Sparse GP approximation doesn't always work well, thus, use Exact GP regression. This is much slower,
                 # but for unstable systems, make performance much better.
-                if self.use_linear_prior:
-                    next_state = self.prior_dynamics_func(x0=x_var[:, i] - self.prior_ctrl.X_EQ[:, None],
-                                                        p=u_var[:, i] - self.prior_ctrl.U_EQ[:, None])['xf'] + \
-                        self.prior_ctrl.X_EQ[:, None] + self.Bd @ self.gaussian_process.casadi_predict(z=z[:, i])['mean']
-                else:
-                    next_state = self.prior_dynamics_func(x0=x_var[:, i],
-                                                          p=u_var[:, i])['xf'] + \
-                    self.Bd @ self.gaussian_process.casadi_predict(z=z[:, i])['mean']
+                next_state = self.prior_dynamics_func(x0=x_var[:, i],
+                                                        p=u_var[:, i])['xf'] + \
+                self.Bd @ self.gaussian_process.casadi_predict(z=z[:, i])['mean']
             opti.subject_to(x_var[:, i + 1] == next_state)
             # Probabilistic state and input constraints according to Hewing 2019 constraint tightening.
             for s_i, state_constraint in enumerate(self.state_constraints_sym):

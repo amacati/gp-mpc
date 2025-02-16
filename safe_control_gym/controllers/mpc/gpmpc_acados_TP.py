@@ -112,9 +112,7 @@ class GPMPC_ACADOS_TP(GPMPC):
         self.rand_hist = {'task_rand': [], 'domain_rand': []}
 
         # MPC params
-        self.use_linear_prior = False
         self.init_solver = 'ipopt'
-        self.compute_ipopt_initial_guess = False
         self.use_RTI = use_RTI
 
         if hasattr(self, 'prior_ctrl'):
@@ -275,10 +273,7 @@ class GPMPC_ACADOS_TP(GPMPC):
             # only take data from the last episode from the last epoch
             # if self.rand_data_selection:
             episode_length = train_runs[epoch - 1][self.num_train_episodes_per_epoch - 1][0]['obs'][0].shape[0]
-            if True:
-                x_seq, actions, x_next_seq, x_dot_seq = self.gather_training_samples(train_runs, epoch - 1, self.num_samples, train_envs[epoch - 1].np_random)
-            else:
-                x_seq, actions, x_next_seq, x_dot_seq = self.gather_training_samples(train_runs, epoch - 1, self.num_samples)
+            x_seq, actions, x_next_seq, x_dot_seq = self.gather_training_samples(train_runs, epoch - 1, self.num_samples, train_envs[epoch - 1].np_random)
             train_inputs, train_targets = self.preprocess_training_data(x_seq, actions, x_next_seq) # np.ndarray
             training_results = self.train_gp(input_data=train_inputs, target_data=train_targets)
             
@@ -290,9 +285,6 @@ class GPMPC_ACADOS_TP(GPMPC):
             for test_ep in range(self.num_test_episodes_per_epoch):
                 self.x_prev = test_runs[epoch - 1][episode][0]['obs'][0][:self.T + 1, :].T
                 self.u_prev = test_runs[epoch - 1][episode][0]['action'][0][:self.T, :].T
-                # self.reset()
-                # run_results = self.run(env=test_envs[epoch],
-                #                        terminate_run_on_done=self.terminate_test_on_done)
                 self.env = test_envs[epoch]
                 run_results = test_experiments[epoch].run_evaluation(n_episodes=1)
                 test_runs[epoch].update({test_ep: munch.munchify(run_results)})
@@ -345,8 +337,8 @@ class GPMPC_ACADOS_TP(GPMPC):
         for experiment in test_experiments:
             experiment.env.close()
         # delete c_generated_code folder and acados_ocp_solver.json files
-        os.system(f'rm -rf {self.output_dir}/*c_generated_code*')
-        os.system(f'rm -rf {self.output_dir}/*acados_ocp_solver*')
+        # os.system(f'rm -rf {self.output_dir}/*c_generated_code*')
+        # os.system(f'rm -rf {self.output_dir}/*acados_ocp_solver*')
         # for env in train_envs:
         #     env.close()
         # for env in test_envs:

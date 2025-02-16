@@ -69,7 +69,6 @@ class GPMPC_ACADOS(GPMPC):
             output_dir: str = 'results/temp',
             compute_ipopt_initial_guess: bool = True,
             use_RTI: bool = False,
-            use_linear_prior: bool = True,
             **kwargs
     ):
         super().__init__(
@@ -107,53 +106,33 @@ class GPMPC_ACADOS(GPMPC):
             **kwargs)
 
         # MPC params
-        self.use_linear_prior = use_linear_prior
         self.init_solver = 'ipopt'
         self.compute_ipopt_initial_guess = compute_ipopt_initial_guess
         self.use_RTI = use_RTI
 
         if hasattr(self, 'prior_ctrl'):
             self.prior_ctrl.close()
-            
-        if self.use_linear_prior:
-            self.prior_ctrl = LinearMPC(
-                self.prior_env_func,
-                horizon=horizon,
-                q_mpc=q_mpc,
-                r_mpc=r_mpc,
-                warmstart=warmstart,
-                soft_constraints=self.soft_constraints_params['prior_soft_constraints'],
-                terminate_run_on_done=terminate_run_on_done,
-                prior_info=prior_info,
-                # runner args
-                # shared/base args
-                output_dir=output_dir,
-                additional_constraints=additional_constraints,
-            )
-        else:
-            self.prior_ctrl = MPC_ACADOS(
-                env_func=self.prior_env_func,
-                horizon=horizon,
-                q_mpc=q_mpc,
-                r_mpc=r_mpc,
-                warmstart=warmstart,
-                soft_constraints=self.soft_constraints_params['prior_soft_constraints'],
-                terminate_run_on_done=terminate_run_on_done,
-                constraint_tol=constraint_tol,
-                output_dir=output_dir,
-                additional_constraints=additional_constraints,
-                use_gpu=use_gpu,
-                seed=seed,
-                use_RTI=use_RTI,
-                prior_info=prior_info,
-            )
+        
+        self.prior_ctrl = MPC_ACADOS(
+            env_func=self.prior_env_func,
+            horizon=horizon,
+            q_mpc=q_mpc,
+            r_mpc=r_mpc,
+            warmstart=warmstart,
+            soft_constraints=self.soft_constraints_params['prior_soft_constraints'],
+            terminate_run_on_done=terminate_run_on_done,
+            constraint_tol=constraint_tol,
+            output_dir=output_dir,
+            additional_constraints=additional_constraints,
+            use_gpu=use_gpu,
+            seed=seed,
+            use_RTI=use_RTI,
+            prior_info=prior_info,
+        )
         self.prior_ctrl.reset()
         print('prior_ctrl:', type(self.prior_ctrl))
-        if self.use_linear_prior:
-            self.prior_dynamics_func = self.prior_ctrl.linear_dynamics_func
-        else:
-            self.prior_dynamics_func = self.prior_ctrl.dynamics_func
-            self.prior_dynamcis_func_c = self.prior_ctrl.model.fc_func
+        self.prior_dynamics_func = self.prior_ctrl.dynamics_func
+        self.prior_dynamcis_func_c = self.prior_ctrl.model.fc_func
 
         self.x_guess = None
         self.u_guess = None
@@ -193,26 +172,14 @@ class GPMPC_ACADOS(GPMPC):
             mean_post_factor = cs.MX.sym('mean_post_factor', len(self.target_mask), n_ind_points)
             acados_model.p = cs.vertcat(cs.reshape(z_ind, -1, 1), cs.reshape(mean_post_factor, -1, 1))
             # define the dynamics
-            if self.use_linear_prior:
-                f_disc = self.prior_dynamics_func(x0=acados_model.x - self.prior_ctrl.X_EQ[:, None],
-                                                  p=acados_model.u - self.prior_ctrl.U_EQ[:, None])['xf'] \
-                    + self.prior_ctrl.X_EQ[:, None] \
-                    + self.Bd @ cs.sum2(self.K_z_zind_func(z1=z, z2=z_ind)['K'] * mean_post_factor)
-            else:
-                f_disc = self.prior_dynamics_func(x0=acados_model.x, p=acados_model.u)['xf'] \
-                    + self.Bd @ cs.sum2(self.K_z_zind_func(z1=z, z2=z_ind)['K'] * mean_post_factor)
+            f_disc = self.prior_dynamics_func(x0=acados_model.x, p=acados_model.u)['xf'] \
+                + self.Bd @ cs.sum2(self.K_z_zind_func(z1=z, z2=z_ind)['K'] * mean_post_factor)
 
             self.sparse_gp_func = cs.Function('sparse_func',
                                               [acados_model.x, acados_model.u, z_ind, mean_post_factor], [f_disc])
         else:
-            if self.use_linear_prior:
-                f_disc = self.prior_dynamics_func(x0=acados_model.x - self.prior_ctrl.X_EQ[:, None],
-                                                  p=acados_model.u - self.prior_ctrl.U_EQ[:, None])['xf'] \
-                    + self.prior_ctrl.X_EQ[:, None] \
-                    + self.Bd @ self.gaussian_process.casadi_predict(z=z)['mean']
-            else:
-                f_disc = self.prior_dynamics_func(x0=acados_model.x, p=acados_model.u)['xf'] \
-                    + self.Bd @ self.gaussian_process.casadi_predict(z=z)['mean']
+            f_disc = self.prior_dynamics_func(x0=acados_model.x, p=acados_model.u)['xf'] \
+                + self.Bd @ self.gaussian_process.casadi_predict(z=z)['mean']
 
         acados_model.disc_dyn_expr = f_disc
 
@@ -535,8 +502,6 @@ class GPMPC_ACADOS(GPMPC):
 
         time_after = time.time()
         print(f'gpmpc acados sol time: {time_after - time_before:.3f}; sol status {status}; nlp iter {self.acados_ocp_solver.get_stats("sqp_iter")}; qp iter {self.acados_ocp_solver.get_stats("qp_iter")}')
-        if time_after - time_before > 1 / 60:
-            print(colored(f'========= Warning: GPMPC ACADOS took {time_after - time_before:.3f} seconds =========', 'yellow'))
         self.results_dict['inference_time'].append(self.acados_ocp_solver.get_stats("time_tot"))
         
 
