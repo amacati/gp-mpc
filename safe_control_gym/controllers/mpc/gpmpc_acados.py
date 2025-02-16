@@ -67,7 +67,6 @@ class GPMPC_ACADOS(GPMPC):
             prior_param_coeff: float = 1.0,
             terminate_run_on_done: bool = True,
             output_dir: str = 'results/temp',
-            compute_ipopt_initial_guess: bool = True,
             **kwargs
     ):
         super().__init__(
@@ -103,10 +102,6 @@ class GPMPC_ACADOS(GPMPC):
             terminate_run_on_done=terminate_run_on_done,
             output_dir=output_dir,
             **kwargs)
-
-        # MPC params
-        self.init_solver = 'ipopt'
-        self.compute_ipopt_initial_guess = compute_ipopt_initial_guess
 
         if hasattr(self, 'prior_ctrl'):
             self.prior_ctrl.close()
@@ -152,8 +147,6 @@ class GPMPC_ACADOS(GPMPC):
         acados_model.u = self.model.u_sym
         acados_model.name = model_name
 
-        A_lin = self.discrete_dfdx
-        B_lin = self.discrete_dfdu
 
         z = cs.vertcat(acados_model.x, acados_model.u)  # GP prediction point
         z = z[self.input_mask]
@@ -489,7 +482,6 @@ class GPMPC_ACADOS(GPMPC):
         print(f'gpmpc acados sol time: {time_after - time_before:.3f}; sol status {status}; nlp iter {self.acados_ocp_solver.get_stats("sqp_iter")}; qp iter {self.acados_ocp_solver.get_stats("qp_iter")}')
         self.results_dict['inference_time'].append(self.acados_ocp_solver.get_stats("time_tot"))
         
-
         return action
 
     @timing
@@ -521,11 +513,6 @@ class GPMPC_ACADOS(GPMPC):
             self.acados_model = None
             self.ocp = None
             self.acados_ocp_solver = None
-            # delete the generated c code directory
-            if os.path.exists(self.output_dir + '/gpmpc_c_generated_code'):
-                print('deleting the generated c code directory')
-                shutil.rmtree(self.output_dir + '/gpmpc_c_generated_code', ignore_errors=False)
-                assert not os.path.exists(self.output_dir + '/gpmpc_c_generated_code')
 
             # reinitialize the acados model and solver
             self.setup_acados_model(n_ind_points)

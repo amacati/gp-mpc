@@ -615,12 +615,6 @@ class GPMPC(MPC, ABC):
                                         output_dir=self.output_dir)
 
         self.reset()
-        # if self.train_data['train_targets'].shape[0] <= self.n_ind_points:
-        #    n_ind_points = self.train_data['train_targets'].shape[0]
-        # else:
-        #    n_ind_points = self.n_ind_points
-        # self.set_gp_dynamics_func(n_ind_points)
-        # self.setup_gp_optimizer(n_ind_points)
         self.prior_ctrl.add_constraints(self.prior_ctrl.additional_constraints)
         self.prior_ctrl.reset()
         # Collect training results.
@@ -755,20 +749,12 @@ class GPMPC(MPC, ABC):
             # gather training data
             train_runs[epoch] = {}
             for episode in range(self.num_train_episodes_per_epoch):
-                # self.reset()
-                # self.x_prev = train_runs[epoch - 1][episode]['obs'][:self.T + 1, :].T
-                # self.u_prev = train_runs[epoch - 1][episode]['action'][:self.T, :].T
-                # run_results = self.run(env=train_envs[epoch],
-                #                        terminate_run_on_done=self.terminate_train_on_done)
                 self.x_prev = train_runs[epoch - 1][episode][0]['obs'][0][:self.T + 1, :].T
                 self.u_prev = train_runs[epoch - 1][episode][0]['action'][0][:self.T, :].T
                 self.env = train_envs[epoch]
                 run_results = train_experiments[epoch].run_evaluation(n_episodes=1)
                 train_runs[epoch].update({episode: munch.munchify(run_results)})
 
-            # lengthscale, outputscale, noise, kern = self.gaussian_process.get_hyperparameters(as_numpy=True)
-            # compute the condition number of the kernel matrix
-            # self.rand_hist['task_rand'].append(train_envs[epoch].episode_len)
             # TODO: fix data logging
             np.savez(os.path.join(self.output_dir, 'epoch_data'),
                     data_inputs=training_results['train_inputs'],
