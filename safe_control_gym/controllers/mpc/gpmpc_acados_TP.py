@@ -69,7 +69,6 @@ class GPMPC_ACADOS_TP(GPMPC):
             prior_param_coeff: float = 1.0,
             terminate_run_on_done: bool = True,
             output_dir: str = 'results/temp',
-            use_RTI: bool = False,
             **kwargs
     ):
         super().__init__(
@@ -111,9 +110,6 @@ class GPMPC_ACADOS_TP(GPMPC):
         self.target_mask = None
         self.rand_hist = {'task_rand': [], 'domain_rand': []}
 
-        # MPC params
-        self.init_solver = 'ipopt'
-        self.use_RTI = use_RTI
 
         if hasattr(self, 'prior_ctrl'):
             self.prior_ctrl.close()
@@ -147,7 +143,6 @@ class GPMPC_ACADOS_TP(GPMPC):
                 additional_constraints=additional_constraints,
                 use_gpu=use_gpu,
                 seed=seed,
-                use_RTI=use_RTI,
                 prior_info=prior_info,
             )
         self.prior_ctrl.reset()
@@ -652,18 +647,15 @@ class GPMPC_ACADOS_TP(GPMPC):
 
         # set up solver options
         ocp.solver_options.qp_solver = 'PARTIAL_CONDENSING_HPIPM'
-        # ocp.solver_options.qp_solver = 'FULL_CONDENSING_HPIPM'
         ocp.solver_options.hessian_approx = 'GAUSS_NEWTON'
         ocp.solver_options.integrator_type = 'DISCRETE'
         # ocp.solver_options.integrator_type = 'ERK'
 
-        ocp.solver_options.nlp_solver_type = 'SQP' if not self.use_RTI else 'SQP_RTI'
-        ocp.solver_options.nlp_solver_max_iter = 10 if not self.use_RTI else 1
+        ocp.solver_options.nlp_solver_type = 'SQP'
+        ocp.solver_options.nlp_solver_max_iter = 10
         ocp.solver_options.qp_solver_iter_max = 10
         ocp.solver_options.qp_tol = 1e-4
         ocp.solver_options.tol = 1e-4
-        ocp.solver_options.as_rti_level = 0 if not self.use_RTI else 4
-        ocp.solver_options.as_rti_iter = 1 if not self.use_RTI else 1
 
         # ocp.solver_options.globalization = 'FUNNEL_L1PEN_LINESEARCH' if not self.use_RTI else 'MERIT_BACKTRACKING'
         # ocp.solver_options.globalization = 'MERIT_BACKTRACKING'
@@ -852,16 +844,7 @@ class GPMPC_ACADOS_TP(GPMPC):
         self.acados_ocp_solver.set(self.T, 'yref', y_ref_e)
 
         # solve the optimization problem
-        if self.use_RTI:
-            # preparation phase
-            self.acados_ocp_solver.options_set('rti_phase', 1)
-            status = self.acados_ocp_solver.solve()
-
-            # feedback phase
-            self.acados_ocp_solver.options_set('rti_phase', 2)
-            status = self.acados_ocp_solver.solve()
-        else:
-            status = self.acados_ocp_solver.solve()
+        status = self.acados_ocp_solver.solve()
         if status not in [0, 2]:
             self.acados_ocp_solver.print_statistics()
             print(colored(f'acados returned status {status}. ', 'red'))
@@ -1002,16 +985,7 @@ class GPMPC_ACADOS_TP(GPMPC):
         self.acados_ocp_solver.set(self.T, 'yref', y_ref_e)
 
         # solve the optimization problem
-        if self.use_RTI:
-            # preparation phase
-            self.acados_ocp_solver.options_set('rti_phase', 1)
-            status = self.acados_ocp_solver.solve()
-
-            # feedback phase
-            self.acados_ocp_solver.options_set('rti_phase', 2)
-            status = self.acados_ocp_solver.solve()
-        else:
-            status = self.acados_ocp_solver.solve()
+        status = self.acados_ocp_solver.solve()
         if status not in [0, 2]:
             self.acados_ocp_solver.print_statistics()
             print(colored(f'acados returned status {status}. ', 'red'))
