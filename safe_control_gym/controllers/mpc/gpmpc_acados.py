@@ -1,30 +1,13 @@
 
 
-import csv
-import os
-import shutil
 import time
-from copy import deepcopy
-from datetime import datetime
-from functools import partial
 
 import casadi as cs
-import gpytorch
-import matplotlib.pyplot as plt
 import numpy as np
 import scipy
-import torch
-from acados_template import AcadosModel, AcadosOcp, AcadosOcpSolver, AcadosSimSolver
-from sklearn.metrics import pairwise_distances_argmin_min
-from sklearn.model_selection import train_test_split
-from skopt.sampler import Lhs
+from acados_template import AcadosModel, AcadosOcp, AcadosOcpSolver
 from termcolor import colored
 
-from safe_control_gym.controllers.lqr.lqr_utils import discretize_linear_system
-from safe_control_gym.controllers.mpc.gp_utils import (GaussianProcessCollection, ZeroMeanIndependentGPModel,
-                                                       covSEard, kmeans_centriods)
-from safe_control_gym.controllers.mpc.linear_mpc import MPC, LinearMPC
-from safe_control_gym.controllers.mpc.mpc import MPC
 from safe_control_gym.controllers.mpc.gpmpc_base import GPMPC
 from safe_control_gym.controllers.mpc.mpc_acados import MPC_ACADOS
 from safe_control_gym.envs.benchmark_env import Task
@@ -61,7 +44,6 @@ class GPMPC_ACADOS(GPMPC):
             online_learning: bool = False,
             prior_info: dict = None,
             sparse_gp: bool = False,
-            # inertial_prop: list = [1.0],
             prior_param_coeff: float = 1.0,
             terminate_run_on_done: bool = True,
             output_dir: str = 'results/temp',
@@ -194,7 +176,6 @@ class GPMPC_ACADOS(GPMPC):
         # cost weight matrices
         ocp.cost.W = scipy.linalg.block_diag(self.Q, self.R)
         ocp.cost.W_e = self.P if hasattr(self, 'P') else self.Q
-        # ocp.cost.W_e = self.Q
 
         ocp.cost.Vx = np.zeros((ny, nx))
         ocp.cost.Vx[:nx, :nx] = np.eye(nx)
@@ -441,7 +422,6 @@ class GPMPC_ACADOS(GPMPC):
         # Dynamics model.
         self.setup_prior_dynamics()
         if self.gaussian_process is not None:
-            # self.compute_terminal_cost_and_ancillary_gain()
             # sparse GP
             if self.sparse_gp and self.train_data['train_targets'].shape[0] <= self.n_ind_points:
                 n_ind_points = self.train_data['train_targets'].shape[0]

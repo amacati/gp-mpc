@@ -1,12 +1,9 @@
 
 
-import csv
 import os
 import shutil
 import time
-from copy import deepcopy
 from datetime import datetime
-from functools import partial
 
 import casadi as cs
 import gpytorch
@@ -15,17 +12,13 @@ import matplotlib.pyplot as plt
 import numpy as np
 import scipy
 import torch
-from acados_template import AcadosModel, AcadosOcp, AcadosOcpSolver, AcadosSimSolver
+from acados_template import AcadosModel, AcadosOcp, AcadosOcpSolver
 from sklearn.metrics import pairwise_distances_argmin_min
 from sklearn.model_selection import train_test_split
-from skopt.sampler import Lhs
 from termcolor import colored
 
-from safe_control_gym.controllers.lqr.lqr_utils import discretize_linear_system
-from safe_control_gym.controllers.mpc.gp_utils import (GaussianProcessCollection, ZeroMeanIndependentGPModel,
-                                                       covMatern52ard, covSEard, covSE_single, kmeans_centriods, GaussianProcess)
-from safe_control_gym.controllers.mpc.linear_mpc import MPC, LinearMPC
-from safe_control_gym.controllers.mpc.mpc import MPC
+from safe_control_gym.controllers.mpc.gp_utils import (ZeroMeanIndependentGPModel,
+                                                       covSE_single, kmeans_centriods, GaussianProcess)
 from safe_control_gym.controllers.mpc.gpmpc_base import GPMPC
 from safe_control_gym.controllers.mpc.mpc_acados import MPC_ACADOS
 from safe_control_gym.envs.benchmark_env import Task
@@ -63,7 +56,6 @@ class GPMPC_ACADOS_TP(GPMPC):
             online_learning: bool = False,
             prior_info: dict = None,
             sparse_gp: bool = False,
-            # inertial_prop: list = [1.0],
             prior_param_coeff: float = 1.0,
             terminate_run_on_done: bool = True,
             output_dir: str = 'results/temp',
@@ -110,42 +102,24 @@ class GPMPC_ACADOS_TP(GPMPC):
         if hasattr(self, 'prior_ctrl'):
             self.prior_ctrl.close()
             
-        if self.use_linear_prior:
-            self.prior_ctrl = LinearMPC(
-                self.prior_env_func,
-                horizon=horizon,
-                q_mpc=q_mpc,
-                r_mpc=r_mpc,
-                warmstart=warmstart,
-                terminate_run_on_done=terminate_run_on_done,
-                prior_info=prior_info,
-                # runner args
-                # shared/base args
-                output_dir=output_dir,
-                additional_constraints=additional_constraints,
-            )
-        else:
-            self.prior_ctrl = MPC_ACADOS(
-                env_func=self.prior_env_func,
-                horizon=horizon,
-                q_mpc=q_mpc,
-                r_mpc=r_mpc,
-                warmstart=warmstart,
-                terminate_run_on_done=terminate_run_on_done,
-                constraint_tol=constraint_tol,
-                output_dir=output_dir,
-                additional_constraints=additional_constraints,
-                use_gpu=use_gpu,
-                seed=seed,
-                prior_info=prior_info,
-            )
+        self.prior_ctrl = MPC_ACADOS(
+            env_func=self.prior_env_func,
+            horizon=horizon,
+            q_mpc=q_mpc,
+            r_mpc=r_mpc,
+            warmstart=warmstart,
+            terminate_run_on_done=terminate_run_on_done,
+            constraint_tol=constraint_tol,
+            output_dir=output_dir,
+            additional_constraints=additional_constraints,
+            use_gpu=use_gpu,
+            seed=seed,
+            prior_info=prior_info,
+        )
         self.prior_ctrl.reset()
         print('prior_ctrl:', type(self.prior_ctrl))
-        if self.use_linear_prior:
-            self.prior_dynamics_func = self.prior_ctrl.linear_dynamics_func
-        else:
-            self.prior_dynamics_func = self.prior_ctrl.dynamics_func
-            self.prior_dynamics_func_c = self.prior_ctrl.model.fc_func
+        self.prior_dynamics_func = self.prior_ctrl.dynamics_func
+        self.prior_dynamics_func_c = self.prior_ctrl.model.fc_func
 
         self.x_guess = None
         self.u_guess = None
@@ -170,11 +144,8 @@ class GPMPC_ACADOS_TP(GPMPC):
             np.array: inputs for GP training, (N, nx+nu).
             np.array: targets for GP training, (N, nx).
         '''
-        # Get the predicted dynamics. This is a linear prior, thus we need to account for the fact that
-        # it is linearized about an eq using self.X_GOAL and self.U_GOAL.
         g = 9.81
         dt = 1/60
-        # x_pred_seq = self.prior_dynamics_func(x0=x_seq.T, p=u_seq.T)['xf'].toarray()
         T_cmd = u_seq[:, 0]
         T_prior_data = self.prior_ctrl.env.T_mapping_func(T_cmd).full().flatten()
         # numerical differentiation
@@ -250,17 +221,14 @@ class GPMPC_ACADOS_TP(GPMPC):
             self.env = train_envs[0]
             run_results = train_experiments[0].run_evaluation(n_episodes=1)
             train_runs[0].update({episode: munch.munchify(run_results)})
-            # self.reset()
         for test_ep in range(self.num_test_episodes_per_epoch):
             self.env = test_envs[0]
             run_results = test_experiments[0].run_evaluation(n_episodes=1)
             test_runs[0].update({test_ep: munch.munchify(run_results)})
-        # self.reset()
         
         training_results = None
         for epoch in range(1, self.num_epochs):
             # only take data from the last episode from the last epoch
-            # if self.rand_data_selection:
             episode_length = train_runs[epoch - 1][self.num_train_episodes_per_epoch - 1][0]['obs'][0].shape[0]
             x_seq, actions, x_next_seq, x_dot_seq = self.gather_training_samples(train_runs, epoch - 1, self.num_samples, train_envs[epoch - 1].np_random)
             train_inputs, train_targets = self.preprocess_training_data(x_seq, actions, x_next_seq) # np.ndarray
@@ -328,10 +296,6 @@ class GPMPC_ACADOS_TP(GPMPC):
         # delete c_generated_code folder and acados_ocp_solver.json files
         # os.system(f'rm -rf {self.output_dir}/*c_generated_code*')
         # os.system(f'rm -rf {self.output_dir}/*acados_ocp_solver*')
-        # for env in train_envs:
-        #     env.close()
-        # for env in test_envs:
-        #     env.close()
 
         self.train_runs = train_runs
         self.test_runs = test_runs
@@ -510,7 +474,6 @@ class GPMPC_ACADOS_TP(GPMPC):
             z_ind = cs.MX.sym('z_ind', n_ind_points, 4)
             mean_post_factor = cs.MX.sym('mean_post_factor', 2, n_ind_points)
             acados_model.p = cs.vertcat(cs.reshape(z_ind, -1, 1), cs.reshape(mean_post_factor, -1, 1))
-            # full_pred = cs.sum2(self.K_z_zind_func(z1=cs.vertcat(T_pred_point, P_pred_point), z2=z_ind)['K'] * mean_post_factor)
             T_pred = cs.sum2(self.K_z_zind_func_T(z1=T_pred_point, z2=z_ind)['K'] * mean_post_factor[0, :])
             P_pred = cs.sum2(self.K_z_zind_func_P(z1=P_pred_point, z2=z_ind)['K'] * mean_post_factor[1, :])
 
@@ -526,7 +489,6 @@ class GPMPC_ACADOS_TP(GPMPC):
             k4 = f_cont_func(acados_model.x + self.dt * k3, acados_model.u, acados_model.p)
             f_disc = acados_model.x + self.dt/6 * (k1 + 2*k2 + 2*k3 + k4)
 
-        # acados_model.f_expl_expr = f_cont
         acados_model.disc_dyn_expr = f_disc
 
         acados_model.x_labels = self.env.STATE_LABELS
@@ -549,7 +511,6 @@ class GPMPC_ACADOS_TP(GPMPC):
 
     def setup_acados_optimizer(self, n_ind_points):
         print('=================Setting up GPMPC acados optimizer=================')
-        # before_optimizer_setup = time.time()
         nx, nu = self.model.nx, self.model.nu
         ny = nx + nu
         ny_e = nx
@@ -567,7 +528,6 @@ class GPMPC_ACADOS_TP(GPMPC):
         # cost weight matrices
         ocp.cost.W = scipy.linalg.block_diag(self.Q, self.R)
         ocp.cost.W_e = self.P if hasattr(self, 'P') else self.Q
-        # ocp.cost.W_e = self.Q
 
         ocp.cost.Vx = np.zeros((ny, nx))
         ocp.cost.Vx[:nx, :nx] = np.eye(nx)
@@ -606,15 +566,10 @@ class GPMPC_ACADOS_TP(GPMPC):
         ocp.solver_options.qp_tol = 1e-4
         ocp.solver_options.tol = 1e-4
 
-        # ocp.solver_options.globalization = 'FUNNEL_L1PEN_LINESEARCH' if not self.use_RTI else 'MERIT_BACKTRACKING'
-        # ocp.solver_options.globalization = 'MERIT_BACKTRACKING'
         # prediction horizon
         ocp.solver_options.tf = self.T * self.dt
 
         # c code generation
-        # NOTE: when using GP-MPC, a separated directory is needed;
-        # otherwise, Acados solver can read the wrong c code
-        # get current time in yy-mm-dd-hh-mm-ss format'
         ocp.code_export_directory = self.output_dir + '/gpmpc_c_generated_code'
 
         self.ocp = ocp
@@ -918,8 +873,6 @@ class GPMPC_ACADOS_TP(GPMPC):
 
     def create_sparse_GP_machinery(self, n_ind_points):
         '''This setups the gaussian process approximations for FITC formulation.'''
-        # lengthscales, signal_var, noise_var, gp_K_plus_noise = self.gaussian_process.get_hyperparameters(as_numpy=True)
-        
         GP_T = self.gaussian_process[0]
         GP_P = self.gaussian_process[1]
         lengthscales_T = GP_T.model.covar_module.base_kernel.lengthscale.detach().numpy()
@@ -930,8 +883,6 @@ class GPMPC_ACADOS_TP(GPMPC):
         noise_var_P = GP_P.likelihood.noise.detach().numpy()
         gp_K_plus_noise_T = GP_T.model.K_plus_noise.detach().numpy()
         gp_K_plus_noise_P = GP_P.model.K_plus_noise.detach().numpy()
-        # gp_K_plus_noise_inv_T = GP_T.model.K_plus_noise_inv.detach().numpy()
-        # gp_K_plus_noise_inv_P = GP_P.model.K_plus_noise_inv.detach().numpy()
 
         # stacking
         lengthscales = np.vstack((lengthscales_T, lengthscales_P))
@@ -1060,7 +1011,6 @@ class GPMPC_ACADOS_TP(GPMPC):
 
         ax[1].scatter(train_inputs[:, 0], train_targets[:, 0], label='Target', color='gray')
         ax[1].plot(train_inputs[:, 0], mean_T, label='GP mean', color='blue')
-        # ax[1].fill_between(train_inputs[:, 0], lower_T, upper_T, alpha=0.5, color='skyblue', label='2-$\sigma$')
         ax[1].plot(train_inputs[:, 0], residual_T, label='Residual (analytical)', color='green')
         ax[1].legend()
         ax[1].set_ylabel('T residual [$m/s^2$]')
@@ -1081,5 +1031,4 @@ class GPMPC_ACADOS_TP(GPMPC):
         fig.tight_layout()
         fig.savefig(os.path.join(output_dir, f'{plt_title}.png'))
         print(f'Plot saved at {os.path.join(output_dir, f"{plt_title}.png")}')
-        # plt.show()
         plt.close()

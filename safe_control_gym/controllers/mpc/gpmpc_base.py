@@ -16,8 +16,7 @@ Implementation details:
        and the inducing points are the previous MPC solution.
     3. Each dimension of the learned error dynamics is an independent Zero Mean SE Kernel GP.
 '''
-import time, os
-from copy import deepcopy
+import os
 from functools import partial
 from termcolor import colored
 from abc import ABC, abstractmethod
@@ -34,7 +33,7 @@ from skopt.sampler import Lhs
 
 from safe_control_gym.controllers.mpc.gp_utils import (GaussianProcessCollection, ZeroMeanIndependentGPModel,
                                                        covMatern52ard, covSEard, covSE_single, kmeans_centriods)
-from safe_control_gym.controllers.mpc.linear_mpc import MPC, LinearMPC
+from safe_control_gym.controllers.mpc.linear_mpc import MPC
 from safe_control_gym.controllers.lqr.lqr_utils import discretize_linear_system
 from safe_control_gym.envs.benchmark_env import Task
 from safe_control_gym.utils.utils import timing

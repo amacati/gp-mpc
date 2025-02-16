@@ -14,7 +14,6 @@ from termcolor import colored
 
 from safe_control_gym.utils.utils import mkdirs
 
-from safe_control_gym.math_and_models.linear_model import LinearModel
 
 torch.manual_seed(0)
 
@@ -652,8 +651,6 @@ class GaussianProcess:
         self.model.double()  # needed otherwise loads state_dict as float32
         self._compute_GP_covariances(train_inputs)
         self.casadi_predict = self.make_casadi_prediction_func(train_inputs, train_targets)
-        # self.casadi_linearized_predict = \
-        #     self.make_casadi_linearized_prediction_func(train_inputs, train_targets)
         print(colored(f'outputscale: {self.model.covar_module.outputscale}', 'green'))
         print(colored(f'lengthscale: {self.model.covar_module.base_kernel.lengthscale}', 'green'))
         print(colored(f'noise: {self.model.likelihood.noise}', 'green'))
@@ -772,8 +769,6 @@ class GaussianProcess:
         self.model.load_state_dict(torch.load(fname))
         self._compute_GP_covariances(train_x)
         self.casadi_predict = self.make_casadi_prediction_func(train_x, train_y)
-        # self.casadi_linearized_predict = \
-        #     self.make_casadi_linearized_prediction_func(train_x, train_y)
 
 
     def predict(self,
@@ -856,58 +851,6 @@ class GaussianProcess:
                               ['z'],
                               ['mean'])
         return predict
-    
-
-    
-    def make_casadi_linearized_prediction_func(self, train_inputs, train_targets):
-        '''Get the linearized prediction casadi function.
-           See Berkenkamp and Schoellig, 2015, eq. (8) (9) for the derivative
-           of the SE kernel with respect to the input.
-           Assumes train_inputs and train_targets are already masked.
-
-           Args:
-                train_x (torch.Tensor): input training data (input_dim X N samples).
-           Outputs:
-                dkdx (np.array): Derivative of the kernel with respect to the input.
-                d2kdx2 (np.array): Second derivative of the kernel with respect to the input.
-        '''
-        train_inputs = train_inputs.numpy()
-        train_targets = train_targets.numpy()
-        lengthscale = self.model.covar_module.base_kernel.lengthscale.detach().numpy()
-        output_scale = self.model.covar_module.outputscale.detach().numpy()
-        M = np.diag(lengthscale.reshape(-1))
-        M_inv = np.linalg.inv(M)
-        M_inv = ca.DM(M_inv)
-        assert M.shape[0] == train_inputs.shape[1], ValueError('Mismatch in input dimensions')
-        num_data = train_inputs.shape[0]
-        z = ca.SX.sym('z', len(self.input_mask)) # query point
-        # compute 1st derivative of the kernel (8)
-        dkdx = ca.SX.zeros(len(self.input_mask), num_data)
-        for i in range(num_data):
-            dkdx[:, i] = (train_inputs[i] - z) * \
-                      covSEard(z, train_inputs[i].T, lengthscale.T, output_scale)
-        dkdx = M_inv**2 @ dkdx
-        # compute 2nd derivative of the kernel (9)
-        d2kdx2 = M_inv**2  * output_scale ** 2
-        
-        dkdx_func = ca.Function('dkdx',
-                                [z],
-                                [dkdx],
-                                ['z'],
-                                ['dkdx'])
-        d2kdx2_func = ca.Function('d2kdx2',
-                                    [z],
-                                    [d2kdx2],
-                                    ['z'],
-                                    ['d2kdx2'])
-        mean = dkdx_func(z) \
-                   @ self.model.K_plus_noise_inv.detach().numpy() @ train_targets
-        linearized_predict = ca.Function('linearized_predict',
-                                            [z],
-                                            [mean],
-                                            ['z'],
-                                            ['mean'])
-        return linearized_predict
 
 
     def plot_trained_gp(self,
