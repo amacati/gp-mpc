@@ -50,7 +50,6 @@ class GPMPC_ACADOS_TP(GPMPC):
             overwrite_saved_data: bool = True,
             optimization_iterations: list = None,
             learning_rate: list = None,
-            normalize_training_data: bool = False,
             use_gpu: bool = False,
             gp_model_path: str = None,
             n_ind_points: int = 30,
@@ -84,7 +83,6 @@ class GPMPC_ACADOS_TP(GPMPC):
             overwrite_saved_data=overwrite_saved_data,
             optimization_iterations=optimization_iterations,
             learning_rate=learning_rate,
-            normalize_training_data=normalize_training_data,
             use_gpu=use_gpu,
             gp_model_path=gp_model_path,
             prob=prob,
@@ -813,9 +811,6 @@ class GPMPC_ACADOS_TP(GPMPC):
         n_training_samples = self.train_data['train_targets'].shape[0]
         inputs = self.train_data['train_inputs']
         targets = self.train_data['train_targets']
-        # if self.normalize_training_data:
-        #     inputs = (inputs - self.gaussian_process.input_scaler_mean[self.input_mask]) / self.gaussian_process.input_scaler_std[self.input_mask]
-        #     targets = (targets - self.gaussian_process.output_scaler_mean[self.target_mask]) / self.gaussian_process.output_scaler_std[self.target_mask]
         mean_post_factor = np.zeros((dim_gp_outputs, n_training_samples))
         for i in range(dim_gp_outputs):
             K_z_z = self.gaussian_process[i].model.K_plus_noise_inv
@@ -833,10 +828,6 @@ class GPMPC_ACADOS_TP(GPMPC):
         dim_gp_outputs = len(self.gaussian_process)
         inputs = self.train_data['train_inputs']
         targets = self.train_data['train_targets']
-        # if self.normalize_training_data:
-        #     for i in range(inputs.shape[0]):
-        #         inputs[i, :] = (inputs[i, :] - self.gaussian_process.input_scaler_mean[self.input_mask]) / self.gaussian_process.input_scaler_std[self.input_mask]
-        #         targets[i, :] = (targets[i, :] - self.gaussian_process.output_scaler_mean[self.target_mask]) / self.gaussian_process.output_scaler_std[self.target_mask]
         # Get the inducing points.
         if False and self.x_prev is not None and self.u_prev is not None:
             # Use the previous MPC solution as in Hewing 2019.

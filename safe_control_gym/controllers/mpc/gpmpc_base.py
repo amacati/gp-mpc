@@ -61,7 +61,6 @@ class GPMPC(MPC, ABC):
             overwrite_saved_data: bool = True,
             optimization_iterations: list = None,
             learning_rate: list = None,
-            normalize_training_data: bool = False,
             use_gpu: bool = False,
             gp_model_path: str = None,
             kernel: str = 'Matern',
@@ -95,7 +94,6 @@ class GPMPC(MPC, ABC):
             overwrite_saved_data (bool): Overwrite the input and target data to the already saved data if it exists.
             optimization_iterations (list): the number of optimization iterations for each dimension of the GP.
             learning_rate (list): the learning rate for training each dimension of the GP.
-            normalize_training_data (bool): Normalize the training data.
             use_gpu (bool): use GPU while training the gp.
             gp_model_path (str): path to a pretrained GP model. If None, will train a new one.
             kernel (str): 'Matern' or 'RBF' kernel.
@@ -172,7 +170,6 @@ class GPMPC(MPC, ABC):
         self.learning_rate = learning_rate
         self.gp_model_path = gp_model_path
         self.kernel = kernel
-        self.normalize_training_data = normalize_training_data
         self.prob = prob
         if input_mask is None:
             self.input_mask = np.arange(self.model.nx + self.model.nu).tolist()
@@ -239,12 +236,6 @@ class GPMPC(MPC, ABC):
         z_ind = cs.SX.sym('z_ind', n_ind_points, Nx)
         ks = cs.SX.zeros(1, n_ind_points)
 
-        if self.normalize_training_data:
-            z1 = (z1 - self.gaussian_process.input_scaler_mean[self.input_mask]) / self.gaussian_process.input_scaler_std[self.input_mask]
-            z2 = (z2 - self.gaussian_process.input_scaler_mean[self.input_mask]) / self.gaussian_process.input_scaler_std[self.input_mask]
-            for i in range(n_ind_points):
-                z_ind[i, :] = ((z_ind[i, :].T - self.gaussian_process.input_scaler_mean[self.input_mask]) / self.gaussian_process.input_scaler_std[self.input_mask]).T
-
         if self.kernel == 'Matern':
             covMatern = cs.Function('covMatern', [z1, z2, ell_s, sf2_s],
                                     [covMatern52ard(z1, z2, ell_s, sf2_s)])
@@ -304,9 +295,7 @@ class GPMPC(MPC, ABC):
         n_training_samples = self.train_data['train_targets'].shape[0]
         inputs = self.train_data['train_inputs']
         targets = self.train_data['train_targets']
-        if self.normalize_training_data:
-            inputs = (inputs - self.gaussian_process.input_scaler_mean[self.input_mask]) / self.gaussian_process.input_scaler_std[self.input_mask]
-            targets = (targets - self.gaussian_process.output_scaler_mean[self.target_mask]) / self.gaussian_process.output_scaler_std[self.target_mask]
+
         mean_post_factor = np.zeros((dim_gp_outputs, n_training_samples))
         for i in range(dim_gp_outputs):
             K_z_z = self.gaussian_process.K_plus_noise_inv[i]
@@ -324,10 +313,7 @@ class GPMPC(MPC, ABC):
         dim_gp_outputs = len(self.target_mask)
         inputs = self.train_data['train_inputs']
         targets = self.train_data['train_targets']
-        if self.normalize_training_data:
-            for i in range(inputs.shape[0]):
-                inputs[i, :] = (inputs[i, :] - self.gaussian_process.input_scaler_mean[self.input_mask]) / self.gaussian_process.input_scaler_std[self.input_mask]
-                targets[i, :] = (targets[i, :] - self.gaussian_process.output_scaler_mean[self.target_mask]) / self.gaussian_process.output_scaler_std[self.target_mask]
+
         # Get the inducing points.
         if False and self.x_prev is not None and self.u_prev is not None:
             # Use the previous MPC solution as in Hewing 2019.
@@ -499,7 +485,6 @@ class GPMPC(MPC, ABC):
                                                           len(self.target_mask),
                                                           input_mask=self.input_mask,
                                                           target_mask=self.target_mask,
-                                                          normalize=self.normalize_training_data,
                                                           kernel=self.kernel,
                                                           parallel=self.parallel
                                                           )

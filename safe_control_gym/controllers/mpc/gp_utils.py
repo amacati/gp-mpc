@@ -219,7 +219,6 @@ class GaussianProcessCollection:
                  target_dim,
                  input_mask=None,
                  target_mask=None,
-                 normalize=False,
                  kernel='Matern',
                  parallel=False,
                  **kwargs
@@ -232,14 +231,12 @@ class GaussianProcessCollection:
             target_dim (int): Dimension of the output (how many GPs to make).
             input_mask (list): Input dimensions to keep. If None, use all input dimensions.
             target_mask (list): Target dimensions to keep. If None, use all target dimensions.
-            normalize (bool): If True, scale all data between -1 and 1.
         '''
         self.gp_list = []
         self.model_type = model_type
         self.likelihood = likelihood
         self.optimizer = None
         self.model = None
-        self.NORMALIZE = normalize
         self.input_mask = input_mask
         self.target_mask = target_mask
         self.parallel = parallel
@@ -252,22 +249,15 @@ class GaussianProcessCollection:
                                     likelihood,
                                     input_mask=input_mask,
                                     target_mask=target_mask,
-                                    normalize=normalize,
                                     kernel=kernel,
                                     **kwargs)
         else:
-            prior_noise_std = [0.00076, 0.00051, 0.000956, 0.0011049, 0.00190645, 0.0928035]
-            prior_noise_std = [prior_noise_std[i] for i in target_mask]
             # set prior noise std
             for i in range(target_dim):
-                # noise_prior = gpytorch.priors.NormalPrior(loc=0, scale=prior_noise_std[i])
-                noise_prior = np.array(prior_noise_std[i])
                 self.gp_list.append(GaussianProcess(model_type,
                                                     deepcopy(likelihood),
                                                     input_mask=input_mask,
-                                                    normalize=normalize,
                                                     kernel=kernel,
-                                                    noise_prior=noise_prior,
                                                     )
                                     )
 
@@ -296,15 +286,6 @@ class GaussianProcessCollection:
             train_inputs, train_targets (torch.tensors): Input and target training data.
             path_to_statedicts (str): Path to where the state dicts are saved.
         '''
-        # Normalize the data.
-        if self.NORMALIZE:
-            self.input_scaler.fit(train_inputs.numpy())
-            self.output_scaler.fit(train_targets.numpy())
-            self.input_scaler_mean, self.input_scaler_std = self.input_scaler.mean_, self.input_scaler.scale_
-            self.output_scaler_mean, self.output_scaler_std = self.output_scaler.mean_, self.output_scaler.scale_
-
-            train_inputs = torch.from_numpy(self.input_scaler.transform(train_inputs.numpy()))
-            train_targets = torch.from_numpy(self.output_scaler.transform(train_targets.numpy()))
 
         self._init_properties(train_inputs, train_targets)
         if self.parallel:
@@ -334,7 +315,6 @@ class GaussianProcessCollection:
         self.K_plus_noise = gp_K_plus_noise
         self.K_plus_noise_inv = gp_K_plus_noise_inv
         self.casadi_predict = self.make_casadi_predict_func()
-        # self.casadi_linearized_predict = self.make_casadi_linearized_predict_func()
 
     def get_hyperparameters(self,
                             as_numpy=False
@@ -377,17 +357,6 @@ class GaussianProcessCollection:
             train_x: Torch tensor (N samples [rows] by input dim [cols])
             train_y: Torch tensor (N samples [rows] by target dim [cols])
         '''
-        # Normalize the data.
-        if self.NORMALIZE:
-            self.input_scaler.fit(train_x_raw.numpy())
-            self.output_scaler.fit(train_y_raw.numpy())
-            self.input_scaler_mean, self.input_scaler_std = self.input_scaler.mean_, self.input_scaler.scale_
-            self.output_scaler_mean, self.output_scaler_std = self.output_scaler.mean_, self.output_scaler.scale_
-
-            train_x_raw = torch.from_numpy(self.input_scaler.transform(train_x_raw.numpy()))
-            test_x_raw = torch.from_numpy(self.input_scaler.transform(test_x_raw.numpy()))
-            train_y_raw = torch.from_numpy(self.output_scaler.transform(train_y_raw.numpy()))
-            test_y_raw = torch.from_numpy(self.output_scaler.transform(test_y_raw.numpy()))
 
         self._init_properties(train_x_raw, train_y_raw)
         self.model_paths = []
@@ -439,7 +408,6 @@ class GaussianProcessCollection:
             self.K_plus_noise_inv = self.gps.gp_K_plus_noise_inv
 
         self.casadi_predict = self.make_casadi_predict_func()
-        # self.casadi_linearized_predict = self.make_casadi_linearized_predict_func()
 
     def predict(self,
                 x,
@@ -461,9 +429,6 @@ class GaussianProcessCollection:
         dim_input = len(self.input_mask)
         dim_output = len(self.target_mask)
 
-        if self.NORMALIZE:
-            x = torch.from_numpy(self.input_scaler.transform(x)) if type(x) is np.ndarray \
-                                                                 else self.input_scaler.transform(x)
 
         if self.parallel is False:
             means_list = []
@@ -494,33 +459,17 @@ class GaussianProcessCollection:
                 covs = covs.squeeze()
 
             if return_pred:
-                if self.NORMALIZE:
-                    for i in range(num_batch):
-                        means[i, :] = self.output_scaler_std * means[i, :] + self.output_scaler_mean
-                        covs[i, :, :] = self.output_scaler_std ** 2 * covs[i, :, :]
                     
                 return means, covs, pred_list
             else:
-                if self.NORMALIZE:
-                    for i in range(num_batch):
-                        means[i, :] = self.output_scaler_std * means[i, :] + self.output_scaler_mean
-                        covs[i, :, :] = self.output_scaler_std ** 2 * covs[i, :, :]
                 return means, covs
         else:
             # parallel GPs
             if return_pred:
                 means, covs, pred = self.gps.predict(x, requires_grad=requires_grad, return_pred=return_pred)
-                if self.NORMALIZE:
-                    means = torch.from_numpy(self.output_scaler_std) * means \
-                            + torch.from_numpy(self.output_scaler_mean)
-                    covs = torch.from_numpy(self.output_scaler_std) ** 2 * covs
                 return means, covs, pred
             else:
                 means, covs = self.gps.predict(x, requires_grad=requires_grad, return_pred=return_pred)
-                if self.NORMALIZE:
-                    means = torch.from_numpy(self.output_scaler_std) * means \
-                            + torch.from_numpy(self.output_scaler_mean)
-                    covs = torch.from_numpy(self.output_scaler_std) ** 2 * covs
 
                 return means, covs
 
@@ -542,9 +491,6 @@ class GaussianProcessCollection:
             for i in range(Ny):
                 y[i] = self.gps.casadi_predict[i](z=z)['mean']
         
-        # scale the output manually
-        if self.NORMALIZE:
-            y = self.output_scaler_std * y + self.output_scaler_mean
 
         casadi_predict = ca.Function('pred',
                                      [z],
@@ -552,30 +498,6 @@ class GaussianProcessCollection:
                                      ['z'],
                                      ['mean'])
         return casadi_predict
-
-    def make_casadi_linearized_predict_func(self):
-        '''
-        Assume train_inputs and train_tergets are already
-        '''
-        Nz = len(self.input_mask)
-        Ny = len(self.target_mask)
-        z = ca.SX.sym('z1', Nz)
-        dmu = ca.SX.zeros(Nz, Ny)
-        if not self.parallel:
-            for gp_ind, gp in enumerate(self.gp_list):
-                dmu[:, gp_ind] = gp.casadi_linearized_predict(z=z)['mean']
-        else:
-            dmu = self.gps.casadi_linearized_predict(z=z)['mean']
-        A, B = dmu.T[:, :Ny], dmu.T[:, Ny:]
-        # NOTE: Normalization is not implemented for the linearized prediction.
-        assert A.shape == (Ny, Ny), ValueError('A matrix has wrong shape.')
-        assert B.shape == (Ny, Nz-Ny), ValueError('B matrix has wrong shape.')
-        casadi_lineaized_predict = ca.Function('linearized_pred',
-                                                  [z],
-                                                  [dmu, A, B],
-                                                  ['z'],
-                                                  ['mean', 'A', 'B'])
-        return casadi_lineaized_predict
 
     def prediction_jacobian(self,
                             query
@@ -691,9 +613,6 @@ class GaussianProcessCollection:
         if x2 is None:
             x2 = x1
 
-        if self.NORMALIZE:
-           x1 = torch.from_numpy(self.input_scaler.transform(x1.numpy()))
-           x2 = torch.from_numpy(self.input_scaler.transform(x2.numpy()))
         k_list = []
         if self.parallel is False:
             for gp in self.gp_list:
@@ -755,7 +674,6 @@ class BatchGPModel:
                  likelihood,
                  input_mask=None,
                  target_mask=None,
-                 normalize=False,
                  kernel='RBF',
                  ):
         '''Initialize Gaussian Process.
@@ -763,7 +681,6 @@ class BatchGPModel:
         Args:
             model_type (gpytorch model class): Model class for the GP (BatchIndependentMultitaskGPModel).
             likelihood (gpytorch.likelihoods.MultitaskGaussianLikelihood): likelihood function.
-            normalize (bool): If True, scale all data between -1 and 1. (prototype and not fully operational).
 
         '''
         self.model_type = model_type
@@ -773,7 +690,6 @@ class BatchGPModel:
         self.input_mask = input_mask
         self.target_mask = target_mask
         self.kernel = kernel
-        # assert normalize is False, NotImplementedError('Normalization not implemented yet.')
 
     def _init_model(self,
                     train_inputs,
@@ -843,7 +759,6 @@ class BatchGPModel:
         print('lengthscale: ', self.model.covar_module.base_kernel.lengthscale)
         self._compute_GP_covariances(train_inputs)
         self.casadi_predict = self.make_casadi_prediction_func(train_inputs, train_targets)
-        # self.casadi_linearized_predict = self.make_casadi_linearized_predict_func(train_inputs, train_targets)  
 
     def train(self,
               train_input_data,
@@ -968,7 +883,6 @@ class BatchGPModel:
         self.model.load_state_dict(torch.load(fname))
         self._compute_GP_covariances(train_x)
         self.casadi_predict = self.make_casadi_prediction_func(train_x, train_y)
-        self.casadi_linearized_predict = self.make_casadi_linearized_predict_func(train_x, train_y)
         
         return
 
@@ -1161,7 +1075,6 @@ class GaussianProcess:
                  likelihood,
                  input_mask=None,
                  target_mask=None,
-                 normalize=False,
                  kernel='RBF',
                  noise_prior=None
                  ):
@@ -1170,7 +1083,6 @@ class GaussianProcess:
         Args:
             model_type (gpytorch model class): Model class for the GP (ZeroMeanIndependentMultitaskGPModel).
             likelihood (gpytorch.likelihood): likelihood function.
-            normalize (bool): If True, scale all data between -1 and 1. (prototype and not fully operational).
         '''
         self.model_type = model_type
         self.likelihood = likelihood
