@@ -440,34 +440,6 @@ class GPMPC_ACADOS(GPMPC):
         # set initial condition (0-th state)
         self.acados_ocp_solver.set(0, 'lbx', obs)
         self.acados_ocp_solver.set(0, 'ubx', obs)
-        # set initial guess for the solution
-        if self.warmstart:
-            if self.x_guess is None or self.u_guess is None:
-                if self.compute_ipopt_initial_guess:
-                    # compute initial guess with IPOPT
-                    self.compute_initial_guess(obs, self.get_references())
-                else:
-                    # use zero initial guess (TODO: use acados warm start)
-                    self.x_guess = np.zeros((nx, self.T + 1))
-                    if nu == 1:
-                        self.u_guess = np.zeros((self.T,))
-                    else:
-                        self.u_guess = np.zeros((nu, self.T))
-            # set initial guess
-            for idx in range(self.T + 1):
-                init_x = self.x_guess[:, idx]
-                self.acados_ocp_solver.set(idx, 'x', init_x)
-            for idx in range(self.T):
-                if nu == 1:
-                    init_u = np.array([self.u_guess[idx]])
-                else:
-                    init_u = self.u_guess[:, idx]
-                self.acados_ocp_solver.set(idx, 'u', init_u)
-        else:
-            for idx in range(self.T + 1):
-                self.acados_ocp_solver.set(idx, 'x', obs)
-            for idx in range(self.T):
-                self.acados_ocp_solver.set(idx, 'u', np.zeros((nu,)))
 
         # compute the sparse GP values
         if self.recalc_inducing_points_at_every_step:
