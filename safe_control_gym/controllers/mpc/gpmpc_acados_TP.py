@@ -44,7 +44,6 @@ class GPMPC_ACADOS_TP(GPMPC):
             r_mpc: list = [1],
             constraint_tol: float = 1e-8,
             additional_constraints: list = None,
-            soft_constraints: dict = None,
             warmstart: bool = True,
             train_iterations: int = None,
             test_data_ratio: float = 0.2,
@@ -79,7 +78,6 @@ class GPMPC_ACADOS_TP(GPMPC):
             r_mpc=r_mpc,
             constraint_tol=constraint_tol,
             additional_constraints=additional_constraints,
-            soft_constraints=soft_constraints,
             warmstart=warmstart,
             train_iterations=train_iterations,
             test_data_ratio=test_data_ratio,
@@ -121,7 +119,6 @@ class GPMPC_ACADOS_TP(GPMPC):
                 q_mpc=q_mpc,
                 r_mpc=r_mpc,
                 warmstart=warmstart,
-                soft_constraints=self.soft_constraints_params['prior_soft_constraints'],
                 terminate_run_on_done=terminate_run_on_done,
                 prior_info=prior_info,
                 # runner args
@@ -136,7 +133,6 @@ class GPMPC_ACADOS_TP(GPMPC):
                 q_mpc=q_mpc,
                 r_mpc=r_mpc,
                 warmstart=warmstart,
-                soft_constraints=self.soft_constraints_params['prior_soft_constraints'],
                 terminate_run_on_done=terminate_run_on_done,
                 constraint_tol=constraint_tol,
                 output_dir=output_dir,
@@ -613,28 +609,6 @@ class GPMPC_ACADOS_TP(GPMPC):
         else:
             ocp.model.p = tighten_param
             ocp.parameter_values = np.zeros((ocp.model.p.shape[0], ))  # dummy values
-
-        # slack costs for nonlinear constraints
-        if self.gp_soft_constraints:
-            # slack variables for all constraints
-            ocp.constraints.Jsh_0 = np.eye(h0_expr.shape[0])
-            ocp.constraints.Jsh = np.eye(h_expr.shape[0])
-            ocp.constraints.Jsh_e = np.eye(he_expr.shape[0])
-            # slack penalty (TODO: using the value specified in the config)
-            L2_pen = self.gp_soft_constraints_coeff
-            L1_pen = self.gp_soft_constraints_coeff
-            ocp.cost.zl_0 = L1_pen * np.ones(h0_expr.shape[0])
-            ocp.cost.zu_0 = L1_pen * np.ones(h0_expr.shape[0])
-            ocp.cost.Zu_0 = L2_pen * np.ones(h0_expr.shape[0])
-            ocp.cost.Zl_0 = L2_pen * np.ones(h0_expr.shape[0])
-            ocp.cost.Zu = L2_pen * np.ones(h_expr.shape[0])
-            ocp.cost.Zl = L2_pen * np.ones(h_expr.shape[0])
-            ocp.cost.zl = L1_pen * np.ones(h_expr.shape[0])
-            ocp.cost.zu = L1_pen * np.ones(h_expr.shape[0])
-            ocp.cost.Zl_e = L2_pen * np.ones(he_expr.shape[0])
-            ocp.cost.Zu_e = L2_pen * np.ones(he_expr.shape[0])
-            ocp.cost.zl_e = L1_pen * np.ones(he_expr.shape[0])
-            ocp.cost.zu_e = L1_pen * np.ones(he_expr.shape[0])
 
         # placeholder initial state constraint
         x_init = np.zeros((nx))
