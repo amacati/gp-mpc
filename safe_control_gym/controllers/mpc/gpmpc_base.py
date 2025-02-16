@@ -336,7 +336,6 @@ class GPMPC(MPC, ABC):
         for input_constraint in self.constraints.input_constraints:
             input_constraint_set.append(np.zeros((input_constraint.num_constraints, T)))
         if self.x_prev is not None and self.u_prev is not None:
-            # cov_x = np.zeros((nx, nx))
             cov_x = np.diag([self.initial_rollout_std**2] * nx)
             if nu == 1:
                 z_batch = np.hstack((self.x_prev[:, :-1].T, self.u_prev.reshape(1, -1).T))  # (T, input_dim)
@@ -352,28 +351,13 @@ class GPMPC(MPC, ABC):
                 cov_u = self.lqr_gain @ cov_x @ self.lqr_gain.T
                 input_covariances[i] = cov_u
                 cov_xu = cov_x @ self.lqr_gain.T
-                # if nu == 1:
-                #     z = np.hstack((self.x_prev[:, i], self.u_prev[i]))
-                # else:
-                #     z = np.hstack((self.x_prev[:, i], self.u_prev[:, i]))
                 if self.gp_approx == 'taylor':
                     raise NotImplementedError('Taylor GP approximation is currently not working.')
                 elif self.gp_approx == 'mean_eq':
                     # TODO: Addition of noise here! And do we still need initial_rollout_std
                     # _, cov_d_tensor = self.gaussian_process.predict(z[None, :], return_pred=False)
                     # cov_d = cov_d_tensor.detach().numpy()
-                    if False: # if self.sparse_gp:
-                        dim_gp_outputs = len(self.target_mask)
-                        cov_d = np.zeros((dim_gp_outputs, dim_gp_outputs))
-                        K_z_z = self.gaussian_process.kernel(torch.from_numpy(z[None, self.input_mask]).double()).detach().numpy()
-                        K_z_zind = self.gaussian_process.kernel(torch.from_numpy(z[None, self.input_mask]).double(),
-                                                                torch.tensor(z_ind).double()).detach().numpy()
-                        for i in range(dim_gp_outputs):
-                            Q_z_z = K_z_zind[i, :, :] @ K_zind_zind_inv[i, :, :] @ K_z_zind[i, :, :].T
-                            cov_d[i, i] = K_z_z[i, 0] - Q_z_z  +\
-                                self.K_z_zind_func(z1=z, z2=z_ind)['K'][i, :].toarray() @ Sigma_inv[i] @ self.K_z_zind_func(z1=z, z2=z_ind)['K'][i, :].T.toarray()
-                    else: 
-                        cov_d = cov_d_batch[i, :, :]
+                    cov_d = cov_d_batch[i, :, :]
                     _, _, cov_noise, _ = self.gaussian_process.get_hyperparameters()
                     if self.normalize_training_data:
                         cov_noise = torch.from_numpy(self.gaussian_process.output_scaler_std)**2 * cov_noise.T
@@ -470,20 +454,16 @@ class GPMPC(MPC, ABC):
         K_zind_zind_inv = self.gaussian_process.kernel_inv(torch.Tensor(z_ind).double()) # (dim_gp_outputs, n_ind_points, n_ind_points)
         K_x_zind = self.gaussian_process.kernel(torch.from_numpy(inputs[:, self.input_mask]).double(),
                                                 torch.tensor(z_ind).double()) # (dim_gp_outputs, n_data_points, n_ind_points)
-        # Q_X_X = K_x_zind @ K_zind_zind_inv @ K_x_zind.transpose(1,2)
         Q_X_X = K_x_zind @ torch.linalg.solve(K_zind_zind, K_x_zind.transpose(1, 2)) # (dim_gp_outputs, n_data_points, n_data_points)
         Gamma = torch.diagonal(self.gaussian_process.K_plus_noise - Q_X_X, 0, 1, 2) # (dim_gp_outputs, n_data_points)
         Gamma_inv = torch.diag_embed(1 / Gamma) # (dim_gp_outputs, n_data_points, n_data_points)
         # TODO: Should inverse be used here instead? pinverse was more stable previsouly.
         Sigma_inv = K_zind_zind + K_x_zind.transpose(1, 2) @ Gamma_inv @ K_x_zind # (dim_gp_outputs, n_ind_points, n_ind_points)
-        # Sigma = torch.pinverse(K_zind_zind + K_x_zind.transpose(1, 2) @ Gamma_inv @ K_x_zind)  # For debugging
         mean_post_factor = torch.zeros((dim_gp_outputs, n_ind_points))
         for i in range(dim_gp_outputs):
             mean_post_factor[i] = torch.linalg.solve(Sigma_inv[i], K_x_zind[i].T @ Gamma_inv[i] @
                                                      torch.from_numpy(targets[:, self.target_mask[i]]).double())
-            # mean_post_factor[i] = Sigma[i] @ K_x_zind[i].T @ Gamma_inv[i] @ torch.from_numpy(targets[:, self.target_mask[i]]).double()
         return mean_post_factor.detach().numpy(), Sigma_inv.detach().numpy(), K_zind_zind_inv.detach().numpy(), z_ind
-        # return mean_post_factor.detach().numpy(), Sigma.detach().numpy(), K_zind_zind_inv.detach().numpy(), z_ind
 
 
     @timing
@@ -828,136 +808,6 @@ class GPMPC(MPC, ABC):
         self.test_runs = test_runs
 
         return train_runs, test_runs
-        '''Performs multiple epochs learning.
-        '''
-
-        train_runs = {0: {}}
-        test_runs = {0: {}}
-
-        if self.same_train_initial_state:
-            train_envs = []
-            for epoch in range(self.num_epochs):
-                train_envs.append(self.env_func(randomized_init=True, seed=self.seed))
-                train_envs[epoch].action_space.seed(self.seed)
-        else:
-            train_env = self.env_func(randomized_init=True, seed=self.seed)
-            train_env.action_space.seed(self.seed)
-            train_envs = [train_env] * self.num_epochs
-        # init_test_states = get_random_init_states(env_func, num_test_episodes_per_epoch)
-        test_envs = []
-        if self.same_test_initial_state:
-            for epoch in range(self.num_epochs):
-                test_envs.append(self.env_func(randomized_init=True, seed=self.seed))
-                test_envs[epoch].action_space.seed(self.seed)
-        else:
-            test_env = self.env_func(randomized_init=True, seed=self.seed)
-            test_env.action_space.seed(self.seed)
-            test_envs = [test_env] * self.num_epochs
-
-        for episode in range(self.num_train_episodes_per_epoch):
-            run_results = self.prior_ctrl.run(env=train_envs[0],
-                                              terminate_run_on_done=self.terminate_train_on_done)
-            train_runs[0].update({episode: munch.munchify(run_results)})
-            self.reset()
-        for test_ep in range(self.num_test_episodes_per_epoch):
-            run_results = self.run(env=test_envs[0],
-                                   terminate_run_on_done=self.terminate_test_on_done)
-            test_runs[0].update({test_ep: munch.munchify(run_results)})
-        self.reset()
-
-        training_results = None
-        for epoch in range(1, self.num_epochs):
-            # only take data from the last episode from the last epoch
-            if self.rand_data_selection:
-                x_seq, actions, x_next_seq, x_dot_seq = self.gather_training_samples(train_runs, epoch - 1, self.num_samples, train_envs[epoch - 1].np_random)
-            else:
-                x_seq, actions, x_next_seq, x_dot_seq = self.gather_training_samples(train_runs, epoch - 1, self.num_samples)
-            train_inputs, train_outputs = self.preprocess_training_data(x_seq, actions, x_next_seq)
-            training_results = self.train_gp(input_data=train_inputs, target_data=train_outputs)
-            # plot training results
-            if self.plot_trained_gp:
-                self.gaussian_process.plot_trained_gp(train_inputs, train_outputs,
-                                                      output_dir=self.output_dir,
-                                                      title=f'epoch_{epoch}',
-                                                      residual_func=self.residual_func
-                                                      )
-                
-            max_steps = train_runs[epoch-1][0]['obs'].shape[0]
-            x_seq, actions, x_next_seq, x_dot_seq = self.gather_training_samples(train_runs, epoch - 1, max_steps)
-            test_inputs, test_outputs = self.preprocess_training_data(x_seq, actions, x_next_seq)
-            if self.plot_trained_gp:
-                self.gaussian_process.plot_trained_gp(test_inputs, test_outputs,
-                                                      output_dir=self.output_dir,
-                                                      title=f'epoch_{epoch}_train',
-                                                      residual_func=self.residual_func
-                                                      )
-                
-            # Test new policy.
-            test_runs[epoch] = {}
-            for test_ep in range(self.num_test_episodes_per_epoch):
-                self.x_prev = test_runs[epoch - 1][episode]['obs'][:self.T + 1, :].T
-                self.u_prev = test_runs[epoch - 1][episode]['action'][:self.T, :].T
-                self.reset()
-                run_results = self.run(env=test_envs[epoch],
-                                       terminate_run_on_done=self.terminate_test_on_done)
-                test_runs[epoch].update({test_ep: munch.munchify(run_results)})
-            max_steps = test_runs[epoch][0]['obs'].shape[0]
-            x_seq, actions, x_next_seq, x_dot_seq = self.gather_training_samples(test_runs, epoch - 1, max_steps)
-            test_inputs, test_outputs = self.preprocess_training_data(x_seq, actions, x_next_seq)
-            if self.plot_trained_gp:
-                self.gaussian_process.plot_trained_gp(test_inputs, test_outputs,
-                                                      output_dir=self.output_dir,
-                                                      title=f'epoch_{epoch}_test',
-                                                      residual_func=self.residual_func
-                                                      )
-
-            # gather training data
-            train_runs[epoch] = {}
-            for episode in range(self.num_train_episodes_per_epoch):
-                self.reset()
-                self.x_prev = train_runs[epoch - 1][episode]['obs'][:self.T + 1, :].T
-                self.u_prev = train_runs[epoch - 1][episode]['action'][:self.T, :].T
-                run_results = self.run(env=train_envs[epoch],
-                                       terminate_run_on_done=self.terminate_train_on_done)
-                train_runs[epoch].update({episode: munch.munchify(run_results)})
-
-            lengthscale, outputscale, noise, kern = self.gaussian_process.get_hyperparameters(as_numpy=True)
-            # compute the condition number of the kernel matrix
-            # TODO: fix data logging
-            np.savez(os.path.join(self.output_dir, 'data_%s'% epoch),
-                    data_inputs=training_results['train_inputs'],
-                    data_targets=training_results['train_targets'],
-                    train_runs=train_runs,
-                    test_runs=test_runs,
-                    num_epochs=self.num_epochs,
-                    num_train_episodes_per_epoch=self.num_train_episodes_per_epoch,
-                    num_test_episodes_per_epoch=self.num_test_episodes_per_epoch,
-                    num_samples=self.num_samples,
-                    # trajectory=self.trajectory,
-                    # ctrl_freq=self.config.task_config.ctrl_freq,
-                    lengthscales=lengthscale,
-                    outputscale=outputscale,
-                    noise=noise,
-                    kern=kern,
-                    train_data=self.train_data,
-                    test_data=self.test_data,
-                    )
-
-        if training_results:
-            np.savez(os.path.join(self.output_dir, 'data'),
-                    data_inputs=training_results['train_inputs'],
-                    data_targets=training_results['train_targets'])
-
-        # close environments
-        for env in train_envs:
-            env.close()
-        for env in test_envs:
-            env.close()
-
-        self.train_runs = train_runs
-        self.test_runs = test_runs
-
-        return train_runs, test_runs
 
     def gather_training_samples(self, all_runs, epoch_i, num_samples, rand_generator=None):
         n_episodes = len(all_runs[epoch_i].keys())
@@ -966,8 +816,6 @@ class GPMPC(MPC, ABC):
         x_next_seq_int = []
         actions_int = []
         for episode_i in range(n_episodes):
-            # run_results_int = all_runs[epoch_i][episode_i]
-            # n = run_results_int['action'].shape[0]
             run_results_int = all_runs[epoch_i][episode_i][0]
             n = run_results_int['action'][0].shape[0]
             if num_samples_per_episode < n:
@@ -978,9 +826,6 @@ class GPMPC(MPC, ABC):
             else:
                 rand_inds_int = np.arange(n - 1)
             next_inds_int = rand_inds_int + 1
-            # x_seq_int.append(run_results_int.obs[rand_inds_int, :])
-            # actions_int.append(run_results_int.action[rand_inds_int, :])
-            # x_next_seq_int.append(run_results_int.obs[next_inds_int, :])
             x_seq_int.append(run_results_int['obs'][0][rand_inds_int, :])
             actions_int.append(run_results_int['action'][0][rand_inds_int, :])
             x_next_seq_int.append(run_results_int['obs'][0][next_inds_int, :])
@@ -1166,12 +1011,6 @@ class GPMPC(MPC, ABC):
         # Initial condition constraints.
         opti.subject_to(x_var[:, 0] == x_init)
         # Create solver (IPOPT solver in this version).
-        # opts = {'ipopt.print_level': 4,
-        #         'ipopt.sb': 'yes',
-        #         'ipopt.max_iter': 100,  # 100,
-        #         'print_time': 1,
-        #         'expand': True,
-        #         'verbose': True}
         opts = {'expand': True,}
         # opti.solver('ipopt', opts)
         opti.solver(solver, opts)
@@ -1265,29 +1104,3 @@ class GPMPC(MPC, ABC):
 
         return x_guess, u_guess
     
-    def compute_terminal_cost_and_ancillary_gain(self):
-        '''
-        Computes the terminal cost and ancillary gain with LQR.
-        NOTE: This is only supported for the smooth kernel.
-        '''
-        
-        # linearization point
-        x_lin = self.X_EQ[:, None]
-        u_lin = self.U_EQ[:, None]
-        # prior model linearization
-        dfdxdfdu = self.model.df_func(x=x_lin, u=u_lin)
-        dfdx = dfdxdfdu['dfdx'].toarray()
-        dfdu = dfdxdfdu['dfdu'].toarray()
-        Ad, Bd = discretize_linear_system(dfdx, dfdu, self.dt, exact=True) 
-        # GP linearization
-        z = np.vstack((x_lin, u_lin))
-        A_gp = self.gaussian_process.casadi_linearized_predict(z=z)['A'].toarray()
-        B_gp = self.gaussian_process.casadi_linearized_predict(z=z)['B'].toarray()
-        assert A_gp.shape == (self.model.nx, self.model.nx)
-        assert B_gp.shape == (self.model.nx, self.model.nu)
-        A = Ad + A_gp
-        B = Bd + B_gp
-        # compute LQR gain and Gramian as the ancillary gain and terminal cost
-        self.P = scipy.linalg.solve_discrete_are(A, B, self.Q, self.R)
-        btp = np.dot(B.T, self.P)
-        self.K = np.dot(scipy.linalg.inv(self.R + np.dot(B.T, np.dot(self.P, B))), btp)

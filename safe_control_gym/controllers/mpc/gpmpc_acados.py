@@ -182,12 +182,6 @@ class GPMPC_ACADOS(GPMPC):
         z = cs.vertcat(acados_model.x, acados_model.u)  # GP prediction point
         z = z[self.input_mask]
 
-        # full_dyn = self.prior_dynamics_func(x0=acados_model.x- cs.MX(self.prior_ctrl.X_EQ[:, None]),
-        #                                     p=acados_model.u- cs.MX(self.prior_ctrl.U_EQ[:, None]))['xf'] \
-        #     + self.prior_ctrl.X_EQ[:, None] \
-        #     + self.Bd @ self.gaussian_process.casadi_predict(z=z)['mean']
-        # self.full_func = cs.Function('full_func', [acados_model.x, acados_model.u], [full_dyn])
-
         if self.sparse_gp:
             # sparse GP inducing points
             '''
@@ -573,11 +567,6 @@ class GPMPC_ACADOS(GPMPC):
             print(colored(f'========= Warning: GPMPC ACADOS took {time_after - time_before:.3f} seconds =========', 'yellow'))
         self.results_dict['inference_time'].append(self.acados_ocp_solver.get_stats("time_tot"))
         
-        if hasattr(self, 'K'):
-            action += self.K @ (self.x_prev[:, 0] - obs)
-            # self.u_prev = self.u_prev + self.K @ (self.x_prev - obs)
-            # self.u_guess = self.u_prev
-            # action = self.u_prev[0] if nu == 1 else self.u_prev[:, 0]
 
         return action
 
