@@ -584,31 +584,13 @@ class GPMPC_ACADOS_TP(GPMPC):
         # general constraint expressions
         state_constraint_expr_list = []
         input_constraint_expr_list = []
-        state_tighten_list = []
-        input_tighten_list = []
-        for sc_i, state_constraint in enumerate(self.state_constraints_sym):
-            state_constraint_expr_list.append(state_constraint(ocp.model.x))
-            # chance state constraint tightening
-            state_tighten_list.append(cs.MX.sym(f'state_tighten_{sc_i}', state_constraint(ocp.model.x).shape[0], 1))
-        for ic_i, input_constraint in enumerate(self.input_constraints_sym):
-            input_constraint_expr_list.append(input_constraint(ocp.model.u))
-            # chance input constraint tightening
-            input_tighten_list.append(cs.MX.sym(f'input_tighten_{ic_i}', input_constraint(ocp.model.u).shape[0], 1))
-
         h_expr_list = state_constraint_expr_list + input_constraint_expr_list
         h_expr = cs.vertcat(*h_expr_list)
         h0_expr = cs.vertcat(*h_expr_list)
         he_expr = cs.vertcat(*state_constraint_expr_list)  # terminal constraints are only state constraints
         # pass the constraints to the ocp object
-        ocp = self.processing_acados_constraints_expression(ocp, h0_expr, h_expr, he_expr, state_tighten_list, input_tighten_list)
-        # pass the tightening variables to the ocp object as parameters
-        tighten_param = cs.vertcat(*state_tighten_list, *input_tighten_list)
-        if self.sparse_gp:
-            ocp.model.p = cs.vertcat(ocp.model.p, tighten_param)
-            ocp.parameter_values = np.zeros((ocp.model.p.shape[0], ))  # dummy values
-        else:
-            ocp.model.p = tighten_param
-            ocp.parameter_values = np.zeros((ocp.model.p.shape[0], ))  # dummy values
+        ocp = self.processing_acados_constraints_expression(ocp, h0_expr, h_expr, he_expr)
+        ocp.parameter_values = np.zeros((ocp.model.p.shape[0], ))  # dummy values
 
         # placeholder initial state constraint
         x_init = np.zeros((nx))
@@ -652,7 +634,7 @@ class GPMPC_ACADOS_TP(GPMPC):
             self.z_ind_val = z_ind_val
 
     def processing_acados_constraints_expression(self, ocp: AcadosOcp, h0_expr, h_expr, he_expr,
-                                                 state_tighten_list, input_tighten_list) -> AcadosOcp:
+                                                 state_tighten_list=None, input_tighten_list=None) -> AcadosOcp:
         '''Preprocess the constraints to be compatible with acados.
             Args:
                 h0_expr (casadi expression): initial state constraints
@@ -683,12 +665,16 @@ class GPMPC_ACADOS_TP(GPMPC):
         # lambda functions to set the upper and lower bounds of the chance constraints
         def constraint_ub_chance(constraint): return -self.constraint_tol * np.ones(constraint.shape)
         def constraint_lb_chance(constraint): return -1e8 * np.ones(constraint.shape)
-        state_tighten_var = cs.vertcat(*state_tighten_list)
-        input_tighten_var = cs.vertcat(*input_tighten_list)
-
-        ub = {'h': constraint_ub_chance(h_expr - cs.vertcat(state_tighten_var, input_tighten_var)),
-              'h0': constraint_ub_chance(h0_expr - cs.vertcat(state_tighten_var, input_tighten_var)),
-              'he': constraint_ub_chance(he_expr - state_tighten_var)}
+        if state_tighten_list is not None and input_tighten_list is not None:
+            state_tighten_var = cs.vertcat(*state_tighten_list)
+            input_tighten_var = cs.vertcat(*input_tighten_list)
+            ub = {'h': constraint_ub_chance(h_expr - cs.vertcat(state_tighten_var, input_tighten_var)),
+                'h0': constraint_ub_chance(h0_expr - cs.vertcat(state_tighten_var, input_tighten_var)),
+                'he': constraint_ub_chance(he_expr - state_tighten_var)}
+        else:
+            ub = {'h': constraint_ub_chance(h_expr),
+              'h0': constraint_ub_chance(h0_expr),
+              'he': constraint_ub_chance(he_expr)}
         lb = {'h': constraint_lb_chance(h_expr),
               'h0': constraint_lb_chance(h0_expr),
               'he': constraint_lb_chance(he_expr)}
@@ -705,9 +691,14 @@ class GPMPC_ACADOS_TP(GPMPC):
         assert ub['h'].shape == lb['h'].shape, 'h_ub and h_lb have different shapes'
 
         # pass the constraints to the ocp object
-        ocp.model.con_h_expr_0 = h0_expr - cs.vertcat(state_tighten_var, input_tighten_var)
-        ocp.model.con_h_expr = h_expr - cs.vertcat(state_tighten_var, input_tighten_var)
-        ocp.model.con_h_expr_e = he_expr - state_tighten_var
+        ocp.model.con_h_expr_0 = h0_expr
+        ocp.model.con_h_expr = h_expr
+        ocp.model.con_h_expr_e = he_expr
+        if state_tighten_list is not None and input_tighten_list is not None:
+            ocp.model.con_h_expr_0 = h0_expr - cs.vertcat(state_tighten_var, input_tighten_var)
+            ocp.model.con_h_expr = h_expr - cs.vertcat(state_tighten_var, input_tighten_var)
+            ocp.model.con_h_expr_e = he_expr - state_tighten_var
+
         ocp.dims.nh_0, ocp.dims.nh, ocp.dims.nh_e = \
             h0_expr.shape[0], h_expr.shape[0], he_expr.shape[0]
         # assign constraints upper and lower bounds
@@ -719,6 +710,7 @@ class GPMPC_ACADOS_TP(GPMPC):
         ocp.constraints.lh_e = lb['he']
 
         return ocp
+
 
     # @timing
     def select_action(self, obs, info=None):
@@ -756,10 +748,7 @@ class GPMPC_ACADOS_TP(GPMPC):
             mean_post_factor_val = self.mean_post_factor_val
             z_ind_val = self.z_ind_val
             self.results_dict['inducing_points'] = [z_ind_val]
-        
-        # Set the probabilistic state and input constraint set limits.
-        # Tightening at the first step is possible if self.compute_initial_guess is used
-        state_constraint_set_prev, input_constraint_set_prev = self.precompute_probabilistic_limits()
+
         # set acados parameters
         if self.sparse_gp:
             # sparse GP parameters
@@ -772,33 +761,10 @@ class GPMPC_ACADOS_TP(GPMPC):
             dyn_value = np.concatenate((z_ind_val, mean_post_factor_val)).reshape(-1)
             # tighten constraints
             for idx in range(self.T):
-                # tighten initial and path constraints
-                state_constraint_set = state_constraint_set_prev[0][:, idx]
-                input_constraint_set = input_constraint_set_prev[0][:, idx]
-                tighten_value = np.concatenate((state_constraint_set, input_constraint_set))
                 # set the parameter values
-                parameter_values = np.concatenate((dyn_value, tighten_value))
-                # self.acados_ocp_solver.set(idx, "p", dyn_value)
-                # check the shapes
-                assert self.ocp.model.p.shape[0] == parameter_values.shape[0], \
-                       f'parameter_values.shape: {parameter_values.shape}; model.p.shape: {self.ocp.model.p.shape}'
-                self.acados_ocp_solver.set(idx, 'p', parameter_values)
-            # tighten terminal state constraints
-            tighten_value = np.concatenate((state_constraint_set_prev[0][:, self.T], np.zeros((2 * nu,))))
+                self.acados_ocp_solver.set(idx, "p", dyn_value)
             # set the parameter values
-            parameter_values = np.concatenate((dyn_value, tighten_value))
-            self.acados_ocp_solver.set(self.T, 'p', parameter_values)
-        else:
-            for idx in range(self.T):
-                # tighten initial and path constraints
-                state_constraint_set = state_constraint_set_prev[0][:, idx]
-                input_constraint_set = input_constraint_set_prev[0][:, idx]
-                tighten_value = np.concatenate((state_constraint_set, input_constraint_set))
-                self.acados_ocp_solver.set(idx, 'p', tighten_value)
-            # tighten terminal state constraints
-            tighten_value = np.concatenate((state_constraint_set_prev[0][:, self.T], np.zeros((2 * nu,))))
-            self.acados_ocp_solver.set(self.T, 'p', tighten_value)
-
+            self.acados_ocp_solver.set(self.T, "p", dyn_value)
 
         # set reference for the control horizon
         goal_states = self.get_references()
@@ -1018,105 +984,6 @@ class GPMPC_ACADOS_TP(GPMPC):
         K_z_zind_P = ks_func_P(z1_P, z_ind, self.length_scales[1], self.signal_var[1])
         self.K_z_zind_func_T = cs.Function('K_z_zind', [z1_T, z_ind], [K_z_zind_T], ['z1', 'z2'], ['K'])
         self.K_z_zind_func_P = cs.Function('K_z_zind', [z1_P, z_ind], [K_z_zind_P], ['z1', 'z2'], ['K'])
-
-
-    # @timing
-    def precompute_probabilistic_limits(self,
-                                        print_sets=False
-                                        ):
-        '''This updates the constraint value limits to account for the uncertainty in the dynamics rollout.
-
-        Args:
-            print_sets (bool): True to print out the sets for debugging purposes.
-        '''
-        nx, nu = self.model.nx, self.model.nu
-        T = self.T
-        state_covariances = np.zeros((self.T + 1, nx, nx))
-        input_covariances = np.zeros((self.T, nu, nu))
-        # Initilize lists for the tightening of each constraint.
-        state_constraint_set = []
-        for state_constraint in self.constraints.state_constraints:
-            state_constraint_set.append(np.zeros((state_constraint.num_constraints, T + 1)))
-        input_constraint_set = []
-        for input_constraint in self.constraints.input_constraints:
-            input_constraint_set.append(np.zeros((input_constraint.num_constraints, T)))
-        if self.x_prev is not None and self.u_prev is not None:
-            # cov_x = np.zeros((nx, nx))
-            cov_x = np.diag([self.initial_rollout_std**2] * nx)
-            if nu == 1:
-                z_batch = np.hstack((self.x_prev[:, :-1].T, self.u_prev.reshape(1, -1).T))  # (T, input_dim)
-            else:
-                z_batch = np.hstack((self.x_prev[:, :-1].T, self.u_prev.T)) # (T, input_dim)
-            
-            # Compute the covariance of the dynamics at each time step.
-            GP_T = self.gaussian_process[0]
-            GP_P = self.gaussian_process[1]
-            T_pred_point_batch = z_batch[:, 6]
-            P_pred_point_batch = z_batch[:, [4, 5, 7]]
-            cov_d_batch_T = np.diag(GP_T.predict(T_pred_point_batch, return_pred=False)[1])
-            cov_d_batch_P = np.diag(GP_P.predict(P_pred_point_batch, return_pred=False)[1])
-            num_batch = z_batch.shape[0]
-            cov_d_batch = np.zeros((num_batch, 3, 3))
-            cov_d_batch[:, 0, 0] = np.sin(z_batch[:, 4])**2 * cov_d_batch_T
-            cov_d_batch[:, 1, 1] = np.cos(z_batch[:, 4])**2 * cov_d_batch_T
-            cov_d_batch[:, 2, 2] = cov_d_batch_P
-            cov_noise_T = GP_T.likelihood.noise.detach().numpy()
-            cov_noise_P = GP_P.likelihood.noise.detach().numpy()
-            cov_noise_batch = np.zeros((num_batch, 3, 3))
-            cov_noise_batch[:, 0, 0] = np.sin(z_batch[:, 4])**2 * cov_noise_T
-            cov_noise_batch[:, 1, 1] = np.cos(z_batch[:, 4])**2 * cov_noise_T
-            cov_noise_batch[:, 2, 2] = cov_noise_P
-            # discretize (?)
-            cov_noise_batch = cov_noise_batch * self.dt**2
-            cov_d_batch = cov_d_batch * self.dt**2
-            
-            for i in range(T):
-                state_covariances[i] = cov_x
-                cov_u = self.lqr_gain @ cov_x @ self.lqr_gain.T
-                input_covariances[i] = cov_u
-                cov_xu = cov_x @ self.lqr_gain.T
-                if self.gp_approx == 'taylor':
-                    raise NotImplementedError('Taylor GP approximation is currently not working.')
-                elif self.gp_approx == 'mean_eq':
-                    # TODO: Addition of noise here! And do we still need initial_rollout_std
-                    cov_d = cov_d_batch[i, :, :]
-                    cov_noise = cov_noise_batch[i, :, :]
-                    cov_d = cov_d + cov_noise
-                else:
-                    raise NotImplementedError('gp_approx method is incorrect or not implemented')
-                # Loop through input constraints and tighten by the required ammount.
-                for ui, input_constraint in enumerate(self.constraints.input_constraints):
-                    input_constraint_set[ui][:, i] = -1 * self.inverse_cdf * \
-                        np.absolute(input_constraint.A) @ np.sqrt(np.diag(cov_u))
-                for si, state_constraint in enumerate(self.constraints.state_constraints):
-                    state_constraint_set[si][:, i] = -1 * self.inverse_cdf * \
-                        np.absolute(state_constraint.A) @ np.sqrt(np.diag(cov_x))
-                if self.gp_approx == 'taylor':
-                    raise NotImplementedError('Taylor GP rollout not implemented.')
-                elif self.gp_approx == 'mean_eq':
-                    # Compute the next step propogated state covariance using mean equivilence.
-                    cov_x = self.discrete_dfdx @ cov_x @ self.discrete_dfdx.T + \
-                        self.discrete_dfdx @ cov_xu @ self.discrete_dfdu.T + \
-                        self.discrete_dfdu @ cov_xu.T @ self.discrete_dfdx.T + \
-                        self.discrete_dfdu @ cov_u @ self.discrete_dfdu.T + \
-                        self.Bd @ cov_d @ self.Bd.T
-                else:
-                    raise NotImplementedError('gp_approx method is incorrect or not implemented')
-            # Update Final covariance.
-            for si, state_constraint in enumerate(self.constraints.state_constraints):
-                state_constraint_set[si][:, -1] = -1 * self.inverse_cdf * \
-                    np.absolute(state_constraint.A) @ np.sqrt(np.diag(cov_x))
-            state_covariances[-1] = cov_x
-        if print_sets:
-            print('Probabilistic State Constraint values along Horizon:')
-            print(state_constraint_set)
-            print('Probabilistic Input Constraint values along Horizon:')
-            print(input_constraint_set)
-        self.results_dict['input_constraint_set'].append(input_constraint_set)
-        self.results_dict['state_constraint_set'].append(state_constraint_set)
-        self.results_dict['state_horizon_cov'].append(state_covariances)
-        self.results_dict['input_horizon_cov'].append(input_covariances)
-        return state_constraint_set, input_constraint_set
 
     @timing
     def reset(self):

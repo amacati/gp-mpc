@@ -211,29 +211,13 @@ class GPMPC_ACADOS(GPMPC):
         # general constraint expressions
         state_constraint_expr_list = []
         input_constraint_expr_list = []
-        state_tighten_list = []
-        input_tighten_list = []
-        for sc_i, state_constraint in enumerate(self.state_constraints_sym):
-            state_constraint_expr_list.append(state_constraint(ocp.model.x))
-            # chance state constraint tightening
-            state_tighten_list.append(cs.MX.sym(f'state_tighten_{sc_i}', state_constraint(ocp.model.x).shape[0], 1))
-        for ic_i, input_constraint in enumerate(self.input_constraints_sym):
-            input_constraint_expr_list.append(input_constraint(ocp.model.u))
-            # chance input constraint tightening
-            input_tighten_list.append(cs.MX.sym(f'input_tighten_{ic_i}', input_constraint(ocp.model.u).shape[0], 1))
 
         h_expr_list = state_constraint_expr_list + input_constraint_expr_list
         h_expr = cs.vertcat(*h_expr_list)
         h0_expr = cs.vertcat(*h_expr_list)
         he_expr = cs.vertcat(*state_constraint_expr_list)  # terminal constraints are only state constraints
         # pass the constraints to the ocp object
-        ocp = self.processing_acados_constraints_expression(ocp, h0_expr, h_expr, he_expr, state_tighten_list, input_tighten_list)
-        # pass the tightening variables to the ocp object as parameters
-        tighten_param = cs.vertcat(*state_tighten_list, *input_tighten_list)
-        if self.sparse_gp:
-            ocp.model.p = cs.vertcat(ocp.model.p, tighten_param)
-        else:
-            ocp.model.p = tighten_param
+        ocp = self.processing_acados_constraints_expression(ocp, h0_expr, h_expr, he_expr)
         ocp.parameter_values = np.zeros((ocp.model.p.shape[0], ))  # dummy values
 
 
@@ -275,7 +259,7 @@ class GPMPC_ACADOS(GPMPC):
             self.z_ind_val = z_ind_val
 
     def processing_acados_constraints_expression(self, ocp: AcadosOcp, h0_expr, h_expr, he_expr,
-                                                 state_tighten_list, input_tighten_list) -> AcadosOcp:
+                                                 state_tighten_list=None, input_tighten_list=None) -> AcadosOcp:
         '''Preprocess the constraints to be compatible with acados.
             Args:
                 h0_expr (casadi expression): initial state constraints
@@ -306,12 +290,16 @@ class GPMPC_ACADOS(GPMPC):
         # lambda functions to set the upper and lower bounds of the chance constraints
         def constraint_ub_chance(constraint): return -self.constraint_tol * np.ones(constraint.shape)
         def constraint_lb_chance(constraint): return -1e8 * np.ones(constraint.shape)
-        state_tighten_var = cs.vertcat(*state_tighten_list)
-        input_tighten_var = cs.vertcat(*input_tighten_list)
-
-        ub = {'h': constraint_ub_chance(h_expr - cs.vertcat(state_tighten_var, input_tighten_var)),
-              'h0': constraint_ub_chance(h0_expr - cs.vertcat(state_tighten_var, input_tighten_var)),
-              'he': constraint_ub_chance(he_expr - state_tighten_var)}
+        if state_tighten_list is not None and input_tighten_list is not None:
+            state_tighten_var = cs.vertcat(*state_tighten_list)
+            input_tighten_var = cs.vertcat(*input_tighten_list)
+            ub = {'h': constraint_ub_chance(h_expr - cs.vertcat(state_tighten_var, input_tighten_var)),
+                'h0': constraint_ub_chance(h0_expr - cs.vertcat(state_tighten_var, input_tighten_var)),
+                'he': constraint_ub_chance(he_expr - state_tighten_var)}
+        else:
+            ub = {'h': constraint_ub_chance(h_expr),
+              'h0': constraint_ub_chance(h0_expr),
+              'he': constraint_ub_chance(he_expr)}
         lb = {'h': constraint_lb_chance(h_expr),
               'h0': constraint_lb_chance(h0_expr),
               'he': constraint_lb_chance(he_expr)}
@@ -328,9 +316,14 @@ class GPMPC_ACADOS(GPMPC):
         assert ub['h'].shape == lb['h'].shape, 'h_ub and h_lb have different shapes'
 
         # pass the constraints to the ocp object
-        ocp.model.con_h_expr_0 = h0_expr - cs.vertcat(state_tighten_var, input_tighten_var)
-        ocp.model.con_h_expr = h_expr - cs.vertcat(state_tighten_var, input_tighten_var)
-        ocp.model.con_h_expr_e = he_expr - state_tighten_var
+        ocp.model.con_h_expr_0 = h0_expr
+        ocp.model.con_h_expr = h_expr
+        ocp.model.con_h_expr_e = he_expr
+        if state_tighten_list is not None and input_tighten_list is not None:
+            ocp.model.con_h_expr_0 = h0_expr - cs.vertcat(state_tighten_var, input_tighten_var)
+            ocp.model.con_h_expr = h_expr - cs.vertcat(state_tighten_var, input_tighten_var)
+            ocp.model.con_h_expr_e = he_expr - state_tighten_var
+
         ocp.dims.nh_0, ocp.dims.nh, ocp.dims.nh_e = \
             h0_expr.shape[0], h_expr.shape[0], he_expr.shape[0]
         # assign constraints upper and lower bounds
@@ -380,10 +373,6 @@ class GPMPC_ACADOS(GPMPC):
             mean_post_factor_val = self.mean_post_factor_val
             z_ind_val = self.z_ind_val
             self.results_dict['inducing_points'] = [z_ind_val]
-        # Set the probabilistic state and input constraint set limits.
-        # Tightening at the first step is possible if self.compute_initial_guess is used
-        state_constraint_set_prev, input_constraint_set_prev = self.precompute_probabilistic_limits()
-
         # set acados parameters
         if self.sparse_gp:
             # sparse GP parameters
@@ -394,32 +383,12 @@ class GPMPC_ACADOS(GPMPC):
             z_ind_val = z_ind_val.reshape(-1, 1, order='F')
             mean_post_factor_val = mean_post_factor_val.reshape(-1, 1, order='F')
             dyn_value = np.concatenate((z_ind_val, mean_post_factor_val)).reshape(-1)
-            # tighten constraints
+
             for idx in range(self.T):
-                # tighten initial and path constraints
-                state_constraint_set = state_constraint_set_prev[0][:, idx]
-                input_constraint_set = input_constraint_set_prev[0][:, idx]
-                tighten_value = np.concatenate((state_constraint_set, input_constraint_set))
                 # set the parameter values
-                parameter_values = np.concatenate((dyn_value, tighten_value))
-                # self.acados_ocp_solver.set(idx, "p", dyn_value)
-                self.acados_ocp_solver.set(idx, 'p', parameter_values)
-            # tighten terminal state constraints
-            tighten_value = np.concatenate((state_constraint_set_prev[0][:, self.T], np.zeros((2 * nu,))))
+                self.acados_ocp_solver.set(idx, "p", dyn_value)
             # set the parameter values
-            parameter_values = np.concatenate((dyn_value, tighten_value))
-            self.acados_ocp_solver.set(self.T, 'p', parameter_values)
-            # self.acados_ocp_solver.set(self.T, "p", dyn_value)
-        else:
-            for idx in range(self.T):
-                # tighten initial and path constraints
-                state_constraint_set = state_constraint_set_prev[0][:, idx]
-                input_constraint_set = input_constraint_set_prev[0][:, idx]
-                tighten_value = np.concatenate((state_constraint_set, input_constraint_set))
-                self.acados_ocp_solver.set(idx, 'p', tighten_value)
-            # tighten terminal state constraints
-            tighten_value = np.concatenate((state_constraint_set_prev[0][:, self.T], np.zeros((2 * nu,))))
-            self.acados_ocp_solver.set(self.T, 'p', tighten_value)
+            self.acados_ocp_solver.set(self.T, "p", dyn_value)
 
         # set reference for the control horizon
         goal_states = self.get_references()
