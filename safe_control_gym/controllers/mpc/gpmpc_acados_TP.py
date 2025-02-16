@@ -440,6 +440,8 @@ class GPMPC_ACADOS_TP(GPMPC):
         acados_model.name = self.env.NAME + '_' + current_time
 
         z = cs.vertcat(acados_model.x, acados_model.u)  # GP prediction point
+        T_pred_point = z[6]
+        P_pred_point = z[[4, 5, 7]]
 
         if self.sparse_gp:
             # sparse GP inducing points
@@ -452,8 +454,6 @@ class GPMPC_ACADOS_TP(GPMPC):
             mean_post_factor = cs.MX.sym('mean_post_factor', 2, n_ind_points)
             acados_model.p = cs.vertcat(cs.reshape(z_ind, -1, 1), cs.reshape(mean_post_factor, -1, 1))
             # define the dynamics
-            T_pred_point = z[6]
-            P_pred_point = z[[4, 5, 7]]
             T_pred = cs.sum2(self.K_z_zind_func_T(z1=T_pred_point, z2=z_ind)['K'] * mean_post_factor[0, :])
             P_pred = cs.sum2(self.K_z_zind_func_P(z1=P_pred_point, z2=z_ind)['K'] * mean_post_factor[1, :])
             f_cont = self.prior_dynamics_func_c(x=acados_model.x, u=acados_model.u)['f']\
@@ -469,13 +469,11 @@ class GPMPC_ACADOS_TP(GPMPC):
             f_disc = acados_model.x + self.dt/6 * (k1 + 2*k2 + 2*k3 + k4)
 
         else:
-            T_pred_point = z[6]
-            P_pred_point = z[[4, 5, 7]]
-            z_ind = cs.MX.sym('z_ind', n_ind_points, 4)
-            mean_post_factor = cs.MX.sym('mean_post_factor', 2, n_ind_points)
-            acados_model.p = cs.vertcat(cs.reshape(z_ind, -1, 1), cs.reshape(mean_post_factor, -1, 1))
-            T_pred = cs.sum2(self.K_z_zind_func_T(z1=T_pred_point, z2=z_ind)['K'] * mean_post_factor[0, :])
-            P_pred = cs.sum2(self.K_z_zind_func_P(z1=P_pred_point, z2=z_ind)['K'] * mean_post_factor[1, :])
+            GP_T = self.gaussian_process[0]
+            GP_P = self.gaussian_process[1]
+            T_pred = GP_T.casadi_predict(T_pred_point)
+            P_pred = GP_P.casadi_predict(P_pred_point)
+            # T_pred = 
 
             f_cont = self.prior_dynamics_func_c(x=acados_model.x, u=acados_model.u)['f']\
                     + cs.vertcat(0, cs.sin(acados_model.x[4])*T_pred,
@@ -548,7 +546,8 @@ class GPMPC_ACADOS_TP(GPMPC):
         he_expr = cs.vertcat(*state_constraint_expr_list)  # terminal constraints are only state constraints
         # pass the constraints to the ocp object
         ocp = self.processing_acados_constraints_expression(ocp, h0_expr, h_expr, he_expr)
-        ocp.parameter_values = np.zeros((ocp.model.p.shape[0], ))  # dummy values
+        if self.sparse_gp:
+            ocp.parameter_values = np.zeros((ocp.model.p.shape[0], ))  # dummy values
 
         # placeholder initial state constraint
         x_init = np.zeros((nx))

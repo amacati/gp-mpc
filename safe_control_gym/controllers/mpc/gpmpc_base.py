@@ -599,7 +599,7 @@ class GPMPC(MPC, ABC):
             if self.plot_trained_gp:
                 self.gaussian_process.plot_trained_gp(train_inputs, train_targets,
                                                       output_dir=self.output_dir,
-                                                      title=f'epoch_{epoch}',
+                                                      title=f'epoch_{epoch}_train',
                                                       residual_func=self.residual_func
                                                       )
             max_steps = train_runs[epoch - 1][episode][0]['obs'][0].shape[0]
@@ -608,7 +608,7 @@ class GPMPC(MPC, ABC):
             if self.plot_trained_gp:
                 self.gaussian_process.plot_trained_gp(test_inputs, test_outputs,
                                                       output_dir=self.output_dir,
-                                                      title=f'epoch_{epoch}_train',
+                                                      title=f'epoch_{epoch}_test',
                                                       residual_func=self.residual_func
                                                       )
                 

@@ -197,8 +197,8 @@ class GPMPC_ACADOS(GPMPC):
         he_expr = cs.vertcat(*state_constraint_expr_list)  # terminal constraints are only state constraints
         # pass the constraints to the ocp object
         ocp = self.processing_acados_constraints_expression(ocp, h0_expr, h_expr, he_expr)
-        ocp.parameter_values = np.zeros((ocp.model.p.shape[0], ))  # dummy values
-
+        if self.sparse_gp:
+            ocp.parameter_values = np.zeros((ocp.model.p.shape[0], ))  # dummy values
 
         # placeholder initial state constraint
         x_init = np.zeros((nx))
