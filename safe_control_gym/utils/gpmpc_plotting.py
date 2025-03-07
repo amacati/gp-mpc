@@ -15,11 +15,7 @@ def get_runtime(test_runs, train_runs):
     # NOTE: the first step is popped out because of the ipopt initial guess
 
     num_epochs = len(train_runs.keys())
-    # num_episode = len(train_runs[0].keys())
     num_train_samples_by_epoch = [] # number of training data
-    # steps_per_episode = len(test_runs[0][0]['runtime'])
-    # num_steps_max = np.max([len(test_runs[epoch][0][0]['inference_time_data'][0]) for epoch in range(num_epochs)])
-
     mean_runtime = np.zeros(num_epochs)
     std_runtime = np.zeros(num_epochs)
     max_runtime = np.zeros(num_epochs)
@@ -128,9 +124,6 @@ def get_constraint_violations(test_runs,
             max_violations = np.zeros(test_runs[epoch][test_episode]['info'][0]['constraint_values'].shape)
             n = len(test_runs[epoch][test_episode]['info']) # number of samples in episode
             for i in range(n):
-                # print('test_runs[epoch][test_episode][info][i][constraint_values]', test_runs[epoch][test_episode]['info'][i]['constraint_values'])
-                # input('press enter to continue')
-                #violations += test_runs[epoch][test_episode]['info'][i]['constraint_violation'] # Due to bug.
                 violations += int(np.any(test_runs[epoch][test_episode]['info'][i]['constraint_values'] > 0))
                 max_violations = np.maximum(max_violations,
                                             test_runs[epoch][test_episode]['info'][i]['constraint_values'])
@@ -278,6 +271,44 @@ def plot_xz_trajectory(runs, ref, dir):
     plt.cla()
     plt.clf()
 
+def plot_xyz_trajectory(runs, ref, dir):
+    num_epochs = len(runs)
+    fig, ax = plt.subplots(3, 1)
+
+    # x-y plane
+    ax[0].plot(ref[:, 0], ref[:, 2], label='Reference', color='gray', linestyle='--')
+    ax[0].plot(runs[0][0][0]['obs'][0][:, 0], runs[0][0][0]['obs'][0][:, 2], label='prior MPC')
+    for epoch in range(1, num_epochs):
+        ax[0].plot(runs[epoch][0][0]['obs'][0][:, 0], runs[epoch][0][0]['obs'][0][:, 2], label='GP-MPC %s' % epoch)
+    ax[0].set_title('X-Y plane path')
+    ax[0].set_xlabel('X [m]')
+    ax[0].set_ylabel('Y [m]')
+    ax[0].legend()
+    # x-z plane
+    ax[1].plot(ref[:, 0], ref[:, 4], label='Reference', color='gray', linestyle='--')
+    ax[1].plot(runs[0][0][0]['obs'][0][:, 0], runs[0][0][0]['obs'][0][:, 4], label='prior MPC')
+    for epoch in range(1, num_epochs):
+        ax[1].plot(runs[epoch][0][0]['obs'][0][:, 0], runs[epoch][0][0]['obs'][0][:, 4], label='GP-MPC %s' % epoch)
+    ax[1].set_title('X-Z plane path')
+    ax[1].set_xlabel('X [m]')
+    ax[1].set_ylabel('Z [m]')
+    ax[1].legend()
+    # y-z plane
+    ax[2].plot(ref[:, 2], ref[:, 4], label='Reference', color='gray', linestyle='--')
+    ax[2].plot(runs[0][0][0]['obs'][0][:, 2], runs[0][0][0]['obs'][0][:, 4], label='prior MPC')
+    for epoch in range(1, num_epochs):
+        ax[2].plot(runs[epoch][0][0]['obs'][0][:, 2], runs[epoch][0][0]['obs'][0][:, 4], label='GP-MPC %s' % epoch)
+    ax[2].set_title('Y-Z plane path')
+    ax[2].set_xlabel('Y [m]')
+    ax[2].set_ylabel('Z [m]')
+    ax[2].legend()
+
+    save_str = os.path.join(dir, 'xyz_path.png')
+    fig.savefig(save_str)
+    plt.cla()
+    plt.clf()
+
+
 def make_plots(test_runs, train_runs, dir):
     nx = test_runs[0][0]['state'].shape[1]
     nu = test_runs[0][0]['action'].shape[1]
@@ -329,7 +360,10 @@ def make_quad_plots(test_runs, train_runs, trajectory, dir):
     mkdirs(fig_dir)
     num_points_per_epoch = []
     for episode_i in range(num_episodes):
-        plot_xz_trajectory(test_runs, trajectory, fig_dir)
+        if nx == 6:
+            plot_xz_trajectory(test_runs, trajectory, fig_dir)
+        if nx == 10:
+            plot_xyz_trajectory(test_runs, trajectory, fig_dir)
         for ind in range(nx):
             ylabel = 'x%s' % ind
             plot_runs(test_runs, num_epochs, episode=episode_i, ind=ind, ylabel=ylabel, dir=fig_dir, traj=trajectory)

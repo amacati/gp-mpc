@@ -31,23 +31,18 @@ def run(gui=False, n_episodes=1, n_steps=None, save_data=True, seed=1):
         n_steps (int): The total number of steps to execute.
         save_data (bool): Whether to save the collected experiment data.
     '''
-    generate_reference = False
-    # generate_reference = True
     # read the additional arguments
     if len(sys.argv) > 1:
         print('sys.argv', sys.argv)
         ALGO = sys.argv[1] 
-        if generate_reference:
-            TRAJ_LEN = sys.argv[2] if len(sys.argv) > 2 else None
-            TRAJ_LEN = int(TRAJ_LEN) if TRAJ_LEN is not None else None
         ADDITIONAL = sys.argv[2] if len(sys.argv) > 2 else ''
 
     else:
-        ALGO = 'ilqr'
+        # ALGO = 'ilqr'
         # ALGO = 'gp_mpc'
         # ALGO = 'gpmpc_acados'
         # ALGO = 'gpmpc_acados_TP'
-        # ALGO = 'gpmpc_acados_TRP'
+        ALGO = 'gpmpc_acados_TRP'
         # ALGO = 'mpc'
         # ALGO = 'mpc_acados'
         # ALGO = 'linear_mpc_acados'
@@ -60,13 +55,9 @@ def run(gui=False, n_episodes=1, n_steps=None, save_data=True, seed=1):
     CTRL_ADD = ''
     # ADDITIONAL = ''
     # CTRL_ADD = '_tr'
-    SYS = 'quadrotor_2D_attitude'
-    # SYS = 'quadrotor_3D_attitude'
+    # SYS = 'quadrotor_2D_attitude'
+    SYS = 'quadrotor_3D_attitude'
     TASK = 'tracking'
-
-    if generate_reference:
-        ALGO = 'ilqr'
-        # ALGO = 'mpc_acados'
 
     # TASK = 'stab'
     # PRIOR = '200'
@@ -122,16 +113,6 @@ def run(gui=False, n_episodes=1, n_steps=None, save_data=True, seed=1):
     set_dir_from_config(config)
     config.algo_config.output_dir = config.output_dir
     mkdirs(config.output_dir)
-    if generate_reference:
-        if locals().get('TRAJ_LEN') is not None:
-            config.task_config.episode_len_sec = int(TRAJ_LEN)
-        # reconfigure the trajectory length for generating reference
-        target_traj_length = config.task_config.episode_len_sec
-        ref_traj_length = target_traj_length * 1.5
-        config.task_config.task_info.num_cycles *= 1.5
-        config.task_config.episode_len_sec = ref_traj_length
-        if ALGO == 'mpc_acados':
-            config.algo_config.horizon = int(ref_traj_length * config.task_config.ctrl_freq)
 
     # Create an environment
     env_func = partial(make,
@@ -167,7 +148,6 @@ def run(gui=False, n_episodes=1, n_steps=None, save_data=True, seed=1):
     for _ in range(n_episodes):
         # Get initial state and create environments
         init_state, _ = random_env.reset()
-        # init_state = random_env.reset()
         static_env = env_func(gui=gui, randomized_init=False, init_state=init_state)
         static_train_env = env_func(gui=False, randomized_init=False, init_state=init_state)
 
@@ -223,12 +203,6 @@ def run(gui=False, n_episodes=1, n_steps=None, save_data=True, seed=1):
     random_env.close()
     metrics = experiment.compute_metrics(all_trajs)
     all_trajs = dict(all_trajs)
-    if generate_reference:
-        ref_data={'obs': all_trajs['obs'][0], 
-                  'action': all_trajs['action'][0],
-                  'rmse': metrics['rmse']}
-        np.save(f'./data/{ALGO}_{SYS}_{target_traj_length}_ref_traj.npy', \
-                ref_data, allow_pickle=True)
     
     if hasattr(experiment.env, 'dw_model'):
         force_log = experiment.env.dw_model.get_force_log()
@@ -247,7 +221,7 @@ def run(gui=False, n_episodes=1, n_steps=None, save_data=True, seed=1):
         with open(f'./{config.output_dir}/metrics.txt', 'w') as f:
             for key, value in metrics.items():
                 f.write(f'{key}: {value}\n')
-            print(f'Metrics saved to ./{config.output_dir}/metrics.txt')
+            print(f'Metrics saved to {config.output_dir}/metrics.txt')
 
     print('FINAL METRICS - ' + ', '.join([f'{key}: {value}' for key, value in metrics.items()]))
     print(f'pyb_client: {ctrl.env.PYB_CLIENT}')
@@ -350,6 +324,7 @@ def plot_quad_eval(res, env, save_path=None):
     if save_path is not None:
         plt.savefig(os.path.join(save_path, 'state_xz_path.png'))
         print(f'Plots saved to {save_path}')
+
     if env.QUAD_TYPE in [QuadType.THREE_D_ATTITUDE, QuadType.THREE_D_ATTITUDE_10]:
         fig, axs = plt.subplots(1)
         axs.plot(np.array(state_stack).transpose()[x_idx, 0:plot_length], 
@@ -364,23 +339,6 @@ def plot_quad_eval(res, env, save_path=None):
 
         if save_path is not None:
             plt.savefig(os.path.join(save_path, 'state_xy_path.png'))
-
-    # plt.show()
-
-def wrap2pi_vec(angle_vec):
-    '''Wraps a vector of angles between -pi and pi.
-
-    Args:
-        angle_vec (ndarray): A vector of angles.
-    '''
-    for k, angle in enumerate(angle_vec):
-        while angle > np.pi:
-            angle -= np.pi
-        while angle <= -np.pi:
-            angle += np.pi
-        angle_vec[k] = angle
-    return angle_vec
-
 
 if __name__ == '__main__':
     run()
