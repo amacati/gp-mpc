@@ -7,6 +7,8 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.ticker import FormatStrFormatter
+from munch import munchify
+import yaml
 
 from safe_control_gym.envs.benchmark_env import Task
 from safe_control_gym.experiments.base_experiment import BaseExperiment
@@ -60,6 +62,7 @@ def run():
 
     # merge config and create output directory
     config = fac.merge()
+
     num_data_max = config.algo_config.num_epochs * config.algo_config.num_samples
     config.output_dir = str(Path(config.output_dir) / f"{PRIOR}_{num_data_max}")
 
@@ -132,10 +135,9 @@ def run():
     )
 
     plot_quad_eval(results, experiment.env, config.output_dir)
-    if hasattr(ctrl, "rand_hist"):
-        with open(f"./{config.output_dir}/rand_hist.txt", "w") as file:
-            for key, value in ctrl.rand_hist.items():
-                file.write(f"{key}: {value}\n")
+    with open(f"./{config.output_dir}/rand_hist.txt", "w") as file:
+        for key, value in ctrl.rand_hist.items():
+            file.write(f"{key}: {value}\n")
 
 
 def plot_quad_eval(res, env, save_path=None):
