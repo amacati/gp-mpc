@@ -1,31 +1,27 @@
 import os
-import sys
 import pickle
+import sys
 from collections import defaultdict
 from functools import partial
 from pathlib import Path
+
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.ticker import FormatStrFormatter
-from munch import munchify
-import yaml
 
 from safe_control_gym.envs.benchmark_env import Task
+from safe_control_gym.envs.gym_pybullet_drones.quadrotor_utils import QuadType
 from safe_control_gym.experiments.base_experiment import BaseExperiment
 from safe_control_gym.utils.configuration import ConfigFactory
+from safe_control_gym.utils.gpmpc_plotting import make_quad_plots
 from safe_control_gym.utils.registration import make
 from safe_control_gym.utils.utils import mkdirs, set_dir_from_config, timing
-from safe_control_gym.envs.gym_pybullet_drones.quadrotor_utils import QuadType
-from safe_control_gym.utils.gpmpc_plotting import make_quad_plots
 
 script_path = os.path.dirname(os.path.realpath(__file__))
 
 
-@timing
-def run():
-    """The main function running experiments for model-based methods."""
-
-    seed = 1
+def load_config():
+    seed = "1"
     ALGO = "gpmpc_acados_TRP"
     CTRL_ADD = ""
     SYS = "quadrotor_3D_attitude"
@@ -48,7 +44,7 @@ def run():
         f"./config_overrides/{SYS}_{TASK}.yaml",
         f"./config_overrides/{ALGO}_{SYS}_{TASK}_{PRIOR}{CTRL_ADD}.yaml",
         "--seed",
-        repr(seed),
+        seed,
         "--use_gpu",
         "True",
         "--output_dir",
@@ -56,20 +52,20 @@ def run():
     ]
     fac = ConfigFactory()
     fac.add_argument("--func", type=str, default="train", help="main function to run.")
-    fac.add_argument(
-        "--n_episodes", type=int, default=1, help="number of episodes to run."
-    )
-
-    # merge config and create output directory
+    fac.add_argument("--n_episodes", type=int, default=1, help="number of episodes to run.")
     config = fac.merge()
-
     num_data_max = config.algo_config.num_epochs * config.algo_config.num_samples
     config.output_dir = str(Path(config.output_dir) / f"{PRIOR}_{num_data_max}")
-
     set_dir_from_config(config)
     config.algo_config.output_dir = config.output_dir
     mkdirs(config.output_dir)
+    return config
 
+
+@timing
+def run():
+    """The main function running experiments for model-based methods."""
+    config = load_config()
     # Create an environment
     env_func = partial(make, config.task, seed=config.seed, **config.task_config)
     random_env = env_func(gui=False)
@@ -117,8 +113,7 @@ def run():
     results = {"trajs_data": all_trajs, "metrics": metrics}
 
     save_path = (
-        Path(config.output_dir)
-        / f"{config.algo}_data_{config.task}_{config.task_config.task}.pkl"
+        Path(config.output_dir) / f"{config.algo}_data_{config.task}_{config.task_config.task}.pkl"
     )
     with open(save_path, "wb") as file:
         pickle.dump(results, file)
@@ -129,10 +124,7 @@ def run():
             f.write(f"{key}: {value}\n")
         print(f"Metrics saved to {metrics_path}")
 
-    print(
-        "FINAL METRICS - "
-        + ", ".join([f"{key}: {value}" for key, value in metrics.items()])
-    )
+    print("FINAL METRICS - " + ", ".join([f"{key}: {value}" for key, value in metrics.items()]))
 
     plot_quad_eval(results, experiment.env, config.output_dir)
     with open(f"./{config.output_dir}/rand_hist.txt", "w") as file:
@@ -169,20 +161,14 @@ def plot_quad_eval(res, env, save_path=None):
     # Plot states
     fig, axs = plt.subplots(model.nx, figsize=(8, model.nx * 1))
     for k in range(model.nx):
-        axs[k].plot(
-            times, np.array(state_stack).transpose()[k, 0:plot_length], label="actual"
-        )
-        axs[k].plot(
-            times, reference.transpose()[k, 0:plot_length], color="r", label="desired"
-        )
+        axs[k].plot(times, np.array(state_stack).transpose()[k, 0:plot_length], label="actual")
+        axs[k].plot(times, reference.transpose()[k, 0:plot_length], color="r", label="desired")
         axs[k].set(ylabel=env.STATE_LABELS[k] + f"\n[{env.STATE_UNITS[k]}]")
         axs[k].yaxis.set_major_formatter(FormatStrFormatter("%.1f"))
         if k != model.nx - 1:
             axs[k].set_xticks([])
     axs[0].set_title("State Trajectories")
-    axs[-1].legend(
-        ncol=3, bbox_transform=fig.transFigure, bbox_to_anchor=(1, 0), loc="lower right"
-    )
+    axs[-1].legend(ncol=3, bbox_transform=fig.transFigure, bbox_to_anchor=(1, 0), loc="lower right")
     axs[-1].set(xlabel="time (sec)")
     fig.tight_layout()
 

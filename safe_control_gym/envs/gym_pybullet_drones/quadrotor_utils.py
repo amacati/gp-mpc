@@ -15,11 +15,14 @@ class QuadType(IntEnum):
     TWO_D = 2  # Two-dimensional (in the x-z plane) movement.
     THREE_D = 3  # Three-dimensional movement.
     TWO_D_ATTITUDE = 4  # Two-dimensional (in the x-z plane) movement with attitude control.
-    TWO_D_ATTITUDE_5S = 5  # Two-dimensional (in the x-z plane) movement with attitude control with 5 states.
+    TWO_D_ATTITUDE_5S = (
+        5  # Two-dimensional (in the x-z plane) movement with attitude control with 5 states.
+    )
     THREE_D_ATTITUDE = 6  # Three-dimensional movement with attitude control with 12 states.
-    TWO_D_ATTITUDE_BODY= 7  # Two-dimensional (in the x-z plane) 
-                                 # movement with attitude control with extended state for residual.
+    TWO_D_ATTITUDE_BODY = 7  # Two-dimensional (in the x-z plane)
+    # movement with attitude control with extended state for residual.
     THREE_D_ATTITUDE_10 = 8
+
 
 def cmd2pwm(thrust, pwm2rpm_scale, pwm2rpm_const, ct, pwm_min, pwm_max):
     """Generic cmd to pwm function.
@@ -48,7 +51,7 @@ def cmd2pwm(thrust, pwm2rpm_scale, pwm2rpm_const, ct, pwm_min, pwm_max):
     elif thrust.size == 4:  # 3D case.
         motor_pwm = np.array(motor_pwm)
     else:
-        raise ValueError('Input action shape not supported.')
+        raise ValueError("Input action shape not supported.")
     motor_pwm = np.clip(motor_pwm, pwm_min, pwm_max)
     return motor_pwm
 
@@ -71,20 +74,21 @@ def pwm2rpm(pwm, pwm2rpm_scale, pwm2rpm_const):
 class AttitudeControl(ABC):
     """AttitudeControl Class."""
 
-    def __init__(self,
-                 control_timestep,
-                 sim_timestep,
-                 g: float = 9.8,
-                 kf: float = 3.16e-10,
-                 km: float = 7.94e-12,
-                 p_coeff_tor=np.array([70000., 70000., 60000.]),
-                 i_coeff_tor=np.array([.0, .0, 500.]),
-                 d_coeff_tor=np.array([20000., 20000., 12000.]),
-                 pwm2rpm_scale: float = 0.2685,
-                 pwm2rpm_const: float = 4070.3,
-                 min_pwm: float = 20000,
-                 max_pwm: float = 65535,
-                 ):
+    def __init__(
+        self,
+        control_timestep,
+        sim_timestep,
+        g: float = 9.8,
+        kf: float = 3.16e-10,
+        km: float = 7.94e-12,
+        p_coeff_tor=np.array([70000.0, 70000.0, 60000.0]),
+        i_coeff_tor=np.array([0.0, 0.0, 500.0]),
+        d_coeff_tor=np.array([20000.0, 20000.0, 12000.0]),
+        pwm2rpm_scale: float = 0.2685,
+        pwm2rpm_const: float = 4070.3,
+        min_pwm: float = 20000,
+        max_pwm: float = 65535,
+    ):
         """AttitudeControl class __init__ method.
 
         Args:
@@ -112,7 +116,9 @@ class AttitudeControl(ABC):
         self.PWM2RPM_CONST = np.array(pwm2rpm_const)
         self.MIN_PWM = np.array(min_pwm)
         self.MAX_PWM = np.array(max_pwm)
-        self.MIXER_MATRIX = np.array([[.5, -.5, -1], [.5, .5, 1], [-.5, .5, -1], [-.5, -.5, 1]])
+        self.MIXER_MATRIX = np.array(
+            [[0.5, -0.5, -1], [0.5, 0.5, 1], [-0.5, 0.5, -1], [-0.5, -0.5, 1]]
+        )
 
         self.a_coeff = -1.1264
         self.b_coeff = 2.2541
@@ -131,12 +137,7 @@ class AttitudeControl(ABC):
         self.last_rpy = np.zeros(3)
         self.integral_rpy_e = np.zeros(3)
 
-    def _dslPIDAttitudeControl(self,
-                               thrust,
-                               cur_quat,
-                               target_euler,
-                               target_rpy_rates=np.zeros(3)
-                               ):
+    def _dslPIDAttitudeControl(self, thrust, cur_quat, target_euler, target_rpy_rates=np.zeros(3)):
         """DSL's CF2.x PID attitude control.
 
         Parameters
@@ -160,20 +161,24 @@ class AttitudeControl(ABC):
         sim_timestep = self.sim_timestep
         cur_rotation = np.array(p.getMatrixFromQuaternion(cur_quat)).reshape(3, 3)
         cur_rpy = np.array(p.getEulerFromQuaternion(cur_quat))
-        target_quat = (Rotation.from_euler('XYZ', target_euler, degrees=False)).as_quat()
+        target_quat = (Rotation.from_euler("XYZ", target_euler, degrees=False)).as_quat()
         w, x, y, z = target_quat
         target_rotation = (Rotation.from_quat([w, x, y, z])).as_matrix()
-        rot_matrix_e = np.dot((target_rotation.transpose()), cur_rotation) - np.dot(cur_rotation.transpose(), target_rotation)
+        rot_matrix_e = np.dot((target_rotation.transpose()), cur_rotation) - np.dot(
+            cur_rotation.transpose(), target_rotation
+        )
         rot_e = np.array([rot_matrix_e[2, 1], rot_matrix_e[0, 2], rot_matrix_e[1, 0]])
         rpy_rates_e = target_rpy_rates - (cur_rpy - self.last_rpy) / sim_timestep
         self.last_rpy = cur_rpy
         self.integral_rpy_e = self.integral_rpy_e - rot_e * sim_timestep
-        self.integral_rpy_e = np.clip(self.integral_rpy_e, -1500., 1500.)
-        self.integral_rpy_e[0:2] = np.clip(self.integral_rpy_e[0:2], -1., 1.)
+        self.integral_rpy_e = np.clip(self.integral_rpy_e, -1500.0, 1500.0)
+        self.integral_rpy_e[0:2] = np.clip(self.integral_rpy_e[0:2], -1.0, 1.0)
         #### PID target torques ####################################
-        target_torques = - np.multiply(self.P_COEFF_TOR, rot_e) \
-            + np.multiply(self.D_COEFF_TOR, rpy_rates_e) \
+        target_torques = (
+            -np.multiply(self.P_COEFF_TOR, rot_e)
+            + np.multiply(self.D_COEFF_TOR, rpy_rates_e)
             + np.multiply(self.I_COEFF_TOR, self.integral_rpy_e)
+        )
         target_torques = np.clip(target_torques, -3200, 3200)
         # pwm = thrust + np.dot(self.MIXER_MATRIX, target_torques)
         # pwm = np.clip(pwm, self.MIN_PWM, self.MAX_PWM)
@@ -186,7 +191,10 @@ class AttitudeControl(ABC):
         pwm_scaled = pwm / self.MAX_PWM
         # pwm_scaled = pwm
         # solve quadratic equation using abc formula
-        thrust = (-self.b_coeff + np.sqrt(self.b_coeff**2 - 4 * self.a_coeff * (self.c_coeff - pwm_scaled))) / (2 * self.a_coeff)
+        thrust = (
+            -self.b_coeff
+            + np.sqrt(self.b_coeff**2 - 4 * self.a_coeff * (self.c_coeff - pwm_scaled))
+        ) / (2 * self.a_coeff)
         return thrust
 
     def thrust2pwm(self, thrust):

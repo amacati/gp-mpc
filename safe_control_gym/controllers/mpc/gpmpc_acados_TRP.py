@@ -1630,20 +1630,16 @@ class GPMPC_ACADOS_TRP:
                 env.EPISODE_LEN_SEC = env.EPISODE_LEN_SEC[idx]
 
         # creating train and test experiments
-        train_experiments = [
-            BaseExperiment(env=env, ctrl=self, reset_when_created=False) for env in train_envs[1:]
-        ]
-        test_experiments = [
-            BaseExperiment(env=env, ctrl=self, reset_when_created=False) for env in test_envs[1:]
-        ]
+        train_experiments = [BaseExperiment(env=env, ctrl=self) for env in train_envs[1:]]
+        test_experiments = [BaseExperiment(env=env, ctrl=self) for env in test_envs[1:]]
         # first experiments are for the prior
         train_experiments.insert(
             0,
-            BaseExperiment(env=train_envs[0], ctrl=self.prior_ctrl, reset_when_created=False),
+            BaseExperiment(env=train_envs[0], ctrl=self.prior_ctrl),
         )
         test_experiments.insert(
             0,
-            BaseExperiment(env=test_envs[0], ctrl=self.prior_ctrl, reset_when_created=False),
+            BaseExperiment(env=test_envs[0], ctrl=self.prior_ctrl),
         )
 
         for episode in range(self.num_train_episodes_per_epoch):

@@ -10,7 +10,7 @@ eps = torch.finfo(torch.float32).eps
 
 
 def reshape_measure_parameters(
-        qn: MLP, *params: Union[torch.Tensor, float]
+    qn: MLP, *params: Union[torch.Tensor, float]
 ) -> Union[torch.Tensor, Tuple[torch.Tensor, ...]]:
     """Reshapes the parameters of a measure function to match the shape of the quantile network.
 
@@ -23,11 +23,15 @@ def reshape_measure_parameters(
     if not params:
         return qn._tau.to(qn.device), *params
 
-    assert len([*set([torch.is_tensor(p) for p in params])]) == 1, 'All parameters must be either tensors or scalars.'
+    assert (
+        len([*set([torch.is_tensor(p) for p in params])]) == 1
+    ), "All parameters must be either tensors or scalars."
 
     if torch.is_tensor(params[0]):
-        assert all([p.dim() == 1 for p in params]), 'All parameters must have dimensionality 1.'
-        assert len([*set([p.shape[0] for p in params])]) == 1, 'All parameters must have the same size.'
+        assert all([p.dim() == 1 for p in params]), "All parameters must have dimensionality 1."
+        assert (
+            len([*set([p.shape[0] for p in params])]) == 1
+        ), "All parameters must have the same size."
 
         reshaped_params = [p.reshape(-1, 1).to(qn.device) for p in params]
         tau = qn._tau.expand(params[0].shape[0], -1).to(qn.device)
@@ -54,7 +58,9 @@ def make_distorted_measure(distorted_tau: torch.Tensor) -> Callable:
         sorted_quantiles = sorted_quantiles.reshape(-1, sorted_quantiles.shape[-1])
 
         # dtau = tau[1:] - tau[:-1] cancels the denominator of g'(tau) = g(tau)[1:] - g(tau)[:-1] / dtau.
-        values = squeeze_preserve_batch((distortion.to(sorted_quantiles.device) * sorted_quantiles).sum(-1))
+        values = squeeze_preserve_batch(
+            (distortion.to(sorted_quantiles.device) * sorted_quantiles).sum(-1)
+        )
 
         return values
 
@@ -175,10 +181,10 @@ def squeeze_preserve_batch(tensor):
 
 
 class QuantileNetwork(MLP):
-    measure_cvar = 'cvar'
-    measure_neutral = 'neutral'
-    measure_percentile = 'percentile'
-    measure_wang = 'wang'
+    measure_cvar = "cvar"
+    measure_neutral = "neutral"
+    measure_percentile = "percentile"
+    measure_wang = "wang"
 
     measures = {
         measure_cvar: risk_measure_cvar,
@@ -188,18 +194,18 @@ class QuantileNetwork(MLP):
     }
 
     def __init__(
-            self,
-            input_size,
-            output_size,
-            hidden_dims=[256, 256, 256],
-            act='relu',
-            init_fade=False,
-            init_gain=0.5,
-            measure=None,
-            measure_kwargs={},
-            quantile_count=200,
-            device=None,
-            **kwargs,
+        self,
+        input_size,
+        output_size,
+        hidden_dims=[256, 256, 256],
+        act="relu",
+        init_fade=False,
+        init_gain=0.5,
+        measure=None,
+        measure_kwargs={},
+        quantile_count=200,
+        device=None,
+        **kwargs,
     ):
         assert quantile_count > 0
 
@@ -214,10 +220,14 @@ class QuantileNetwork(MLP):
 
         self._quantile_count = quantile_count
         self._tau = torch.arange(self._quantile_count + 1) / self._quantile_count
-        self._tau_hat = torch.tensor([(self._tau[i] + self._tau[i + 1]) / 2 for i in range(self._quantile_count)])
+        self._tau_hat = torch.tensor(
+            [(self._tau[i] + self._tau[i + 1]) / 2 for i in range(self._quantile_count)]
+        )
         self._tau_hat_mat = torch.empty((0,))
 
-        self._quantile_layers = nn.ModuleList([nn.Linear(hidden_dims[-1], quantile_count) for _ in range(output_size)])
+        self._quantile_layers = nn.ModuleList(
+            [nn.Linear(hidden_dims[-1], quantile_count) for _ in range(output_size)]
+        )
 
         # self._init(self._quantile_layers, fade=init_fade, gain=init_gain)
 
@@ -239,7 +249,9 @@ class QuantileNetwork(MLP):
         Returns:
             A torch.Tensor of shape (*values.shape, quantile_count) containing the dirac distributions.
         """
-        dirac = values.unsqueeze(-1).expand(*[-1 for _ in range(values.dim())], self._quantile_count)
+        dirac = values.unsqueeze(-1).expand(
+            *[-1 for _ in range(values.dim())], self._quantile_count
+        )
 
         return dirac
 
@@ -258,7 +270,9 @@ class QuantileNetwork(MLP):
             A torch.Tensor of shape (1,) containing the values.
         """
         if measure_args:
-            values = self._measure_func(self, *[squeeze_preserve_batch(m) for m in measure_args])(quantiles)
+            values = self._measure_func(self, *[squeeze_preserve_batch(m) for m in measure_args])(
+                quantiles
+            )
         else:
             values = self._measure(quantiles)
 
@@ -277,15 +291,17 @@ class QuantileNetwork(MLP):
         """
         assert (
             predictions.dim() == 2 or predictions.dim() == 3
-        ), f'Predictions must be 2D or 3D. Got {predictions.dim()}.'
+        ), f"Predictions must be 2D or 3D. Got {predictions.dim()}."
         assert (
             predictions.shape == targets.shape
-        ), f'The shapes of predictions and targets must match. Got {predictions.shape} and {targets.shape}.'
+        ), f"The shapes of predictions and targets must match. Got {predictions.shape} and {targets.shape}."
 
         pre_dims = [-1] if predictions.dim() == 3 else []
 
         prediction_mat = predictions.unsqueeze(-3).expand(*pre_dims, self._quantile_count, -1, -1)
-        target_mat = targets.transpose(-2, -1).unsqueeze(-1).expand(*pre_dims, -1, -1, self._quantile_count)
+        target_mat = (
+            targets.transpose(-2, -1).unsqueeze(-1).expand(*pre_dims, -1, -1, self._quantile_count)
+        )
         delta = target_mat - prediction_mat
 
         tau_hat = self._tau_hat.expand(predictions.shape[-2], -1).to(self.device)
@@ -293,7 +309,9 @@ class QuantileNetwork(MLP):
 
         return loss
 
-    def quantile_huber_loss(self, predictions: torch.Tensor, targets: torch.Tensor, kappa: float = 1.0) -> torch.Tensor:
+    def quantile_huber_loss(
+        self, predictions: torch.Tensor, targets: torch.Tensor, kappa: float = 1.0
+    ) -> torch.Tensor:
         """Computes quantile huber loss between predictions and targets.
 
         TODO: This function is a bottleneck.
@@ -308,11 +326,15 @@ class QuantileNetwork(MLP):
         pre_dims = [-1] if predictions.dim() == 3 else []
 
         prediction_mat = predictions.unsqueeze(-3).expand(*pre_dims, self._quantile_count, -1, -1)
-        target_mat = targets.transpose(-2, -1).unsqueeze(-1).expand(*pre_dims, -1, -1, self._quantile_count)
+        target_mat = (
+            targets.transpose(-2, -1).unsqueeze(-1).expand(*pre_dims, -1, -1, self._quantile_count)
+        )
         delta = target_mat - prediction_mat
         delta_abs = delta.abs()
 
-        huber = torch.where(delta_abs <= kappa, 0.5 * delta.pow(2), kappa * (delta_abs - 0.5 * kappa))
+        huber = torch.where(
+            delta_abs <= kappa, 0.5 * delta.pow(2), kappa * (delta_abs - 0.5 * kappa)
+        )
 
         tau_hat = self._tau_hat.expand(predictions.shape[-2], -1).to(self.device)
         loss = (torch.where(delta < 0, (tau_hat - 1), tau_hat).abs() * huber).mean()
@@ -324,9 +346,13 @@ class QuantileNetwork(MLP):
 
         return loss
 
-    def forward(self, x: torch.Tensor, distribution: bool = False, measure_args: list = [], **kwargs) -> torch.Tensor:
+    def forward(
+        self, x: torch.Tensor, distribution: bool = False, measure_args: list = [], **kwargs
+    ) -> torch.Tensor:
         features = super().forward(x, **kwargs)
-        quantiles = squeeze_preserve_batch(torch.stack([layer(features) for layer in self._quantile_layers], dim=1))
+        quantiles = squeeze_preserve_batch(
+            torch.stack([layer(features) for layer in self._quantile_layers], dim=1)
+        )
 
         self._last_quantiles = quantiles
 

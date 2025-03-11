@@ -29,9 +29,7 @@ from scipy import optimize
 
 
 class Waypoint(dict):
-    def __init__(
-            self, time, position, velocity=None, acceleration=None, jerk=None, snap=None
-    ):
+    def __init__(self, time, position, velocity=None, acceleration=None, jerk=None, snap=None):
         # This class is based on dict (instead of some sequential container) to support
         # the unlikely case there are 'gaps' in
         # orders of derivative specified
@@ -111,76 +109,72 @@ class QuadrotorTrajectory(NamedTuple):
 
 
 def generate_trajectory(
-        references,
-        degree,
-        *,
-        idx_minimized_orders=4,
-        num_continuous_orders=3,
-        algorithm='closed-form',
-        optimize_options=None,
-    ):
-    '''
-    
+    references,
+    degree,
+    *,
+    idx_minimized_orders=4,
+    num_continuous_orders=3,
+    algorithm="closed-form",
+    optimize_options=None,
+):
+    """
+
     Args:
         references: List of Waypoint objectsm {-1: time, 0: position}
         degree: Degree of the polynomial
-    '''
+    """
     if degree < 2:
-        raise ValueError('Polynomial degree too low')
+        raise ValueError("Polynomial degree too low")
 
     derivative_weights = np.zeros(degree)
 
     idx_minimized_orders = np.asarray(idx_minimized_orders, dtype=np.int32).ravel()
     if (idx_minimized_orders < 2).any():
-        raise ValueError('Minimizing 0th- or 1st-order derivatives does not make sense')
+        raise ValueError("Minimizing 0th- or 1st-order derivatives does not make sense")
 
     if (idx_minimized_orders > degree).any():
         raise ValueError(
-            'Cannot minimize any derivatives whose order is higher than the degree of'
-            ' the polynomial'
+            "Cannot minimize any derivatives whose order is higher than the degree of"
+            " the polynomial"
         )
     derivative_weights[idx_minimized_orders] = 1
 
     if num_continuous_orders < 3:
         raise ValueError(
-            f'Constraining {num_continuous_orders} < 2 derivatives of position (velocity'
-            ' and acceleration) usually ;does not make sense'
+            f"Constraining {num_continuous_orders} < 2 derivatives of position (velocity"
+            " and acceleration) usually ;does not make sense"
         )
     if num_continuous_orders > degree:
         raise ValueError(
-            f'Cannot constrain {num_continuous_orders}-order derivatives when polynomial is'
-            f' {degree}-degree only'
+            f"Cannot constrain {num_continuous_orders}-order derivatives when polynomial is"
+            f" {degree}-degree only"
         )
     t_ref, refs = _parse_references(references, num_continuous_orders)
 
     if (t_ref < 0.0).any():
-        raise ValueError('Waypoint timestamp is negative')
-    durations = np.diff(t_ref).astype('float64')
+        raise ValueError("Waypoint timestamp is negative")
+    durations = np.diff(t_ref).astype("float64")
     if (durations <= 1e-8).any():
-        raise ValueError(
-            'The time duration for transiting between waypoints is too small'
-        )
+        raise ValueError("The time duration for transiting between waypoints is too small")
 
-    poly_dim = PolynomialSize(
-        n_poly=refs.shape[0] - 1, n_cfs=degree + 1, dim=refs.shape[2]
-    ) 
-    '''
+    poly_dim = PolynomialSize(n_poly=refs.shape[0] - 1, n_cfs=degree + 1, dim=refs.shape[2])
+    """
     n_poly: num of segments = num of references - 1
     n_cfs: num of coefficients = degree + 1
     dim: dimension of the trajectory = num of continuous orders
-    '''
+    """
 
-    if algorithm == 'constrained':
+    if algorithm == "constrained":
         solver = _solve_constrained
-    elif algorithm == 'closed-form':
+    elif algorithm == "closed-form":
         solver = _solve_closed_form
     else:
-        raise ValueError('Unrecognized algorithm')
+        raise ValueError("Unrecognized algorithm")
     polys = solver(
-        refs, # parsed references
-        durations, # time intervals between waypoints
-        poly_dim, # PolynomialSize object
-        derivative_weights, # weights for derivatives (e.g. minimum snap)
+        refs,  # parsed references
+        durations,  # time intervals between waypoints
+        poly_dim,  # PolynomialSize object
+        derivative_weights,  # weights for derivatives (e.g. minimum snap)
         num_continuous_orders,
         optimize_options,
     )
@@ -199,7 +193,7 @@ def _parse_references(references, r_cts):
         dim = len(it.position)
 
         if any(k > r_cts for k in it.keys()):
-            warnings.warn('Too many derivatives specified', stacklevel=2)
+            warnings.warn("Too many derivatives specified", stacklevel=2)
         # velocity/acceleration are constrained to zero at initial or terminal points;
         # Otherwise they are unconstrained as signalled by nans
         # Higher-order derivatives are always unconstrained unless specified
@@ -216,22 +210,20 @@ def _parse_references(references, r_cts):
 
 
 def _solve_closed_form(
-        refs,
-        durations,
-        poly_dim,
-        derivative_weights,
-        r_cts,
-        optimize_options,
+    refs,
+    durations,
+    poly_dim,
+    derivative_weights,
+    r_cts,
+    optimize_options,
 ):
     if r_cts < 3:
-        raise ValueError(
-            'Trajectory must be continuous up to the 2nd order (acceleration)'
-        )
+        raise ValueError("Trajectory must be continuous up to the 2nd order (acceleration)")
 
     if optimize_options is not None:
         warnings.warn(
-            'Solving the trajectory generation problem in closed form.'
-            'Optimizer options will be ignored',
+            "Solving the trajectory generation problem in closed form."
+            "Optimizer options will be ignored",
             stacklevel=2,
         )
     n_vars = poly_dim.n_poly * poly_dim.n_cfs
@@ -242,19 +234,15 @@ def _solve_closed_form(
     poly_coeffs = np.zeros(poly_dim)
     A = np.zeros((r_cts * 2 * poly_dim.n_poly, poly_dim.n_cfs * poly_dim.n_poly))
     for i in range(poly_dim.n_poly):
-        s = np.s_[poly_dim.n_cfs * i: poly_dim.n_cfs * (i + 1)]
+        s = np.s_[poly_dim.n_cfs * i : poly_dim.n_cfs * (i + 1)]
         for r in range(r_cts):
-            A[r_cts * 2 * i + r, s] = (
-                _compute_tvec(poly_dim.n_cfs, r, 0) / durations[i] ** r
-            )
-            A[r_cts * (2 * i + 1) + r, s] = (
-                _compute_tvec(poly_dim.n_cfs, r, 1) / durations[i] ** r
-            )
+            A[r_cts * 2 * i + r, s] = _compute_tvec(poly_dim.n_cfs, r, 0) / durations[i] ** r
+            A[r_cts * (2 * i + 1) + r, s] = _compute_tvec(poly_dim.n_cfs, r, 1) / durations[i] ** r
 
     M = np.zeros((poly_dim.n_poly * 2 * r_cts, r_cts * (poly_dim.n_poly + 1)))
     for i in range(poly_dim.n_poly):
-        s1 = np.s_[2 * r_cts * i: 2 * r_cts * (i + 1)]
-        s2 = np.s_[r_cts * i: r_cts * (i + 2)]
+        s1 = np.s_[2 * r_cts * i : 2 * r_cts * (i + 1)]
+        s2 = np.s_[r_cts * i : r_cts * (i + 2)]
         M[s1, s2] = np.eye(2 * r_cts)
 
     num_d = r_cts * (poly_dim.n_poly + 1)
@@ -281,36 +269,34 @@ def _solve_closed_form(
         dp = -la.solve(Rpp, Rfp.T @ df)
 
         coeffs = np.reshape(AiMC @ np.concatenate([df, dp]), poly_dim[0:2])
-        poly_coeffs[:, :, d] = (1.0 / durations[..., None]) ** np.arange(
-            0, poly_dim.n_cfs
-        ) * coeffs
+        poly_coeffs[:, :, d] = (1.0 / durations[..., None]) ** np.arange(0, poly_dim.n_cfs) * coeffs
 
     return poly_coeffs
 
 
 def _solve_constrained(
-        refs,
-        durations,
-        poly_dim,
-        derivative_weights,
-        r_cts,
-        optimize_options,
-    ):
-    '''
-    # reminder: 
+    refs,
+    durations,
+    poly_dim,
+    derivative_weights,
+    r_cts,
+    optimize_options,
+):
+    """
+    # reminder:
     n_poly: num of segments = num of references - 1
     n_cfs: num of coefficients = degree + 1
     dim: dimension of the trajectory = num of continuous orders
-    '''
-    '''
+    """
+    """
     refs: np.ndarray, shape=(n_refs, r_cts, dim)
     durations: np.ndarray, shape=(n_refs-1,)
     poly_dim: PolynomialSize object (n_poly, n_cfs, dim)
     derivative_weights: np.ndarray, shape=(n_cfs,)
     r_cts: int
     optimize_options: dict
-    '''
-    opts = {'method': 'SLSQP', 'tol': 1e-10}
+    """
+    opts = {"method": "SLSQP", "tol": 1e-10}
     if optimize_options is not None:
         opts.update(optimize_options)
     n_vars = poly_dim.n_poly * poly_dim.n_cfs
@@ -321,9 +307,7 @@ def _solve_constrained(
     poly_coeffs = np.zeros(poly_dim)
     Aeq_1, beq_1 = _compute_continuity_constraints(poly_dim, durations, r_cts)
     for d in range(poly_dim.dim):
-        Aeq_0, beq_0 = _compute_dynamical_constraints(
-            poly_dim, refs[:, :, d], durations
-        )
+        Aeq_0, beq_0 = _compute_dynamical_constraints(poly_dim, refs[:, :, d], durations)
 
         Aeq = np.vstack([Aeq_0, Aeq_1])
         beq = np.concatenate([beq_0, beq_1])
@@ -337,9 +321,7 @@ def _solve_constrained(
             **opts,
         )
         coeffs = soln.x.reshape(poly_dim[0:2])
-        poly_coeffs[:, :, d] = (1.0 / durations[..., None]) ** np.arange(
-            0, poly_dim.n_cfs
-        ) * coeffs
+        poly_coeffs[:, :, d] = (1.0 / durations[..., None]) ** np.arange(0, poly_dim.n_cfs) * coeffs
     return poly_coeffs
 
 
@@ -348,7 +330,7 @@ def _compute_continuity_constraints(poly_dim, durations, r_cts):
     Aeq = np.zeros(((poly_dim.n_poly - 1) * r_cts, n_vars))
     beq = np.zeros((poly_dim.n_poly - 1) * r_cts)
     for i in range(poly_dim.n_poly - 1):
-        s = np.s_[poly_dim.n_cfs * i: poly_dim.n_cfs * (i + 2)]
+        s = np.s_[poly_dim.n_cfs * i : poly_dim.n_cfs * (i + 2)]
         for r in range(r_cts):
             tvec_l = _compute_tvec(poly_dim.n_cfs, r, 1) / durations[i] ** r
             tvec_r = _compute_tvec(poly_dim.n_cfs, r, 0) / durations[i + 1] ** r
@@ -365,11 +347,9 @@ def _compute_dynamical_constraints(poly_dim, refs, durations):
     row_its = np.concatenate([[0], n_constrain_orders.cumsum()])
     for i in range(poly_dim.n_poly + 1):
         idx, tau = (i - 1, 1.0) if i == poly_dim.n_poly else (i, 0.0)
-        s = np.s_[poly_dim.n_cfs * idx: poly_dim.n_cfs * (1 + idx)]
+        s = np.s_[poly_dim.n_cfs * idx : poly_dim.n_cfs * (1 + idx)]
         for r in range(n_constrain_orders[i]):
-            Aeq[row_its[i] + r, s] = (
-                _compute_tvec(poly_dim.n_cfs, r, tau) / durations[idx] ** r
-            )
+            Aeq[row_its[i] + r, s] = _compute_tvec(poly_dim.n_cfs, r, tau) / durations[idx] ** r
             beq[row_its[i] + r] = refs[i, r]
     return Aeq, beq
 
@@ -380,9 +360,7 @@ def _compute_Q(n_cfs, r, tau):  # pylint: disable=C0103
     i, l = np.meshgrid(*[np.arange(r, n_cfs)] * 2, sparse=True)  # NOQA
     m_seq = np.arange(0, r)[:, None, None]
     k = -2 * r + 1
-    Q[:, i, l] = (
-        np.prod((i - m_seq) * (l - m_seq), axis=0) / (k + i + l) * tau[:, None, None] ** k
-    )
+    Q[:, i, l] = np.prod((i - m_seq) * (l - m_seq), axis=0) / (k + i + l) * tau[:, None, None] ** k
     return Q
 
 
@@ -400,15 +378,15 @@ def compute_trajectory_derivatives(polys, t_sample, order):
 
     _, n_cfs, dim = coeffs.shape
     if order < 0:
-        raise ValueError('Negative derivative order')
+        raise ValueError("Negative derivative order")
     if order > n_cfs - 1:
-        raise ValueError(f'Kinematic order {order} > polynomial degree {n_cfs - 1}')
+        raise ValueError(f"Kinematic order {order} > polynomial degree {n_cfs - 1}")
     len_traj = t_sample.size
     trajectory_derivatives = np.zeros((order, len_traj, dim), dtype=np.float64)
 
     def find_piece(t):
         if not t_ref[0] <= t <= t_ref[-1]:
-            warnings.warn('Query point is outside of bounds. Clamping', stacklevel=2)
+            warnings.warn("Query point is outside of bounds. Clamping", stacklevel=2)
             t = np.clip(t, t_ref[0], t_ref[-1])
         idx = np.flatnonzero(t >= t_ref[:-1])[-1]
         tau = t - t_ref[idx]
