@@ -11,10 +11,9 @@ import torch
 from numpy.linalg import LinAlgError
 from termcolor import colored
 
-from safe_control_gym.controllers.lqr.lqr_utils import discretize_linear_system
 from safe_control_gym.controllers.mpc.mpc_utils import (
     compute_discrete_lqr_gain_from_cont_linear_system,
-    compute_state_rmse,
+    discretize_linear_system,
     get_cost_weight_matrix,
     reset_constraints,
     rk_discrete,
@@ -25,27 +24,12 @@ from safe_control_gym.envs.constraints import (
     GENERAL_CONSTRAINTS,
     create_constraint_list,
 )
-from safe_control_gym.utils.utils import timing
 
 try:
     from acados_template import AcadosModel, AcadosOcp, AcadosOcpSolver
 except ImportError as e:
-    print(colored(f"Error: {e}", "red"))
-    print(colored("acados not installed, cannot use acados-based controller. Exiting.", "red"))
-    print(
-        colored(
-            "- To build and install acados, follow the instructions at https://docs.acados.org/installation/index.html",
-            "yellow",
-        )
-    )
-    print(
-        colored(
-            "- To set up the acados python interface, follow the instructions at https://docs.acados.org/python_interface/index.html",
-            "yellow",
-        )
-    )
-    print()
-    exit()
+    print("Acados is not installed")
+    raise e
 
 
 class MPC_ACADOS:
@@ -55,20 +39,15 @@ class MPC_ACADOS:
         self,
         env_func,
         horizon: int = 5,
-        q_mpc: list = [1],
-        r_mpc: list = [1],
         warmstart: bool = True,
         soft_constraints: bool = False,
         soft_penalty: float = 10000,
         terminate_run_on_done: bool = True,
         constraint_tol: float = 1e-6,
-        # runner args
-        # shared/base args
         output_dir: str = "results/temp",
         additional_constraints: list = None,
         use_gpu: bool = False,
         seed: int = 0,
-        use_RTI: bool = False,
         use_lqr_gain_and_terminal_cost: bool = False,
         **kwargs,
     ):
@@ -88,7 +67,6 @@ class MPC_ACADOS:
             additional_constraints (list): List of additional constraints
             use_gpu (bool): False (use cpu) True (use cuda).
             seed (int): random seed.
-            use_RTI (bool): Real-time iteration for acados.
             use_lqr_gain_and_terminal_cost (bool): Use LQR ancillary gain and terminal cost for the MPC.
         """
         for k, v in locals().items():
@@ -157,22 +135,12 @@ class MPC_ACADOS:
         ############
         self.x_guess = None
         self.u_guess = None
-        # acados settings
-        self.use_RTI = use_RTI
 
-    @timing
     def reset(self):
         """Prepares for training or evaluation."""
-        print(colored("Resetting MPC", "green"))
-
-        if self.env.TASK == Task.STABILIZATION:
-            self.mode = "stabilization"
-            self.x_goal = self.env.X_GOAL
-        elif self.env.TASK == Task.TRAJ_TRACKING:
-            self.mode = "tracking"
-            self.traj = self.env.X_GOAL.T
-            # Step along the reference.
-            self.traj_step = 0
+        # trajectory tracking task
+        self.traj = self.env.X_GOAL.T
+        self.traj_step = 0
         # Dynamics model.
         self.set_dynamics_func()
         # CasADi optimizer.
@@ -202,7 +170,7 @@ class MPC_ACADOS:
         # Acados optimizer.
         self.setup_acados_optimizer()
 
-        self.acados_ocp_solver = AcadosOcpSolver(self.ocp)
+        self.acados_ocp_solver = AcadosOcpSolver(self.ocp, verbose=False)
 
     def setup_acados_model(self) -> AcadosModel:
         """Sets up symbolic model for acados.
@@ -247,7 +215,6 @@ class MPC_ACADOS:
 
         self.acados_model = acados_model
 
-    @timing
     def compute_initial_guess(self, init_state, goal_states=None):
         """Use IPOPT to get an initial guess of the solution.
 
@@ -257,12 +224,6 @@ class MPC_ACADOS:
         """
         if goal_states is None:
             goal_states = self.get_references()
-        print(
-            colored(
-                f"computing initial guess using {self.compute_initial_guess_method}",
-                "green",
-            )
-        )
         if self.compute_initial_guess_method == "ipopt":
             self.setup_optimizer(solver=self.init_solver)
             opti_dict = self.opti_dict
@@ -281,7 +242,6 @@ class MPC_ACADOS:
                 sol = opti.solve()
                 x_val, u_val = sol.value(x_var), sol.value(u_var)
             except RuntimeError:
-                print(colored("Warm-starting fails", "red"))
                 x_val, u_val = opti.debug.value(x_var), opti.debug.value(u_var)
             x_guess = x_val
             u_guess = u_val
@@ -320,7 +280,7 @@ class MPC_ACADOS:
         ocp.model = self.acados_model
 
         # set dimensions
-        ocp.dims.N = self.T  # prediction horizon
+        ocp.solver_options.N_horizon = self.T  # prediction horizon
 
         # set cost (NOTE: safe-control-gym uses quadratic cost)
         ocp.cost.cost_type = "LINEAR_LS"
@@ -384,10 +344,8 @@ class MPC_ACADOS:
         ocp.solver_options.qp_solver = "PARTIAL_CONDENSING_HPIPM"
         ocp.solver_options.hessian_approx = "GAUSS_NEWTON"
         ocp.solver_options.integrator_type = "DISCRETE"
-        ocp.solver_options.nlp_solver_type = "SQP" if not self.use_RTI else "SQP_RTI"
-        ocp.solver_options.nlp_solver_max_iter = 25 if not self.use_RTI else 1
-        # ocp.solver_options.globalization = 'FUNNEL_L1PEN_LINESEARCH' if not self.use_RTI else 'MERIT_BACKTRACKING'
-        # ocp.solver_options.globalization = 'MERIT_BACKTRACKING'
+        ocp.solver_options.nlp_solver_type = "SQP"
+        ocp.solver_options.nlp_solver_max_iter = 25
 
         ocp.solver_options.tf = self.T * self.dt  # prediction horizon
 
@@ -467,7 +425,6 @@ class MPC_ACADOS:
 
         return ocp
 
-    @timing
     def select_action(self, obs, info=None):
         """Solves nonlinear mpc problem to get next action.
 
@@ -502,8 +459,7 @@ class MPC_ACADOS:
 
         # set reference for the control horizon
         goal_states = self.get_references()
-        if self.mode == "tracking":
-            self.traj_step += 1
+        self.traj_step += 1
 
         y_ref = np.concatenate(
             (goal_states[:, :-1], np.repeat(self.U_EQ.reshape(-1, 1), self.T, axis=1)),
@@ -517,16 +473,7 @@ class MPC_ACADOS:
         # solve the optimization problem
 
         try:
-            if self.use_RTI:
-                # preparation phase
-                self.acados_ocp_solver.options_set("rti_phase", 1)
-                status = self.acados_ocp_solver.solve()
-
-                # feedback phase
-                self.acados_ocp_solver.options_set("rti_phase", 2)
-                status = self.acados_ocp_solver.solve()
-            else:
-                status = self.acados_ocp_solver.solve()
+            status = self.acados_ocp_solver.solve()
 
             # get the open-loop solution
             if self.x_prev is None and self.u_prev is None:
@@ -542,21 +489,12 @@ class MPC_ACADOS:
                 self.u_prev = self.u_prev.flatten()
 
             # get the solver status
-            n_sqp_iter = self.acados_ocp_solver.get_stats("sqp_iter")
-            n_qp_iter = self.acados_ocp_solver.get_stats("qp_iter")
-            print(
-                f"acados returned status {status}. SQP iterations: {n_sqp_iter}. QP iterations: {n_qp_iter}."
-            )
 
-        except Exception:
-            print(colored("Infeasible MPC Problem", "red"))
-            # get the solver status
+        except Exception as e:
             self.acados_ocp_solver.print_statistics()
             status = self.acados_ocp_solver.get_stats("status")
             print(f"acados returned status {status}. ")
-            # OPTIONAL: shift the x_prev and u_prev and copy the last state
-            # self.x_prev = np.concatenate((self.x_guess[:, 1:], np.atleast_2d(self.x_guess[:, -1]).T), axis=1)
-            # self.u_prev = np.concatenate((self.u_guess[:, 1:], np.atleast_2d(self.u_guess[:, -1]).T), axis=1)
+            raise e
         action = self.acados_ocp_solver.get(0, "u")
 
         self.x_guess = self.x_prev
@@ -593,40 +531,6 @@ class MPC_ACADOS:
 
         return action
 
-    def add_constraints(self, constraints):
-        """Add the constraints (from a list) to the system.
-
-        Args:
-            constraints (list): List of constraints controller is subject too.
-        """
-        (
-            self.constraints,
-            self.state_constraints_sym,
-            self.input_constraints_sym,
-        ) = reset_constraints(constraints + self.constraints.constraints)
-
-    def remove_constraints(self, constraints):
-        """Remove constraints from the current constraint list.
-
-        Args:
-            constraints (list): list of constraints to be removed.
-        """
-        old_constraints_list = self.constraints.constraints
-        for constraint in constraints:
-            assert constraint in self.constraints.constraints, ValueError(
-                "This constraint is not in the current list of constraints"
-            )
-            old_constraints_list.remove(constraint)
-        (
-            self.constraints,
-            self.state_constraints_sym,
-            self.input_constraints_sym,
-        ) = reset_constraints(old_constraints_list)
-
-    def close(self):
-        """Cleans up resources."""
-        self.env.close()
-
     def set_dynamics_func(self):
         """Updates symbolic dynamics with actual control frequency."""
         # linear dynamics for LQR ancillary gain and terminal cost
@@ -649,15 +553,7 @@ class MPC_ACADOS:
         )
         self.dfdx = dfdx
         self.dfdu = dfdu
-        # # check controlled system is stabilizable
-        # A = dfdx
-        # B = dfdu
-        # n = self.model.nx
-        # m = self.model.nu
-        # import control
-        # ctrb = control.ctrb(A, B)
-        # if np.linalg.matrix_rank(ctrb) != n:
-        #     raise Exception('System is not stabilizable')
+
         try:
             (
                 self.lqr_gain,
@@ -681,7 +577,6 @@ class MPC_ACADOS:
 
     def setup_optimizer(self, solver="qrsqp"):
         """Sets up nonlinear optimization problem."""
-        print(colored(f"Setting up optimizer with {solver}", "green"))
         nx, nu = self.model.nx, self.model.nu
         T = self.T
         # Define optimizer and variables.
@@ -766,32 +661,6 @@ class MPC_ACADOS:
             "cost": cost,
         }
 
-    def learn(self, env=None, **kwargs):
-        """Performs learning (pre-training, training, fine-tuning, etc).
-
-        Args:
-            env (BenchmarkEnv): The environment to be used for training.
-        """
-        return
-
-    def extract_step(self, info=None):
-        """Extracts the current step from the info.
-
-        Args:
-            info (dict): The info list returned from the environment.
-
-        Returns:
-            step (int): The current step/iteration of the environment.
-        """
-
-        if info is not None:
-            step = info["current_step"]
-        else:
-            step = 0
-
-        return step
-
-    @timing
     def get_references(self):
         """Constructs reference states along mpc horizon.(nx, T+1)."""
         if self.env.TASK == Task.STABILIZATION:
@@ -850,111 +719,6 @@ class MPC_ACADOS:
             "inference_time": [],
         }
 
-    def run(
-        self,
-        env=None,
-        render=False,
-        logging=False,
-        max_steps=None,
-        terminate_run_on_done=None,
-    ):
-        """Runs evaluation with current policy.
-
-        Args:
-            render (bool): if to do real-time rendering.
-            logging (bool): if to log on terminal.
-
-        Returns:
-            dict: evaluation statisitcs, rendered frames.
-        """
-        if env is None:
-            env = self.env
-        if terminate_run_on_done is None:
-            terminate_run_on_done = self.terminate_run_on_done
-
-        self.x_prev = None
-        self.u_prev = None
-        if not env.initial_reset:
-            env.set_cost_function_param(self.Q, self.R)
-        obs, info = env.reset()
-        # obs = env.reset()
-        print("Init State:")
-        print(obs)
-        ep_returns, ep_lengths = [], []
-        frames = []
-        self.setup_results_dict()
-        self.results_dict["obs"].append(obs)
-        self.results_dict["state"].append(env.state)
-        i = 0
-        if env.TASK == Task.STABILIZATION:
-            if max_steps is None:
-                MAX_STEPS = int(env.CTRL_FREQ * env.EPISODE_LEN_SEC)
-            else:
-                MAX_STEPS = max_steps
-        elif env.TASK == Task.TRAJ_TRACKING:
-            if max_steps is None:
-                MAX_STEPS = self.traj.shape[1]
-            else:
-                MAX_STEPS = max_steps
-        else:
-            raise Exception("Undefined Task")
-        self.terminate_loop = False
-        done = False
-        common_metric = 0
-        while not (done and terminate_run_on_done) and i < MAX_STEPS and not (self.terminate_loop):
-            action = self.select_action(obs)
-            if self.terminate_loop:
-                print("Infeasible MPC Problem")
-                break
-            # Repeat input for more efficient control.
-            obs, reward, done, info = env.step(action)
-            self.results_dict["obs"].append(obs)
-            self.results_dict["reward"].append(reward)
-            self.results_dict["done"].append(done)
-            self.results_dict["info"].append(info)
-            self.results_dict["action"].append(action)
-            self.results_dict["state"].append(env.state)
-            self.results_dict["state_mse"].append(info["mse"])
-            self.results_dict["state_error"].append(env.state - env.X_GOAL[i, :])
-            common_metric += info["mse"]
-            print(i, "-th step.")
-            print("action:", action)
-            print("obs", obs)
-            print("reward", reward)
-            print("done", done)
-            print(info)
-            print()
-            if render:
-                env.render()
-                frames.append(env.render("rgb_array"))
-            i += 1
-        # Collect evaluation results.
-        ep_lengths = np.asarray(ep_lengths)
-        ep_returns = np.asarray(ep_returns)
-        if logging:
-            msg = "****** Evaluation ******\n"
-            msg += "eval_ep_length {:.2f} +/- {:.2f} | eval_ep_return {:.3f} +/- {:.3f}\n".format(
-                ep_lengths.mean(), ep_lengths.std(), ep_returns.mean(), ep_returns.std()
-            )
-        if len(frames) != 0:
-            self.results_dict["frames"] = frames
-        self.results_dict["obs"] = np.vstack(self.results_dict["obs"])
-        self.results_dict["state"] = np.vstack(self.results_dict["state"])
-        try:
-            self.results_dict["reward"] = np.vstack(self.results_dict["reward"])
-            self.results_dict["action"] = np.vstack(self.results_dict["action"])
-            self.results_dict["full_traj_common_cost"] = common_metric
-            self.results_dict["total_rmse_state_error"] = compute_state_rmse(
-                self.results_dict["state"]
-            )
-            self.results_dict["total_rmse_obs_error"] = compute_state_rmse(self.results_dict["obs"])
-        except ValueError:
-            raise Exception(
-                "[ERROR] mpc.run().py: MPC could not find a solution for the first step given the initial conditions. "
-                "Check to make sure initial conditions are feasible."
-            )
-        return deepcopy(self.results_dict)
-
     def reset_before_run(self, obs=None, info=None, env=None):
         """Reinitialize just the controller before a new run.
 
@@ -965,49 +729,9 @@ class MPC_ACADOS:
         """
         self.setup_results_dict()
 
-    def get_prior(self, env, prior_info={}):
-        """Fetch the prior model from the env for the controller.
-
-        Note there's a default env.symbolic when each each env is created.
-        To make a different prior model, do the following when initializing a ctrl::
-
-            self.env = env_func()
-            self.model = self.get_prior(self.env)
-
-        Besides the env config `base.yaml` and ctrl config `mpc.yaml`,
-        you can define an additional prior config `prior.yaml` that looks like::
-
-            algo_config:
-                prior_info:
-                    prior_prop:
-                        M: 0.03
-                        Iyy: 0.00003
-                    randomize_prior_prop: False
-                    prior_prop_rand_info: {}
-
-        and to ensure the resulting config.algo_config contains both the params
-        from ctrl config and prior config, chain them to the --overrides like:
-
-            python experiment.py --algo mpc --task quadrotor --overrides base.yaml mpc.yaml prior.yaml ...
-
-        Also note we look for prior_info from the incoming function arg first, then the ctrl itself.
-        this allows changing the prior model during learning by calling::
-
-            new_model = self.get_prior(same_env, new_prior_info)
-
-        Alternatively, you can overwrite this method and use your own format for prior_info
-        to customize how you get/change the prior model for your controller.
-
-        Args:
-            env (BenchmarkEnv): the environment to fetch prior model from.
-            prior_info (dict): specifies the prior properties or other things to
-                overwrite the default prior model in the env.
-
-        Returns:
-            SymbolicModel: CasAdi prior model.
-        """
-        if not prior_info:
-            prior_info = getattr(self, "prior_info", {})
+    def get_prior(self, env):
+        """Fetch the prior model from the env for the controller."""
+        prior_info = getattr(self, "prior_info", {})
         prior_prop = prior_info.get("prior_prop", {})
 
         # randomize prior prop, similar to randomizing the inertial_prop in BenchmarkEnv

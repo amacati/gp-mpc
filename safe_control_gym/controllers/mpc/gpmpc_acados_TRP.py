@@ -16,7 +16,6 @@ from sklearn.metrics import pairwise_distances_argmin_min
 from sklearn.model_selection import train_test_split
 from termcolor import colored
 
-from safe_control_gym.controllers.lqr.lqr_utils import discretize_linear_system
 from safe_control_gym.controllers.mpc.gp_utils import (
     GaussianProcess,
     ZeroMeanIndependentGPModel,
@@ -27,6 +26,7 @@ from safe_control_gym.controllers.mpc.mpc_acados import MPC_ACADOS
 from safe_control_gym.controllers.mpc.mpc_utils import (
     compute_discrete_lqr_gain_from_cont_linear_system,
     compute_state_rmse,
+    discretize_linear_system,
     get_cost_weight_matrix,
     reset_constraints,
     rk_discrete,
@@ -1643,8 +1643,6 @@ class GPMPC_ACADOS_TRP:
         )
 
         for episode in range(self.num_train_episodes_per_epoch):
-            # run_results = self.prior_ctrl.run(env=train_envs[0],
-            #                                   terminate_run_on_done=self.terminate_train_on_done)
             self.env = train_envs[0]
             run_results = train_experiments[0].run_evaluation(n_episodes=1)
             train_runs[0].update({episode: munch.munchify(run_results)})

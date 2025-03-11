@@ -5,16 +5,50 @@ import numpy as np
 import scipy
 import scipy.linalg
 
-from safe_control_gym.controllers.lqr.lqr_utils import discretize_linear_system
 from safe_control_gym.envs.constraints import ConstraintList
 
 
+def discretize_linear_system(A, B, dt, exact=False):
+    """Discretization of a linear system
+
+    dx/dt = A x + B u
+    --> xd[k+1] = Ad xd[k] + Bd ud[k] where xd[k] = x(k*dt)
+
+    Args:
+        A (ndarray): System transition matrix.
+        B (ndarray): Input matrix.
+        dt (scalar): Step time interval.
+        exact (bool): If to use exact discretization.
+
+    Returns:
+        Ad (ndarray): The discrete linear state matrix A.
+        Bd (ndarray): The discrete linear input matrix B.
+    """
+    state_dim, input_dim = A.shape[1], B.shape[1]
+    if exact:
+        M = np.zeros((state_dim + input_dim, state_dim + input_dim))
+        M[:state_dim, :state_dim] = A
+        M[:state_dim, state_dim:] = B
+        Md = scipy.linalg.expm(M * dt)
+        return Md[:state_dim, :state_dim], Md[:state_dim, state_dim:]
+
+    return np.eye(state_dim) + A * dt, B * dt
+
+
 def get_cost_weight_matrix(weights, dim):
-    """Gets weight matrix from input args."""
+    """Gets weight matrix from input args.
+
+    Args:
+        weights (list): A 1D list of weights.
+        dim (int): The dimension of the desired cost weight matrix.
+
+    Returns:
+        W (ndarray): The cost weight matrix.
+    """
     assert len(weights) == dim or len(weights) == 1, "Wrong dimension for cost weights."
-    if len(weights) == dim:
-        return np.diag(weights)
-    return np.diag(weights * dim)
+    if len(weights) == 1:
+        return np.diag(weights * dim)
+    return np.diag(weights)
 
 
 def compute_discrete_lqr_gain_from_cont_linear_system(dfdx, dfdu, Q_lqr, R_lqr, dt):
