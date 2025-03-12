@@ -19,8 +19,8 @@ import numpy as np
 import pybullet as p
 import pybullet_data
 
+from safe_control_gym.core.transformations import csRotXYZ, get_angularvelocity_rpy
 from safe_control_gym.envs.benchmark_env import BenchmarkEnv
-from safe_control_gym.math_and_models.transformations import csRotXYZ, get_angularvelocity_rpy
 
 egl = pkgutil.get_loader("eglRenderer")
 
@@ -122,37 +122,6 @@ class BaseAviary(BenchmarkEnv):
             self.MAX_PWM,
         ) = self._parse_urdf_parameters(self.URDF_PATH)
         self.GROUND_PLANE_Z = -0.05
-        if verbose:
-            print(
-                "[INFO] BaseAviary.__init__() loaded parameters from the drone's .urdf: \
-                \n[INFO] m {:f}, L {:f},\n[INFO] ixx {:f}, iyy {:f}, izz {:f}, \
-                \n[INFO] kf {:f}, km {:f},\n[INFO] t2w {:f}, max_speed_kmh {:f}, \
-                \n[INFO] gnd_eff_coeff {:f}, prop_radius {:f}, \
-                \n[INFO] drag_xy_coeff {:f}, drag_z_coeff {:f}, \
-                \n[INFO] dw_coeff_1 {:f}, dw_coeff_2 {:f}, dw_coeff_3 {:f} \
-                \n[INFO] pwm2rpm_scale {:f}, pwm2rpm_const {:f}, min_pwm {:f}, max_pwm {:f}".format(
-                    self.MASS,
-                    self.L,
-                    self.J[0, 0],
-                    self.J[1, 1],
-                    self.J[2, 2],
-                    self.KF,
-                    self.KM,
-                    self.THRUST2WEIGHT_RATIO,
-                    self.MAX_SPEED_KMH,
-                    self.GND_EFF_COEFF,
-                    self.PROP_RADIUS,
-                    self.DRAG_COEFF[0],
-                    self.DRAG_COEFF[2],
-                    self.DW_COEFF_1,
-                    self.DW_COEFF_2,
-                    self.DW_COEFF_3,
-                    self.PWM2RPM_SCALE,
-                    self.PWM2RPM_CONST,
-                    self.MIN_PWM,
-                    self.MAX_PWM,
-                )
-            )
         # Compute constants.
         self.GRAVITY = self.GRAVITY_ACC * self.MASS
         self.HOVER_RPM = np.sqrt(self.GRAVITY / (4 * self.KF))
@@ -179,19 +148,9 @@ class BaseAviary(BenchmarkEnv):
                 cameraTargetPosition=[0, 0, 0],
                 physicsClientId=self.PYB_CLIENT,
             )
-            ret = p.getDebugVisualizerCamera(physicsClientId=self.PYB_CLIENT)
-            if verbose:
-                print("viewMatrix", ret[2])
-                print("projectionMatrix", ret[3])
         else:
             # Without debug GUI.
             self.PYB_CLIENT = p.connect(p.DIRECT)
-            # Uncomment the following line to use EGL Render Plugin #
-            # Instead of TinyRender (CPU-based) in PYB's Direct mode
-            # if platform == 'linux':
-            #     p.setAdditionalSearchPath(pybullet_data.getDataPath())
-            #     plugin = p.loadPlugin(egl.get_filename(), '_eglRendererPlugin')
-            #     print('plugin=', plugin)
         self.RENDER_WIDTH = int(640)
         self.RENDER_HEIGHT = int(480)
         self.FRAME_PER_SEC = 24
@@ -406,39 +365,7 @@ class BaseAviary(BenchmarkEnv):
             close (bool, optional): Unused.
         """
         if self.first_render_call and not self.GUI:
-            print(
-                "[WARNING] BaseAviary.render() is implemented as text-only, re-initialize the environment using "
-                "Aviary(gui=True) to use PyBullet's graphical interface"
-            )
             self.first_render_call = False
-        if self.VERBOSE:
-            print(
-                "\n[INFO] BaseAviary.render() ——— it {:04d}".format(self.pyb_step_counter),
-                "——— wall-clock time {:.1f}s,".format(time.time() - self.RESET_TIME),
-                "simulation time {:.1f}s@{:d}Hz ({:.2f}x)".format(
-                    self.pyb_step_counter * self.PYB_TIMESTEP,
-                    self.SIM_FREQ,
-                    (self.pyb_step_counter * self.PYB_TIMESTEP) / (time.time() - self.RESET_TIME),
-                ),
-            )
-            for i in range(self.NUM_DRONES):
-                print(
-                    "[INFO] BaseAviary.render() ——— drone {:d}".format(i),
-                    "——— x {:+06.2f}, y {:+06.2f}, z {:+06.2f}".format(
-                        self.pos[i, 0], self.pos[i, 1], self.pos[i, 2]
-                    ),
-                    "——— velocity {:+06.2f}, {:+06.2f}, {:+06.2f}".format(
-                        self.vel[i, 0], self.vel[i, 1], self.vel[i, 2]
-                    ),
-                    "——— roll {:+06.2f}, pitch {:+06.2f}, yaw {:+06.2f}".format(
-                        self.rpy[i, 0] * self.RAD2DEG,
-                        self.rpy[i, 1] * self.RAD2DEG,
-                        self.rpy[i, 2] * self.RAD2DEG,
-                    ),
-                    "——— angular velocity {:+06.4f}, {:+06.4f}, {:+06.4f} ——— ".format(
-                        self.ang_v[i, 0], self.ang_v[i, 1], self.ang_v[i, 2]
-                    ),
-                )
 
     def _set_pybullet_information(self):
         """Set pybullet state information from external simulation"""

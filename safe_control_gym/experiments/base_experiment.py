@@ -9,7 +9,6 @@ import numpy as np
 from munch import munchify
 from termcolor import colored
 
-from safe_control_gym.math_and_models.metrics.performance_metrics import compute_cvar
 from safe_control_gym.utils.utils import is_wrapped
 
 
@@ -69,14 +68,6 @@ class BaseExperiment:
         metrics = self.compute_metrics(trajs_data)
 
         # terminal printouts
-        if verbose:
-            for metric_key, metric_val in metrics.items():
-                if isinstance(metric_val, list) or isinstance(metric_val, np.ndarray):
-                    rounded = [f"{elem:.3f}" for elem in metric_val]
-                    print("{}: {}".format(colored(metric_key, "yellow"), rounded))
-                else:
-                    print("{}: {:.3f}".format(colored(metric_key, "yellow"), metric_val))
-            print("Evaluation done.")
         return dict(trajs_data), metrics
 
     def _execute_evaluations(
@@ -195,20 +186,6 @@ class BaseExperiment:
         self.ctrl.reset_before_run(obs, info, env=self.env)
         return obs, info
 
-    def launch_training(self, **kwargs):
-        """Since the learning loop varies among controllers, can only delegate to its own `learn()` method.
-
-        Returns:
-            trajs_data (defaultdict(list)): The raw data from the training.
-        """
-        self.reset()
-        self.ctrl.learn(env=self.train_env, **kwargs)
-
-        trajs_data = {}
-        if self.train_env is not None:
-            trajs_data = self.train_env.data
-        return dict(trajs_data)
-
     def compute_metrics(self, trajs_data):
         """Compute all standard metrics on the given trajectory data.
 
@@ -238,28 +215,6 @@ class BaseExperiment:
 
         if self.train_env is not None:
             self.train_env.close()
-
-    def load(self, ctrl_path=None, safety_filter_path=None):
-        """Restores model of the controller and/or safety filter given checkpoint paths.
-
-        Args:
-            ctrl_path (str): The path used to load the controller's model.
-            safety_filter_path (str): The path used to load the safety_filter's model.
-        """
-
-        if ctrl_path is not None:
-            self.ctrl.load(ctrl_path)
-
-    def save(self, ctrl_path=None, safety_filter_path=None):
-        """Saves the model of the controller and/or safety filter given checkpoint paths.
-
-        Args:
-            ctrl_path (str): The path used to save the controller's model.
-            safety_filter_path (str): The path used to save the safety_filter's model.
-        """
-
-        if ctrl_path is not None:
-            self.ctrl.save(ctrl_path)
 
 
 class RecordDataWrapper(gym.Wrapper):
@@ -380,9 +335,6 @@ class MetricExtractor:
             "exponentiated_rms_action_change": np.asarray(
                 self.get_episode_exponentiated_rms_action_change()
             ).mean(),
-            "worst_case_rmse_at_0.5": compute_cvar(
-                np.asarray(self.get_episode_rmse()), 0.5, lower_range=False
-            ),
             "failure_rate": np.asarray(self.get_episode_constraint_violations()).mean(),
             "failure_rates": np.asarray(self.get_episode_constraint_violations()),
             "average_constraint_violation": np.asarray(

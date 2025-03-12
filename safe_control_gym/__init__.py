@@ -1,4 +1,2 @@
-from safe_control_gym.controllers import *
-from safe_control_gym.envs import *
-from safe_control_gym.envs.env_wrappers import *
-from safe_control_gym.experiments import *
+import safe_control_gym.mpc  # noqa 401, register mpc as controller
+import safe_control_gym.envs  # noqa 401, register envs

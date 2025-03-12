@@ -14,8 +14,8 @@ from gymnasium import spaces
 from gymnasium.utils import seeding
 from matplotlib import pyplot as plt
 
-from safe_control_gym.envs.constraints import create_constraint_list
-from safe_control_gym.envs.disturbances import create_disturbance_list
+from safe_control_gym.core.constraints import create_constraint_list
+from safe_control_gym.core.disturbances import create_disturbance_list
 from safe_control_gym.envs.gym_pybullet_drones.trajectory_utils import (
     Waypoint,
     compute_trajectory_derivatives,
@@ -650,13 +650,7 @@ class BenchmarkEnv(gym.Env, ABC):
             pva = compute_trajectory_derivatives(polys, times, 3)
             pos_ref_traj = pva[0, :, :]
             vel_ref_traj = pva[1, :, :]
-            acc_ref_traj = pva[2, :, :]
             speed_traj = np.linalg.norm(vel_ref_traj, axis=1)
-            acc_mag = np.linalg.norm(acc_ref_traj, axis=1)
-            print(f"Max acceleration: {np.max(acc_mag)}")
-            print(f"Acc bound is: {0.3 * 9.81} to {1.8 * 9.81}")
-            print(f"Max velocity: {np.max(speed_traj)}")
-            print()
 
         elif traj_type == "snap_custom":
             if waypoint_list is None:
@@ -672,12 +666,7 @@ class BenchmarkEnv(gym.Env, ABC):
             pva = compute_trajectory_derivatives(polys, times, 2)
             pos_ref_traj = pva[0, :, :]
             vel_ref_traj = pva[1, :, :]
-            acc_ref_traj = pva[2, :, :]
             speed_traj = np.linalg.norm(vel_ref_traj, axis=1)
-            acc_mag = np.linalg.norm(acc_ref_traj, axis=1)
-            print(f"Max acceleration: {np.max(acc_mag)}")
-            print(f"Max velocity: {np.max(speed_traj)}")
-            print()
 
         else:
             # Compute trajectory points.
@@ -699,13 +688,6 @@ class BenchmarkEnv(gym.Env, ABC):
         if "z" not in traj_plane:
             pos_ref_traj[:, 2] = 1.0
             vel_ref_traj[:, 2] = 0.0
-
-        # # calculate the maximul acceleration and velocity
-        # max_vel = np.max(speed_traj)
-        # max_acc = np.max(np.diff(speed_traj) / sample_time)
-        # print(colored(f"Max velocity: {max_vel}, Max acceleration: {max_acc}", 'green'))
-        # if max_acc > 1.8 * 9.81 or max_acc < 0.3 * 9.81:
-        #     raise ValueError(f"Max acceleration is not in the range of 0.3g to 1.8g")
 
         return pos_ref_traj, vel_ref_traj, speed_traj
 
@@ -914,39 +896,6 @@ class BenchmarkEnv(gym.Env, ABC):
             speed_traj (ndarray): The scalar speed of the trajectory sampled for its entire duration.
         """
 
-        # Print basic properties.
-        print(f"Trajectory type: {traj_type}")
-        print(f"Trajectory plane: {traj_plane}")
-        print(f"Trajectory length: {traj_length} sec")
-        print(f"Number of cycles: {num_cycles}")
-        print(f"Trajectory period: {traj_length / num_cycles:.2f} sec")
-        print(f"Angular speed: {2.0 * np.pi / (traj_length / num_cycles):.2f} rad/sec")
-        print(
-            "Position bounds: x [%.2f, %.2f] m, y [%.2f, %.2f] m, z [%.2f, %.2f] m"
-            % (
-                min(pos_ref_traj[:, 0]),
-                max(pos_ref_traj[:, 0]),
-                min(pos_ref_traj[:, 1]),
-                max(pos_ref_traj[:, 1]),
-                min(pos_ref_traj[:, 2]),
-                max(pos_ref_traj[:, 2]),
-            )
-        )
-        print(
-            "Velocity bounds: vx [%.2f, %.2f] m/s, vy [%.2f, %.2f] m/s, vz [%.2f, %.2f] m/s"
-            % (
-                min(vel_ref_traj[:, 0]),
-                max(vel_ref_traj[:, 0]),
-                min(vel_ref_traj[:, 1]),
-                max(vel_ref_traj[:, 1]),
-                min(vel_ref_traj[:, 2]),
-                max(vel_ref_traj[:, 2]),
-            )
-        )
-        print(
-            "Speed: min %.2f m/s max %.2f m/s mean %.2f"
-            % (min(speed_traj), max(speed_traj), np.mean(speed_traj))
-        )
         # Plot in x, y, z.
         fig, axs = plt.subplots(3, 2)
         t = np.arange(0, traj_length, traj_length / pos_ref_traj.shape[0])

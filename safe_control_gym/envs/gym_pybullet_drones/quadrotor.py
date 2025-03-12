@@ -13,21 +13,21 @@ import numpy as np
 import pybullet as p
 from gymnasium import spaces
 
+from safe_control_gym.core.constraints import GENERAL_CONSTRAINTS
+from safe_control_gym.core.disturbances import Downwash
+from safe_control_gym.core.symbolic_systems import SymbolicModel
+from safe_control_gym.core.transformations import (
+    csRotXYZ,
+    get_quaternion_from_euler,
+    transform_trajectory,
+)
 from safe_control_gym.envs.benchmark_env import Cost, Task
-from safe_control_gym.envs.constraints import GENERAL_CONSTRAINTS
-from safe_control_gym.envs.disturbances import Downwash
 from safe_control_gym.envs.gym_pybullet_drones.base_aviary import BaseAviary, Physics
 from safe_control_gym.envs.gym_pybullet_drones.quadrotor_utils import (
     AttitudeControl,
     QuadType,
     cmd2pwm,
     pwm2rpm,
-)
-from safe_control_gym.math_and_models.symbolic_systems import SymbolicModel
-from safe_control_gym.math_and_models.transformations import (
-    csRotXYZ,
-    get_quaternion_from_euler,
-    transform_trajectory,
 )
 
 script_dir = os.path.dirname(__file__)
@@ -867,7 +867,6 @@ class Quadrotor(BaseAviary):
                 self.dw_model.update_pos(pos=pos + self.DISTURBANCES["downwash"][0]["pos"])
             dw_force_mag = self.dw_model.get_dw_force_mag(target_pos=pos, mode="absolute")
 
-            # print(f'dw_force_mag: {dw_force_mag:2f} [N]')
             disturb_force[-1] += -dw_force_mag
 
         # Advance the simulation.
@@ -1841,10 +1840,6 @@ class Quadrotor(BaseAviary):
             vz = vel[0] * np.sin(pitch) + vel[2] * np.cos(pitch)
             # {x, vx, z, vz, theta, theta_dot}.
             self.state = np.hstack([pos[0], vx, pos[2], vz, pitch, rpy_rate[1]]).reshape((6,))
-            world_state = np.hstack([pos[0], vel[0], pos[2], vel[2], rpy[1], rpy_rate[1]]).reshape(
-                (6,)
-            )
-            print("world_state: ", world_state)
 
         elif self.QUAD_TYPE == QuadType.TWO_D_ATTITUDE_5S:
             # {x, x_dot, z, z_dot, theta, theta_dot}.
@@ -1869,12 +1864,6 @@ class Quadrotor(BaseAviary):
             self.state = np.hstack(
                 [pos[0], vel[0], pos[1], vel[1], pos[2], vel[2], rpy[0], rpy[1], ang_v[0], ang_v[1]]
             ).reshape((10,))
-        # if not np.array_equal(self.state,
-        #                       np.clip(self.state, self.observation_space.low, self.observation_space.high)):
-        #     if self.GUI and self.VERBOSE:
-        #         print(
-        #             '[WARNING]: observation was clipped in Quadrotor._get_observation().'
-        #         )
 
         # Concatenate goal info (references state(s)) for RL.
         # Plus two because ctrl_step_counter has not incremented yet, and we want to return the obs (which would be
@@ -2018,7 +2007,6 @@ class Quadrotor(BaseAviary):
             state_error = state - self.X_GOAL
         elif self.TASK == Task.TRAJ_TRACKING:
             # TODO: should use angle wrapping
-            # state[4] = normalize_angle(state[4])
             wp_idx = min(
                 self.ctrl_step_counter + 1, self.X_GOAL.shape[0] - 1
             )  # +1 so that state is being compared with proper reference state.

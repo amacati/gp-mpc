@@ -3,7 +3,7 @@
 import argparse
 import os
 import warnings
-from email.policy import default
+from pathlib import Path
 
 import munch
 from dict_deep import deep_set
@@ -73,7 +73,7 @@ class ConfigFactory:
         # Experiment-specific overrides, e.g. training hyperparameters.
         if args.overrides:
             for f in args.overrides:
-                merge_dict(config_dict, read_file(f))
+                merge_dict(config_dict, read_file(Path(f)))
         if args.kv_overrides:
             kv_dict = {}
             for kv in args.kv_overrides:

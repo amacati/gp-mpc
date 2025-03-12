@@ -6,11 +6,6 @@ Based on https://github.com/openai/gym/blob/master/gym/envs/registration.py
 import copy
 import importlib
 
-try:
-    import importlib.resources as pkg_resources
-except ImportError:
-    import importlib_resources as pkg_resources  # Try backported to PY<37 `importlib_resources`.
-
 import yaml
 
 
@@ -46,7 +41,7 @@ class Spec:
             if self.config_entry_point.endswith(".yaml"):
                 # Specified as file path.
                 mod_name, config_name = self.config_entry_point.split(":")
-                with pkg_resources.open_text(mod_name, config_name) as f:
+                with importlib.resources.open_text(mod_name, config_name) as f:
                     config = yaml.load(f, Loader=yaml.FullLoader)
             else:
                 # Specified as 'module_path:config_dict_name'.

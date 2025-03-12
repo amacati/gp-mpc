@@ -1,0 +1,22 @@
+# MPC args
+horizon: 10
+r_mpc:
+  - 1.
+q_mpc:
+  - 1.
+additional_constraints: null
+
+# GP training args
+train_iterations: 3
+gp_model_path: null
+
+# GP args
+prob: 0.955
+input_mask: null
+target_mask: null
+gp_approx: mean_eq
+online_learning: False
+
+# Prior Model args
+prior_info: {}
+prior_param_coeff: 1.

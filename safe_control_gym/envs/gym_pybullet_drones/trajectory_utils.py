@@ -77,12 +77,6 @@ class PiecewisePolynomialTrajectory(NamedTuple):
     coefficients: np.ndarray
 
 
-class RotorDragParameters(NamedTuple):
-    cp: float
-    dh: float
-    dv: float
-
-
 class QuadrotorTrajectory(NamedTuple):
     state: np.ndarray
     input: np.ndarray
