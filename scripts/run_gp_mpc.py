@@ -39,7 +39,6 @@ def load_config():
     root_path = Path(__file__).parent / "config_overrides"
     additional_cfg = root_path / f"{SYS}_{TASK}.yaml"
     ctrl_cfg = root_path / f"{ALGO}_{SYS}_{TASK}_{PRIOR}{CTRL_ADD}.yaml"
-    print(f"additional_cfg: {additional_cfg}, ctrl_cfg: {ctrl_cfg}")
     assert additional_cfg.exists(), f"{additional_cfg} does not exist"
     assert ctrl_cfg.exists(), f"{ctrl_cfg} does not exist"
     sys.argv[1:] = [
@@ -55,7 +54,7 @@ def load_config():
         "--use_gpu",
         "True",
         "--output_dir",
-        f"./{ALGO}/results",
+        "./saves",
     ]
     fac = ConfigFactory()
     fac.add_argument("--func", type=str, default="train", help="main function to run.")

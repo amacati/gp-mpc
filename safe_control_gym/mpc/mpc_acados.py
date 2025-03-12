@@ -8,8 +8,6 @@ import casadi as cs
 import numpy as np
 import scipy
 import torch
-from numpy.linalg import LinAlgError
-from termcolor import colored
 
 from safe_control_gym.core.constraints import (
     GENERAL_CONSTRAINTS,
