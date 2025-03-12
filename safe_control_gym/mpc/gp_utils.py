@@ -6,7 +6,6 @@ import gpytorch
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
-from sklearn.cluster import KMeans
 
 torch.manual_seed(0)
 
@@ -165,7 +164,7 @@ class GaussianProcess:
         test_target_data,
         n_train=500,
         learning_rate=0.01,
-        gpu=False,
+        device: str = "cpu",
         fname: Path = Path("best_model.pth"),
     ):
         """Train the GP using Train_x and Train_y.
@@ -185,17 +184,12 @@ class GaussianProcess:
             train_y_raw = train_y_raw[:, self.target_mask]
             test_y_raw = test_y_raw[:, self.target_mask]
         self._init_model(train_x_raw, train_y_raw)
-        train_x = train_x_raw
-        train_y = train_y_raw
-        test_x = test_x_raw
-        test_y = test_y_raw
-        if gpu:
-            train_x = train_x.cuda()
-            train_y = train_y.cuda()
-            test_x = test_x.cuda()
-            test_y = test_y.cuda()
-            self.model = self.model.cuda()
-            self.likelihood = self.likelihood.cuda()
+        train_x = train_x_raw.to(device)
+        train_y = train_y_raw.to(device)
+        test_x = test_x_raw.to(device)
+        test_y = test_y_raw.to(device)
+        self.model = self.model.to(device)
+        self.likelihood = self.likelihood.to(device)
 
         if self.input_dimension == 1:
             test_x = test_x.reshape(-1)
@@ -397,17 +391,3 @@ class GaussianProcess:
         plt.close(fig_count)
 
         return fig_count
-
-
-def kmeans_centroids(n_cent, data, rand_state=0):
-    """kmeans clustering. Useful for finding reasonable inducing points.
-
-    Args:
-        n_cent (int): Number of centriods.
-        data (np.array): Data to find the centroids of n_samples X n_features.
-
-    Return:
-        centriods (np.array): Array of centriods (n_cent X n_features).
-    """
-    kmeans = KMeans(n_clusters=n_cent, random_state=rand_state).fit(data)
-    return kmeans.cluster_centers_

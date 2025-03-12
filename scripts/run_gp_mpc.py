@@ -91,10 +91,6 @@ def run():
 
     plot_quad_eval(results, experiment.env, config.save_dir)
 
-    with open(config.save_dir / "rand_hist.txt", "w") as file:
-        for key, value in ctrl.rand_hist.items():
-            file.write(f"{key}: {value}\n")
-
 
 def plot_quad_eval(res, env, save_path: Path):
     """Plots the input and states to determine success.
