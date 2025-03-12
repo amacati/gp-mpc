@@ -1,11 +1,12 @@
 """Utility functions for Gaussian Processes."""
+from pathlib import Path
+
 import casadi as ca
 import gpytorch
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
 from sklearn.cluster import KMeans
-from termcolor import colored
 
 torch.manual_seed(0)
 
@@ -165,7 +166,7 @@ class GaussianProcess:
         n_train=500,
         learning_rate=0.01,
         gpu=False,
-        fname="best_model.pth",
+        fname: Path = Path("best_model.pth"),
     ):
         """Train the GP using Train_x and Train_y.
 

@@ -1,6 +1,5 @@
 import os
 import pickle
-import sys
 import time
 from collections import defaultdict
 from functools import partial
@@ -14,57 +13,18 @@ from munch import munchify
 
 from safe_control_gym.experiments.base_experiment import BaseExperiment
 from safe_control_gym.mpc.plotting import make_quad_plots
-from safe_control_gym.utils.configuration import ConfigFactory
 from safe_control_gym.utils.registration import make
-from safe_control_gym.utils.utils import mkdirs, set_dir_from_config
-
-script_path = os.path.dirname(os.path.realpath(__file__))
+from safe_control_gym.utils.utils import mkdir_date
 
 
 def load_config():
-    # TODO: Load the whole config from a single file, remove ConfigFactory
     config_path = Path(__file__).parent / "gp_mpc_config.yaml"
     with open(config_path, "r") as file:
         config = munchify(yaml.safe_load(file))
-
-    seed = "1"
-    ALGO = "gpmpc_acados_TRP"
-    CTRL_ADD = ""
-    SYS = "quadrotor_3D_attitude"
-    TASK = "tracking"
-    PRIOR = "100"
-    agent = "quadrotor"
-
-    # check if the config file exists
-    root_path = Path(__file__).parent / "config_overrides"
-    additional_cfg = root_path / f"{SYS}_{TASK}.yaml"
-    ctrl_cfg = root_path / f"{ALGO}_{SYS}_{TASK}_{PRIOR}{CTRL_ADD}.yaml"
-    assert additional_cfg.exists(), f"{additional_cfg} does not exist"
-    assert ctrl_cfg.exists(), f"{ctrl_cfg} does not exist"
-    sys.argv[1:] = [
-        "--algo",
-        ALGO,
-        "--task",
-        agent,
-        "--overrides",
-        f"./scripts/config_overrides/{SYS}_{TASK}.yaml",
-        f"./scripts/config_overrides/{ALGO}_{SYS}_{TASK}_{PRIOR}{CTRL_ADD}.yaml",
-        "--seed",
-        seed,
-        "--use_gpu",
-        "True",
-        "--output_dir",
-        "./saves",
-    ]
-    fac = ConfigFactory()
-    fac.add_argument("--func", type=str, default="train", help="main function to run.")
-    fac.add_argument("--n_episodes", type=int, default=1, help="number of episodes to run.")
-    config = fac.merge()
-    num_data_max = config.run.num_epochs * config.algo_config.num_samples
-    config.output_dir = str(Path(config.output_dir) / f"{PRIOR}_{num_data_max}")
-    set_dir_from_config(config)
-    config.algo_config.output_dir = config.output_dir
-    mkdirs(config.output_dir)
+    root_dir = Path(__file__).parents[1] / config.save_dir
+    root_dir.mkdir(parents=True, exist_ok=True)
+    config.save_dir = mkdir_date(root_dir)
+    config.algo_config.output_dir = config.save_dir
     return config
 
 
@@ -104,7 +64,7 @@ def run():
         test_runs=test_runs,
         train_runs=train_runs,
         trajectory=ctrl.traj.T,
-        dir=ctrl.output_dir,
+        save_dir=config.save_dir,
     )
 
     # Close environments
@@ -122,19 +82,16 @@ def run():
 
     results = {"trajs_data": all_trajs, "metrics": metrics}
 
-    save_path = Path(__file__).parents[1] / "saves"
-    save_path.mkdir(parents=True, exist_ok=True)
-
-    with open(save_path / "gpmpc_results.pkl", "wb") as file:
+    with open(config.save_dir / "gpmpc_results.pkl", "wb") as file:
         pickle.dump(results, file)
 
-    with open(save_path / "metrics.txt", "w") as f:
+    with open(config.save_dir / "metrics.txt", "w") as f:
         for key, value in metrics.items():
             f.write(f"{key}: {value}\n")
 
-    plot_quad_eval(results, experiment.env, save_path)
+    plot_quad_eval(results, experiment.env, config.save_dir)
 
-    with open(save_path / "rand_hist.txt", "w") as file:
+    with open(config.save_dir / "rand_hist.txt", "w") as file:
         for key, value in ctrl.rand_hist.items():
             file.write(f"{key}: {value}\n")
 

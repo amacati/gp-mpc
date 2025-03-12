@@ -79,10 +79,6 @@ class MPC_ACADOS:
         self.r_mpc = r_mpc
         self.setup_results_dict()
 
-        for k, v in locals().items():
-            if k != "self" and k != "kwargs" and "__" not in k:
-                self.__dict__.update({k: v})
-
         # Task.
         self.env = env_func()
         if additional_constraints is not None:
@@ -147,10 +143,11 @@ class MPC_ACADOS:
             del self.acados_ocp_solver
 
         # delete the generated c code directory
-        if os.path.exists(self.output_dir + "/mpc_c_generated_code"):
-            shutil.rmtree(self.output_dir + "/mpc_c_generated_code")
-            assert not os.path.exists(
-                self.output_dir + "/mpc_c_generated_code"
+        generated_code_path = self.output_dir / "mpc_c_generated_code"
+        if generated_code_path.exists():
+            shutil.rmtree(generated_code_path)
+            assert (
+                not generated_code_path.exists()
             ), "Failed to delete the generated c code directory"
 
         # Dynamics model.
@@ -158,7 +155,9 @@ class MPC_ACADOS:
         # Acados optimizer.
         self.setup_acados_optimizer()
 
-        self.acados_ocp_solver = AcadosOcpSolver(self.ocp, verbose=False)
+        self.acados_ocp_solver = AcadosOcpSolver(
+            self.ocp, json_file=str(self.output_dir / "acados_ocp.json"), verbose=False
+        )
 
     def setup_acados_model(self) -> AcadosModel:
         """Sets up symbolic model for acados.
@@ -338,7 +337,7 @@ class MPC_ACADOS:
         # c code generation
         # NOTE: when using GP-MPC, a separated directory is needed;
         # otherwise, Acados solver can read the wrong c code
-        ocp.code_export_directory = self.output_dir + "/mpc_c_generated_code"
+        ocp.code_export_directory = str(self.output_dir / "mpc_c_generated_code")
 
         self.ocp = ocp
 

@@ -129,6 +129,7 @@ def spec(idx):
 
 def get_config(idx):
     """Gets the config of the callable from global registry."""
+    assert False
     return registry.spec(idx).get_config()
 
 

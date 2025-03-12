@@ -103,13 +103,7 @@ class GPMPC_ACADOS_TRP:
         self.device = "cpu" if self.use_gpu is False else "cuda"
         self.seed = seed
         self.prior_info = {}
-        # for key, value in kwargs.items():
-        #     self.__dict__[key] = value
         self.setup_results_dict()
-
-        # for k, v in locals().items():
-        #     if k != "self" and k != "kwargs" and "__" not in k:
-        #         self.__dict__.update({k: v})
 
         # Task.
         self.env = env_func()
@@ -420,7 +414,7 @@ class GPMPC_ACADOS_TRP:
                 n_train=self.optimization_iterations[0],
                 learning_rate=self.learning_rate[0],
                 gpu=self.use_gpu,
-                fname=os.path.join(self.output_dir, "best_model_T.pth"),
+                fname=self.output_dir / "best_model_T.pth",
             )
             GP_R.train(
                 train_input_R,
@@ -430,7 +424,7 @@ class GPMPC_ACADOS_TRP:
                 n_train=self.optimization_iterations[1],
                 learning_rate=self.learning_rate[1],
                 gpu=self.use_gpu,
-                fname=os.path.join(self.output_dir, "best_model_R.pth"),
+                fname=self.output_dir / "best_model_R.pth",
             )
             GP_P.train(
                 train_input_P,
@@ -440,7 +434,7 @@ class GPMPC_ACADOS_TRP:
                 n_train=self.optimization_iterations[2],
                 learning_rate=self.learning_rate[2],
                 gpu=self.use_gpu,
-                fname=os.path.join(self.output_dir, "best_model_P.pth"),
+                fname=self.output_dir / "best_model_P.pth",
             )
 
         self.gaussian_process = [GP_T, GP_R, GP_P]
@@ -652,7 +646,7 @@ class GPMPC_ACADOS_TRP:
         ocp.solver_options.tf = self.T * self.dt
 
         # c code generation
-        ocp.code_export_directory = self.output_dir + "/gpmpc_c_generated_code"
+        ocp.code_export_directory = str(self.output_dir / "gpmpc_c_generated_code")
 
         self.ocp = ocp
         self.opti_dict = {"n_ind_points": n_ind_points}
@@ -1340,7 +1334,7 @@ class GPMPC_ACADOS_TRP:
             self.setup_acados_model(n_ind_points)
             self.setup_acados_optimizer(n_ind_points)
             self.acados_ocp_solver = AcadosOcpSolver(
-                self.ocp, self.output_dir + "/gpmpc_acados_ocp_solver.json", verbose=False
+                self.ocp, str(self.output_dir / "gpmpc_acados_ocp_solver.json"), verbose=False
             )
 
         self.prior_ctrl.reset()
@@ -1569,7 +1563,7 @@ class GPMPC_ACADOS_TRP:
 
             # TODO: fix data logging
             np.savez(
-                os.path.join(self.output_dir, "epoch_data"),
+                self.output_dir / "epoch_data",
                 data_inputs=training_results["train_inputs"],
                 data_targets=training_results["train_targets"],
                 train_runs=train_runs,
@@ -1584,7 +1578,7 @@ class GPMPC_ACADOS_TRP:
 
         if training_results:
             np.savez(
-                os.path.join(self.output_dir, "data"),
+                self.output_dir / "data",
                 data_inputs=training_results["train_inputs"],
                 data_targets=training_results["train_targets"],
             )

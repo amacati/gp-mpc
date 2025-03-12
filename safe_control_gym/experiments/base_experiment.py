@@ -7,7 +7,6 @@ from time import time
 import gymnasium as gym
 import numpy as np
 from munch import munchify
-from termcolor import colored
 
 from safe_control_gym.utils.utils import is_wrapped
 
