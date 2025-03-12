@@ -141,7 +141,7 @@ class MPC_ACADOS:
         f_disc = acados_model.x + self.dt / 6 * (k1 + 2 * k2 + 2 * k3 + k4)
 
         acados_model.disc_dyn_expr = f_disc
-        # store meta information # NOTE: unit is missing
+        # store meta information
         acados_model.x_labels = self.env.STATE_LABELS
         acados_model.u_labels = self.env.ACTION_LABELS
         acados_model.t_label = "time"

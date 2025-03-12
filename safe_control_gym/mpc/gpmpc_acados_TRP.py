@@ -428,8 +428,8 @@ class GPMPC_ACADOS_TRP:
             T_pred
             * (cs.cos(acados_model.x[self.idx["phi"]]) * cs.cos(acados_model.x[self.idx["theta"]])),
             0,
-            R_pred,
             0,
+            R_pred,
             P_pred,
         )
         f_cont_func = cs.Function(
