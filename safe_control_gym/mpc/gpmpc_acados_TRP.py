@@ -1,10 +1,10 @@
 import time
 from functools import partial
+from pathlib import Path
 from typing import Any
 
 import casadi as cs
 import gpytorch
-import munch
 import numpy as np
 import scipy
 import torch
@@ -12,7 +12,6 @@ from acados_template import AcadosModel, AcadosOcp, AcadosOcpSolver
 from numpy.typing import NDArray
 from sklearn.model_selection import train_test_split
 
-from safe_control_gym.experiments.base_experiment import BaseExperiment
 from safe_control_gym.mpc.gp_utils import (
     GaussianProcess,
     ZeroMeanIndependentGPModel,
@@ -38,6 +37,8 @@ class GPMPC_ACADOS_TRP:
         "phi_cmd": 1,
         "theta_cmd": 2,
     }
+    state_labels = ["x", "d_x", "y", "d_y", "z", "d_z", "phi", "theta", "d_phi", "d_theta"]
+    action_labels = ["T_c", "R_c", "P_c"]
 
     def __init__(
         self,
@@ -57,7 +58,7 @@ class GPMPC_ACADOS_TRP:
         prob: float = 0.955,
         initial_rollout_std: float = 0.005,
         sparse_gp: bool = False,
-        output_dir: str = "results/temp",
+        output_dir: Path = Path("results/temp"),
     ):
         self.q_mpc = q_mpc
         self.r_mpc = r_mpc
@@ -78,16 +79,19 @@ class GPMPC_ACADOS_TRP:
             raise RuntimeError("CUDA device requested but not available.")
         self.device = device
         self.seed = seed
+        self.np_random = np.random.default_rng(seed)  # TODO: Remove if possible
 
         # Task
-        self.env = env_func(randomized_init=False, seed=seed)  # TODO: Remove
+        env = env_func(randomized_init=False, seed=seed)  # TODO: Remove
         (
             self.constraints,
             self.state_constraints_sym,
             self.input_constraints_sym,
-        ) = reset_constraints(self.env.constraints.constraints)
+        ) = reset_constraints(env.constraints.constraints)
         # Model parameters
-        self.model = self.get_prior(self.env, prior_info)
+        assert prior_info is not None
+        env._setup_symbolic(prior_prop=prior_info.get("prior_prop", {}))
+        self.model = env.symbolic
         self.dt = self.model.dt
         self.T = horizon
         self.Q = get_cost_weight_matrix(self.q_mpc, self.model.nx)
@@ -96,10 +100,10 @@ class GPMPC_ACADOS_TRP:
         self.constraint_tol = constraint_tol
 
         # Setup environments.
-        self.env = env_func(randomized_init=False, seed=seed)
-        self.env_training = env_func(randomized_init=True, seed=seed)
-        self.traj = self.env.X_GOAL.T
+        self.traj = env.X_GOAL.T
+        self.ref_action = np.repeat(env.U_GOAL.reshape(-1, 1), self.T, axis=1)
         self.traj_step = 0
+        self.np_random = np.random.default_rng(seed)
 
         # No training data accumulated yet so keep the dynamics function as linear prior.
         self.train_data = None
@@ -113,6 +117,7 @@ class GPMPC_ACADOS_TRP:
         self.learning_rate = learning_rate  # TODO: Marked for removal
         self.prob = prob
         self.n_ind_points = n_ind_points  # TODO: Rename to something more descriptive
+        self.max_n_ind_points = n_ind_points  # TODO: Move to max n ind points once debugged
         self.initial_rollout_std = initial_rollout_std
 
         uncertain_dim = [1, 3, 5, 7, 9]
@@ -138,35 +143,25 @@ class GPMPC_ACADOS_TRP:
 
         self.x_prev = None
         self.u_prev = None
-        self.results_dict = {}  # Required to remain compatible with base_experiment
 
     def reset(self):
         """Reset the controller before running."""
         tstart = time.time()
-        self.traj = self.env.X_GOAL.T
         self.traj_step = 0
         # Dynamics model.
         if self.gaussian_process is not None:
-            # sparse GP
-            if self.sparse and self.train_data["train_targets"].shape[0] <= self.n_ind_points:
-                n_ind_points = self.train_data["train_targets"].shape[0]
-            elif self.sparse:
-                n_ind_points = self.n_ind_points
-            else:
-                n_ind_points = self.train_data["train_targets"].shape[0]
-
-            self.acados_model = None
-            self.ocp = None
-            self.acados_ocp_solver = None
-
+            n_ind_points = self.train_data["train_targets"].shape[0]
+            if self.sparse:
+                # TODO: Fix by setting to max_n_ind_points
+                n_ind_points = min(n_ind_points, self.n_ind_points)
             # reinitialize the acados model and solver
-            self.setup_acados_model(n_ind_points)
-            self.setup_acados_optimizer(n_ind_points)
+            self.acados_model = self.setup_acados_model(n_ind_points)
+            self.ocp = self.setup_acados_optimizer(n_ind_points)
             self.acados_ocp_solver = AcadosOcpSolver(
                 self.ocp, str(self.output_dir / "gpmpc_acados_ocp_solver.json"), verbose=False
             )
 
-        self.prior_ctrl.reset()  # TODO: Check if we need to reset the controller here
+        self.prior_ctrl.reset()
         # Previously solved states & inputs
         self.x_prev = None
         self.u_prev = None
@@ -190,7 +185,7 @@ class GPMPC_ACADOS_TRP:
         g = 9.81
         dt = 1 / 60
         T_cmd = u_seq[:, 0]
-        T_prior_data = self.prior_ctrl.env.T_mapping_func(T_cmd).full().flatten()
+        T_prior_data = self.prior_ctrl.t_symbolic_fn(T_cmd).full().flatten()
         # numerical differentiation
         x_dot_seq = [(x_next_seq[i, :] - x_seq[i, :]) / dt for i in range(x_seq.shape[0])]
         x_dot_seq = np.array(x_dot_seq)
@@ -235,7 +230,7 @@ class GPMPC_ACADOS_TRP:
         self,
         input_data,
         target_data,
-        overwrite_saved_data: bool = False,
+        test_data_ratio: float = 0.2,
     ):
         """Performs GP training.
 
@@ -249,26 +244,18 @@ class GPMPC_ACADOS_TRP:
         self.reset()
         train_inputs = input_data
         train_targets = target_data
-        if (self.data_inputs is None and self.data_targets is None) or overwrite_saved_data:
+        if self.data_inputs is None and self.data_targets is None:
             self.data_inputs = train_inputs
             self.data_targets = train_targets
         else:
             self.data_inputs = np.vstack((self.data_inputs, train_inputs))
             self.data_targets = np.vstack((self.data_targets, train_targets))
 
-        total_input_data = self.data_inputs.shape[0]
         # If validation set is desired.
-        if self.test_data_ratio > 0 and self.test_data_ratio is not None:
-            train_idx, test_idx = train_test_split(
-                list(range(total_input_data)),
-                test_size=self.test_data_ratio,
-                random_state=self.seed,
-            )
-
-        else:
-            # Otherwise, just copy the training data into the test data.
-            train_idx = list(range(total_input_data))
-            test_idx = list(range(total_input_data))
+        data_idx = list(range(self.data_inputs.shape[0]))
+        train_idx, test_idx = train_test_split(
+            data_idx, test_size=test_data_ratio, random_state=self.seed
+        )
 
         train_inputs = self.data_inputs[train_idx, :]
         train_targets = self.data_targets[train_idx, :]
@@ -378,7 +365,6 @@ class GPMPC_ACADOS_TRP:
         acados_model = AcadosModel()
         acados_model.x = self.model.x_sym
         acados_model.u = self.model.u_sym
-        acados_model.name = self.env.NAME
 
         z = cs.vertcat(acados_model.x, acados_model.u)  # GP prediction point
 
@@ -445,31 +431,14 @@ class GPMPC_ACADOS_TRP:
 
         acados_model.disc_dyn_expr = f_disc
 
-        acados_model.x_labels = self.env.STATE_LABELS
-        acados_model.u_labels = self.env.ACTION_LABELS
+        acados_model.name = "gpmpc"
+        acados_model.x_labels = self.state_labels
+        acados_model.u_labels = self.action_labels
         acados_model.t_label = "time"
 
-        self.acados_model = acados_model
+        return acados_model
 
-        # only for plotting
-        T_cmd = cs.MX.sym("T_cmd")
-        theta_cmd = cs.MX.sym("theta_cmd")
-        theta = cs.MX.sym("theta")
-        theta_dot = cs.MX.sym("theta_dot")
-        T_true_func = self.env.T_mapping_func
-        T_prior_func = self.prior_ctrl.env.T_mapping_func
-        T_res = T_true_func(T_cmd) - T_prior_func(T_cmd)
-        self.T_res_func = cs.Function("T_res_func", [T_cmd], [T_res])
-        R_true_func = self.env.R_mapping_func
-        R_prior_func = self.prior_ctrl.env.R_mapping_func
-        R_res = R_true_func(theta, theta_dot, theta_cmd) - R_prior_func(theta, theta_dot, theta_cmd)
-        self.R_res_func = cs.Function("R_res_func", [theta, theta_dot, theta_cmd], [R_res])
-        P_true_func = self.env.P_mapping_func
-        P_prior_func = self.prior_ctrl.env.P_mapping_func
-        P_res = P_true_func(theta, theta_dot, theta_cmd) - P_prior_func(theta, theta_dot, theta_cmd)
-        self.P_res_func = cs.Function("P_res_func", [theta, theta_dot, theta_cmd], [P_res])
-
-    def setup_acados_optimizer(self, n_ind_points):
+    def setup_acados_optimizer(self, n_ind_points) -> AcadosOcp:
         nx, nu = self.model.nx, self.model.nu
         ny = nx + nu
         ny_e = nx
@@ -550,8 +519,7 @@ class GPMPC_ACADOS_TRP:
         # c code generation
         ocp.code_export_directory = str(self.output_dir / "gpmpc_c_generated_code")
 
-        self.ocp = ocp
-        self.opti_dict = {"n_ind_points": n_ind_points}
+        self.n_ind_points = n_ind_points  # TODO: Maybe remove
         # compute sparse GP values
         # the actual values will be set in select_action_with_gp
         (
@@ -569,6 +537,7 @@ class GPMPC_ACADOS_TRP:
             ) = self.precompute_mean_post_factor_all_data()
             self.mean_post_factor_val = mean_post_factor_val
             self.z_ind_val = z_ind_val
+        return ocp
 
     def processing_acados_constraints_expression(
         self,
@@ -654,9 +623,6 @@ class GPMPC_ACADOS_TRP:
 
     def close(self):
         """Clean up."""
-        self.env_training.close()
-        self.env.close()
-        self.prior_ctrl.env.close()
 
     def select_action(self, obs, info: dict | None = None):
         if self.gaussian_process is None:
@@ -687,9 +653,8 @@ class GPMPC_ACADOS_TRP:
         # set acados parameters
         if self.sparse:
             # sparse GP parameters
-            n_ind_points = self.opti_dict["n_ind_points"]
-            assert z_ind_val.shape == (n_ind_points, 7)
-            assert mean_post_factor_val.shape == (3, n_ind_points)
+            assert z_ind_val.shape == (self.n_ind_points, 7)
+            assert mean_post_factor_val.shape == (3, self.n_ind_points)
             # casadi use column major order, while np uses row major order by default
             # Thus, Fortran order (column major) is used to reshape the arrays
             z_ind_val = z_ind_val.reshape(-1, 1, order="F")
@@ -732,10 +697,7 @@ class GPMPC_ACADOS_TRP:
         # set reference for the control horizon
         goal_states = self.get_references()
         self.traj_step += 1
-        y_ref = np.concatenate(
-            (goal_states[:, :-1], np.repeat(self.env.U_GOAL.reshape(-1, 1), self.T, axis=1)),
-            axis=0,
-        )
+        y_ref = np.concatenate((goal_states[:, :-1], self.ref_action), axis=0)
         for idx in range(self.T):
             self.acados_ocp_solver.set(idx, "yref", y_ref[:, idx])
         y_ref_e = goal_states[:, -1]
@@ -785,7 +747,7 @@ class GPMPC_ACADOS_TRP:
         inputs = self.train_data["train_inputs"]
         targets = self.train_data["train_targets"]
         # Choose T random training set points.
-        inds = self.env.np_random.choice(range(n_data_points), size=n_ind_points, replace=False)
+        inds = self.np_random.choice(range(n_data_points), size=n_ind_points, replace=False)
         z_ind = inputs[inds]
 
         GP_T = self.gaussian_process[0]
@@ -1094,22 +1056,6 @@ class GPMPC_ACADOS_TRP:
             state_covariances[-1] = cov_x
         return state_constraint_set, input_constraint_set
 
-    def get_prior(self, env, prior_info: dict):
-        """Fetch the prior model from the env for the controller.
-
-        Args:
-            env (BenchmarkEnv): the environment to fetch prior model from.
-            prior_info (dict): specifies the prior properties or other things to
-                overwrite the default prior model in the env.
-
-        Returns:
-            SymbolicModel: CasAdi prior model.
-        """
-        assert prior_info is not None
-        prior_prop = prior_info.get("prior_prop", {})
-        env._setup_symbolic(prior_prop=prior_prop)
-        return env.symbolic
-
     @staticmethod
     def setup_prior_dynamics(dfdx: NDArray, dfdu: NDArray, Q: NDArray, R: NDArray, dt: float):
         """Computes the LQR gain used for propograting GP uncertainty from the prior model dynamics."""
@@ -1120,226 +1066,26 @@ class GPMPC_ACADOS_TRP:
         lqr_gain = -np.dot(np.linalg.inv(R + np.dot(btp, B)), np.dot(btp, A))
         return A, B, lqr_gain
 
-    def learn(
-        self,
-        env,
-        num_epochs: int,
-        num_train_episodes_per_epoch: int,
-        num_test_episodes_per_epoch: int,
-    ):
-        """Performs multiple epochs learning."""
-
-        train_runs = {0: {}}
-        test_runs = {0: {}}
-
-        # epoch seed factor
-        np.random.seed(self.seed)
-        epoch_seeds = np.random.randint(1000, size=num_epochs, dtype=int) * self.seed
-        epoch_seeds = [int(seed) for seed in epoch_seeds]
-
-        # Keep the reference to the same environment for all epochs -> envs are not independent
-        # and will produce different trajectories
-        train_env = self.env_func(randomized_init=True, seed=epoch_seeds[0])
-        train_env.action_space.seed(epoch_seeds[0])
-        train_envs = [train_env] * num_epochs
-
-        test_envs = []
-        # Create identical copies of test environments for each epoch
-        for epoch in range(num_epochs):
-            test_envs.append(self.env_func(randomized_init=True, seed=epoch_seeds[epoch]))
-            test_envs[epoch].action_space.seed(epoch_seeds[epoch])
-
-        for env in train_envs:
-            if isinstance(env.EPISODE_LEN_SEC, list):
-                idx = np.random.choice(len(env.EPISODE_LEN_SEC))
-                env.EPISODE_LEN_SEC = env.EPISODE_LEN_SEC[idx]
-        for env in test_envs:
-            if isinstance(env.EPISODE_LEN_SEC, list):
-                idx = np.random.choice(len(env.EPISODE_LEN_SEC))
-                env.EPISODE_LEN_SEC = env.EPISODE_LEN_SEC[idx]
-
-        # creating train and test experiments
-        train_experiments = [BaseExperiment(env=env, ctrl=self) for env in train_envs[1:]]
-        test_experiments = [BaseExperiment(env=env, ctrl=self) for env in test_envs[1:]]
-        # first experiments are for the prior
-        train_experiments.insert(
-            0,
-            BaseExperiment(env=train_envs[0], ctrl=self.prior_ctrl),
-        )
-        test_experiments.insert(
-            0,
-            BaseExperiment(env=test_envs[0], ctrl=self.prior_ctrl),
-        )
-
-        for episode in range(num_train_episodes_per_epoch):
-            self.env = train_envs[0]
-            run_results = train_experiments[0].run_evaluation(n_episodes=1)
-            train_runs[0].update({episode: munch.munchify(run_results)})
-        for test_ep in range(num_test_episodes_per_epoch):
-            self.env = test_envs[0]
-            run_results = test_experiments[0].run_evaluation(n_episodes=1)
-            test_runs[0].update({test_ep: munch.munchify(run_results)})
-
-        for epoch in range(1, num_epochs):
-            # only take data from the last episode from the last epoch
-            episode_length = train_runs[epoch - 1][num_train_episodes_per_epoch - 1][0]["obs"][
-                0
-            ].shape[0]
-            x_seq, actions, x_next_seq, _ = self.gather_training_samples(
-                train_runs,
-                epoch - 1,
-                self.num_samples,
-                train_envs[epoch - 1].np_random,
-            )
-            train_inputs, train_targets = self.preprocess_data(
-                x_seq, actions, x_next_seq
-            )  # np.ndarray
-            self.train_gp(input_data=train_inputs, target_data=train_targets)
-            max_steps = train_runs[epoch - 1][episode][0]["obs"][0].shape[0]
-            x_seq, actions, x_next_seq, _ = self.gather_training_samples(
-                train_runs, epoch - 1, max_steps
-            )
-
-            # Test new policy.
-            test_runs[epoch] = {}
-            for test_ep in range(num_test_episodes_per_epoch):
-                self.x_prev = test_runs[epoch - 1][episode][0]["obs"][0][: self.T + 1, :].T
-                self.u_prev = test_runs[epoch - 1][episode][0]["action"][0][: self.T, :].T
-                self.env = test_envs[epoch]
-                run_results = test_experiments[epoch].run_evaluation(n_episodes=1)
-                test_runs[epoch].update({test_ep: munch.munchify(run_results)})
-
-            x_seq, actions, x_next_seq, _ = self.gather_training_samples(
-                test_runs, epoch - 1, episode_length
-            )
-            train_inputs, train_targets = self.preprocess_data(x_seq, actions, x_next_seq)
-            # gather training data
-            train_runs[epoch] = {}
-            for episode in range(num_train_episodes_per_epoch):
-                self.x_prev = train_runs[epoch - 1][episode][0]["obs"][0][: self.T + 1, :].T
-                self.u_prev = train_runs[epoch - 1][episode][0]["action"][0][: self.T, :].T
-                self.env = train_envs[epoch]
-                run_results = train_experiments[epoch].run_evaluation(n_episodes=1)
-                train_runs[epoch].update({episode: munch.munchify(run_results)})
-
-        # close environments
-        for experiment in train_experiments:
-            experiment.env.close()
-        for experiment in test_experiments:
-            experiment.env.close()
-
-        return train_runs, test_runs
-
-    def gather_training_samples(self, all_runs, epoch_i, num_samples, rng=None):
-        n_episodes = len(all_runs[epoch_i].keys())
-        num_samples_per_episode = int(num_samples / n_episodes)
-        x_seq_int = []
-        x_next_seq_int = []
-        actions_int = []
-        for episode_i in range(n_episodes):
-            run_results_int = all_runs[epoch_i][episode_i][0]
-            n = run_results_int["action"][0].shape[0]
-            if num_samples_per_episode < n:
-                if rng is not None:
-                    rand_inds_int = rng.choice(n - 1, num_samples_per_episode, replace=False)
-                else:
-                    rand_inds_int = np.arange(num_samples_per_episode)
-            else:
-                rand_inds_int = np.arange(n - 1)
-            next_inds_int = rand_inds_int + 1
-            x_seq_int.append(run_results_int["obs"][0][rand_inds_int, :])
-            actions_int.append(run_results_int["action"][0][rand_inds_int, :])
-            x_next_seq_int.append(run_results_int["obs"][0][next_inds_int, :])
-        x_seq_int = np.vstack(x_seq_int)
-        actions_int = np.vstack(actions_int)
-        x_next_seq_int = np.vstack(x_next_seq_int)
-
-        x_dot_seq_int = (x_next_seq_int - x_seq_int) / self.dt
-
-        return x_seq_int, actions_int, x_next_seq_int, x_dot_seq_int
-
-    def setup_optimizer(self, solver="qrsqp"):
-        """Sets up nonlinear optimization problem."""
-        nx, nu = self.model.nx, self.model.nu
-        T = self.T
-        # Define optimizer and variables.
-        opti = cs.Opti()
-        # States.
-        x_var = opti.variable(nx, T + 1)
-        # Inputs.
-        u_var = opti.variable(nu, T)
-        # Initial state.
-        x_init = opti.parameter(nx, 1)
-        # Reference (equilibrium point or trajectory, last step for terminal cost).
-        x_ref = opti.parameter(nx, T + 1)
-
-        # cost (cumulative)
-        cost = 0
-        cost_func = self.model.loss
-        for i in range(T):
-            # Can ignore the first state cost since fist x_var == x_init.
-            cost += cost_func(
-                x=x_var[:, i],
-                u=u_var[:, i],
-                Xr=x_ref[:, i],
-                Ur=self.env.U_GOAL,
-                Q=self.Q,
-                R=self.R,
-            )["l"]
-        # Terminal cost.
-        cost += cost_func(
-            x=x_var[:, -1],
-            u=np.zeros((nu, 1)),
-            Xr=x_ref[:, -1],
-            Ur=self.env.U_GOAL,
-            Q=self.Q,
-            R=self.R,
-        )["l"]
-        # Constraints
-        for i in range(self.T):
-            # Dynamics constraints.
-            next_state = self.dynamics_func(x0=x_var[:, i], p=u_var[:, i])["xf"]
-            opti.subject_to(x_var[:, i + 1] == next_state)
-
-            for state_constraint in self.state_constraints_sym:
-                opti.subject_to(state_constraint(x_var[:, i]) < -self.constraint_tol)
-            for input_constraint in self.input_constraints_sym:
-                opti.subject_to(input_constraint(u_var[:, i]) < -self.constraint_tol)
-
-        # Final state constraints.
-        for state_constraint in self.state_constraints_sym:
-            opti.subject_to(state_constraint(x_var[:, -1]) <= -self.constraint_tol)
-        # initial condition constraints
-        opti.subject_to(x_var[:, 0] == x_init)
-
-        opti.minimize(cost)
-        opti.solver(solver, {"expand": True, "error_on_fail": False})
-
-        self.opti_dict = {
-            "opti": opti,
-            "x_var": x_var,
-            "u_var": u_var,
-            "x_init": x_init,
-            "x_ref": x_ref,
-            "cost": cost,
-        }
+    def gather_training_samples(self, all_runs, epoch_i, num_samples, rng):
+        data = all_runs[epoch_i][0][0]
+        n = data["action"][0].shape[0]
+        idx = rng.choice(n - 1, num_samples, replace=False) if num_samples < n else np.arange(n - 1)
+        obs = np.array(data["obs"][0])
+        actions = np.array(data["action"][0])
+        dx = (obs[idx + 1, ...] - obs[idx, ...]) / self.dt
+        return obs[idx, ...], actions[idx, ...], obs[idx + 1, ...], dx
 
     def get_references(self):
         """Constructs reference states along mpc horizon.(nx, T+1)."""
         # We append the T+1 states of the trajectory to the goal_states such that the vel states
         # won't drop at the end of an episode
-        extended_ref_traj = np.concatenate([self.traj, self.traj[:, : self.T + 1]], axis=1)
+        extended_traj = np.concatenate([self.traj, self.traj[:, : self.T + 1]], axis=1)
         # Slice trajectory for horizon steps, if not long enough, repeat last state.
-        start = min(self.traj_step, extended_ref_traj.shape[-1])
-        end = min(self.traj_step + self.T + 1, extended_ref_traj.shape[-1])
+        start = min(self.traj_step, extended_traj.shape[-1])
+        end = min(self.traj_step + self.T + 1, extended_traj.shape[-1])
         remain = max(0, self.T + 1 - (end - start))
-        goal_states = np.concatenate(
-            [
-                extended_ref_traj[:, start:end],
-                np.tile(extended_ref_traj[:, -1:], (1, remain)),
-            ],
-            -1,
-        )
+        tail = np.tile(extended_traj[:, end][:, None], (1, remain))
+        goal_states = np.concatenate([extended_traj[:, start:end], tail], -1)
         return goal_states  # (nx, T+1).
 
     def reset_before_run(self, obs: Any = None, info: Any = None, env: Any = None):

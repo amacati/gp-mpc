@@ -386,7 +386,6 @@ class GaussianProcess:
                 else f"gp_validation_{output_label}_{title}.png"
             )
             plt.savefig(f"{output_dir}/{plt_name}")
-            print(f"Figure saved at {output_dir}/{plt_name}")
         # clean up the plot
         plt.close(fig_count)
 

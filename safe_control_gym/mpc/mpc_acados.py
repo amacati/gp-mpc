@@ -83,7 +83,6 @@ class MPC_ACADOS:
         self.u_goal = env.U_GOAL.reshape(-1, 1)
 
         self.constraint_tol = constraint_tol
-        self.results_dict = {}  # Required to remain compatible with base_experiment
 
         # Compile the acados model
         # delete the generated c code directory
