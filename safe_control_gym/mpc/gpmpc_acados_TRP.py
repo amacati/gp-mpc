@@ -1,4 +1,3 @@
-import time
 from functools import partial
 from pathlib import Path
 from typing import Any
@@ -109,6 +108,7 @@ class GPMPC_ACADOS_TRP:
         self.train_data = None
         self.data_inputs = None
         self.data_targets = None
+        self._requires_recompile = False
 
         # GP and training parameters.
         self.gaussian_process = None
@@ -146,10 +146,10 @@ class GPMPC_ACADOS_TRP:
 
     def reset(self):
         """Reset the controller before running."""
-        tstart = time.time()
         self.traj_step = 0
         # Dynamics model.
-        if self.gaussian_process is not None:
+        if self._requires_recompile:
+            assert self.gaussian_process is not None, "GP must be trained before reinitializing"
             n_ind_points = self.train_data["train_targets"].shape[0]
             if self.sparse:
                 # TODO: Fix by setting to max_n_ind_points
@@ -160,12 +160,12 @@ class GPMPC_ACADOS_TRP:
             self.acados_ocp_solver = AcadosOcpSolver(
                 self.ocp, str(self.output_dir / "gpmpc_acados_ocp_solver.json"), verbose=False
             )
+            self._requires_recompile = False
 
         self.prior_ctrl.reset()
         # Previously solved states & inputs
         self.x_prev = None
         self.u_prev = None
-        print(f"GPMPC_ACADOS_TRP.reset(): Reset took {time.time() - tstart:.2f} seconds.")
 
     def preprocess_data(
         self, x_seq: list[NDArray], u_seq: list[NDArray], x_next_seq: list[NDArray]
@@ -241,7 +241,6 @@ class GPMPC_ACADOS_TRP:
         Returns:
             training_results (dict): Dictionary of the training results.
         """
-        self.reset()
         train_inputs = input_data
         train_targets = target_data
         if self.data_inputs is None and self.data_targets is None:
@@ -347,7 +346,7 @@ class GPMPC_ACADOS_TRP:
         )
 
         self.gaussian_process = [GP_T, GP_R, GP_P]
-        self.reset()
+        self._requires_recompile = True
 
         # Collect training results.
         training_results = {}
@@ -630,6 +629,7 @@ class GPMPC_ACADOS_TRP:
         return self.select_action_with_gp(obs)
 
     def select_action_with_gp(self, obs):
+        assert not self._requires_recompile, "Acados model must be recompiled"
         nx, nu = self.model.nx, self.model.nu
         # set initial condition (0-th state)
         self.acados_ocp_solver.set(0, "lbx", obs)
@@ -1087,7 +1087,3 @@ class GPMPC_ACADOS_TRP:
         tail = np.tile(extended_traj[:, end][:, None], (1, remain))
         goal_states = np.concatenate([extended_traj[:, start:end], tail], -1)
         return goal_states  # (nx, T+1).
-
-    def reset_before_run(self, obs: Any = None, info: Any = None, env: Any = None):
-        """Reinitialize just the controller before a new run."""
-        pass

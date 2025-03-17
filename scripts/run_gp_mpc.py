@@ -1,6 +1,5 @@
 import time
 from collections import defaultdict
-from copy import deepcopy
 from functools import partial
 from pathlib import Path
 
@@ -9,6 +8,7 @@ import numpy as np
 import yaml
 from matplotlib.ticker import FormatStrFormatter
 from munch import munchify
+from tqdm import tqdm
 
 from safe_control_gym.mpc.plotting import make_quad_plots
 from safe_control_gym.utils.registration import make
@@ -76,13 +76,14 @@ def learn(n_epochs: int, ctrl, train_env, test_env, train_seed: int, test_seed: 
     # Generate n unique random integers for epoch seeds and one for evaluation
     rng = np.random.default_rng(train_seed)
     epoch_seeds = [int(i) for i in rng.choice(np.iinfo(np.int32).max, size=n_epochs, replace=False)]
+    pbar = tqdm(range(n_epochs), desc="GP-MPC", dynamic_ncols=True)
     # Run prior
     train_runs[0] = munchify(run_evaluation(train_env, ctrl, seed=epoch_seeds[0]))
     test_runs[0] = munchify(run_evaluation(test_env, ctrl, seed=test_seed))
+    pbar.update(1)
 
     for epoch in range(1, n_epochs):
-        # only take data from the last episode from the last epoch
-        # episode_length = train_runs[epoch - 1]["obs"].shape[0]
+        # Gather training data and train the GP
         x_seq, actions, x_next_seq = sample_data(train_runs[epoch - 1], ctrl.num_samples, rng)
         train_inputs, train_targets = ctrl.preprocess_data(x_seq, actions, x_next_seq)
         ctrl.train_gp(
@@ -90,8 +91,6 @@ def learn(n_epochs: int, ctrl, train_env, test_env, train_seed: int, test_seed: 
             target_data=train_targets,
             test_data_ratio=ctrl.test_data_ratio,
         )
-        # max_steps = train_runs[epoch - 1]["obs"].shape[0]
-        # x_seq, actions, x_next_seq = sample_data(train_runs[epoch - 1], max_steps, rng)
 
         # Test new policy.
         ctrl.x_prev = test_runs[epoch - 1]["obs"][: ctrl.T + 1, :].T
@@ -99,13 +98,12 @@ def learn(n_epochs: int, ctrl, train_env, test_env, train_seed: int, test_seed: 
         run_results = run_evaluation(test_env, ctrl, test_seed)
         test_runs[epoch] = munchify(run_results)
 
-        # x_seq, actions, x_next_seq = sample_data(test_runs[epoch - 1], episode_length, rng)
-        # train_inputs, train_targets = ctrl.preprocess_data(x_seq, actions, x_next_seq)
-        # gather training data
+        # Gather training data
         ctrl.x_prev = train_runs[epoch - 1]["obs"][: ctrl.T + 1, :].T
         ctrl.u_prev = train_runs[epoch - 1]["action"][: ctrl.T, :].T
         run_results = run_evaluation(train_env, ctrl, epoch_seeds[epoch])
         train_runs[epoch] = munchify(run_results)
+        pbar.update(1)
 
     train_env.close()
     test_env.close()
@@ -143,10 +141,7 @@ def run():
 
     # plotting training and evaluation results
     make_quad_plots(
-        test_runs=test_runs,
-        train_runs=train_runs,
-        trajectory=ctrl.traj.T,
-        save_dir=config.save_dir,
+        test_runs=test_runs, train_runs=train_runs, trajectory=ctrl.traj.T, save_dir=config.save_dir
     )
 
     # Run evaluation
@@ -193,7 +188,6 @@ def plot_quad_eval(trajectories, env, save_path: Path):
 
 
 if __name__ == "__main__":
-    tstart = time.time()
+    tstart = time.perf_counter()
     run()
-    tend = time.time()
-    print(f"Experiment took {tend - tstart:.2f} seconds")
+    print(f"Experiment took {time.perf_counter() - tstart:.2f} seconds")

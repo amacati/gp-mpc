@@ -60,7 +60,6 @@ class MPC_ACADOS:
             raise RuntimeError("CUDA device requested but not available.")
         self.device = device
         self.seed = seed
-        self.prior_info = prior_info
         self.q_mpc = q_mpc
         self.r_mpc = r_mpc
 
@@ -72,7 +71,8 @@ class MPC_ACADOS:
             self.input_constraints_sym,
         ) = reset_constraints(env.constraints.constraints)
         # Model parameters
-        self.model = self.get_prior(env)
+        env._setup_symbolic(prior_prop=prior_info.get("prior_prop", {}))
+        self.model = env.symbolic
         self.t_symbolic_fn = env.T_mapping_func  # Required for GP_MPC. TODO: Remove
         self.dt = self.model.dt
         self.T = horizon
@@ -357,13 +357,3 @@ class MPC_ACADOS:
             -1,
         )
         return goal_states  # (nx, T+1).
-
-    def reset_before_run(self, obs: Any = None, info: Any = None, env: Any = None):
-        """Reinitialize just the controller before a new run."""
-        pass
-
-    def get_prior(self, env):
-        """Fetch the prior model from the env for the controller."""
-        prior_prop = self.prior_info.get("prior_prop", {})
-        env._setup_symbolic(prior_prop=prior_prop)
-        return env.symbolic
