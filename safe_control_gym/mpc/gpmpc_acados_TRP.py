@@ -1,6 +1,5 @@
 from functools import partial
 from pathlib import Path
-from typing import Any
 
 import casadi as cs
 import gpytorch
@@ -24,7 +23,7 @@ from safe_control_gym.mpc.mpc_utils import (
 )
 
 
-class GPMPC_ACADOS_TRP:
+class GpMpcAcadosTrp:
     """Implements a GP-MPC controller with Acados optimization."""
 
     idx = {
@@ -49,7 +48,6 @@ class GPMPC_ACADOS_TRP:
         r_mpc: list,
         seed: int = 1337,
         constraint_tol: float = 1e-8,
-        test_data_ratio: float = 0.2,
         optimization_iterations: list = None,
         learning_rate: list = None,
         device: str = "cpu",
@@ -72,16 +70,14 @@ class GPMPC_ACADOS_TRP:
             "prior_soft_constraints_coeff": 0,
         }
         self.sparse = sparse_gp
-        self.env_func = env_func  # TODO: remove after removing the train function
         self.output_dir = output_dir
         if "cuda" in device and not torch.cuda.is_available():
             raise RuntimeError("CUDA device requested but not available.")
         self.device = device
         self.seed = seed
-        self.np_random = np.random.default_rng(seed)  # TODO: Remove if possible
 
         # Task
-        env = env_func(randomized_init=False, seed=seed)  # TODO: Remove
+        env = env_func(randomized_init=False, seed=seed)
         (
             self.constraints,
             self.state_constraints_sym,
@@ -112,11 +108,10 @@ class GPMPC_ACADOS_TRP:
 
         # GP and training parameters.
         self.gaussian_process = None
-        self.test_data_ratio = test_data_ratio  # TODO: Marked for removal
         self.optimization_iterations = optimization_iterations  # TODO: Marked for removal
         self.learning_rate = learning_rate  # TODO: Marked for removal
         self.prob = prob
-        self.n_ind_points = n_ind_points  # TODO: Rename to something more descriptive
+        self.n_ind_points = n_ind_points
         self.max_n_ind_points = n_ind_points  # TODO: Move to max n ind points once debugged
         self.initial_rollout_std = initial_rollout_std
 
@@ -1065,15 +1060,6 @@ class GPMPC_ACADOS_TRP:
         btp = np.dot(B.T, P)
         lqr_gain = -np.dot(np.linalg.inv(R + np.dot(btp, B)), np.dot(btp, A))
         return A, B, lqr_gain
-
-    def gather_training_samples(self, all_runs, epoch_i, num_samples, rng):
-        data = all_runs[epoch_i][0][0]
-        n = data["action"][0].shape[0]
-        idx = rng.choice(n - 1, num_samples, replace=False) if num_samples < n else np.arange(n - 1)
-        obs = np.array(data["obs"][0])
-        actions = np.array(data["action"][0])
-        dx = (obs[idx + 1, ...] - obs[idx, ...]) / self.dt
-        return obs[idx, ...], actions[idx, ...], obs[idx + 1, ...], dx
 
     def get_references(self):
         """Constructs reference states along mpc horizon.(nx, T+1)."""

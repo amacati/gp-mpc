@@ -10,6 +10,7 @@ from matplotlib.ticker import FormatStrFormatter
 from munch import munchify
 from tqdm import tqdm
 
+from safe_control_gym.mpc.gpmpc_acados_TRP import GpMpcAcadosTrp
 from safe_control_gym.mpc.plotting import make_quad_plots
 from safe_control_gym.utils.registration import make
 from safe_control_gym.utils.utils import mkdir_date
@@ -28,7 +29,7 @@ def load_config():
 
 def run_evaluation(env, ctrl, seed: int) -> dict:
     episode_data = defaultdict(list)
-    ctrl.reset()  # TODO: Do we need to reset?
+    ctrl.reset()
     obs, info = env.reset(seed=seed)
 
     step_data = dict(obs=obs, info=info, state=env.state)
@@ -70,7 +71,15 @@ def sample_data(data, n_samples: int, rng):
     return obs[idx, ...], actions[idx, ...], obs[idx + 1, ...]
 
 
-def learn(n_epochs: int, ctrl, train_env, test_env, train_seed: int, test_seed: int):
+def learn(
+    n_epochs: int,
+    ctrl,
+    train_env,
+    test_env,
+    test_data_ratio: float,
+    train_seed: int,
+    test_seed: int,
+):
     """Performs multiple epochs learning."""
     train_runs, test_runs = {}, {}
     # Generate n unique random integers for epoch seeds and one for evaluation
@@ -87,9 +96,7 @@ def learn(n_epochs: int, ctrl, train_env, test_env, train_seed: int, test_seed: 
         x_seq, actions, x_next_seq = sample_data(train_runs[epoch - 1], ctrl.num_samples, rng)
         train_inputs, train_targets = ctrl.preprocess_data(x_seq, actions, x_next_seq)
         ctrl.train_gp(
-            input_data=train_inputs,
-            target_data=train_targets,
-            test_data_ratio=ctrl.test_data_ratio,
+            input_data=train_inputs, target_data=train_targets, test_data_ratio=test_data_ratio
         )
 
         # Test new policy.
@@ -116,12 +123,9 @@ def run():
     rng = np.random.default_rng(config.seed)
     env_func = partial(make, config.task, seed=config.seed, **config.task_config)
     # Create a random initial state for all experiments
-    random_env = env_func(gui=False)
-    init_state, _ = random_env.reset()
-    random_env.close()
 
     # Create controller.
-    ctrl = make(config.algo, env_func, seed=config.seed, **config.algo_config)
+    ctrl = GpMpcAcadosTrp(env_func, seed=config.seed, **config.algo_config)
 
     # Run the experiment.
     # Get initial state and create environments
@@ -135,6 +139,7 @@ def run():
         ctrl=ctrl,
         train_env=train_env,
         test_env=test_env,
+        test_data_ratio=config.train.test_data_ratio,
         train_seed=train_seed,
         test_seed=test_seed,
     )
@@ -144,11 +149,11 @@ def run():
         test_runs=test_runs, train_runs=train_runs, trajectory=ctrl.traj.T, save_dir=config.save_dir
     )
 
-    # Run evaluation
-    eval_env = env_func(gui=False, randomized_init=False, init_state=init_state)
+    # Run evaluation on a seed different from the test seed
+    eval_env = env_func(gui=False, randomized_init=False, seed=test_seed + 1)
     trajs_data = run_evaluation(eval_env, ctrl, seed=test_seed)
-    ctrl.close()
     eval_env.close()
+    ctrl.close()
 
     plot_quad_eval(trajs_data, eval_env, config.save_dir)
 
