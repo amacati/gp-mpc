@@ -27,6 +27,9 @@ except ImportError as e:
 class MPC_ACADOS:
     """MPC with full nonlinear model."""
 
+    state_labels = ["x", "d_x", "y", "d_y", "z", "d_z", "phi", "theta", "d_phi", "d_theta"]
+    action_labels = ["T_c", "R_c", "P_c"]
+
     def __init__(
         self,
         env_func,
@@ -62,62 +65,47 @@ class MPC_ACADOS:
         self.r_mpc = r_mpc
 
         # Task.
-        self.env = env_func()
+        env = env_func()
         (
             self.constraints,
             self.state_constraints_sym,
             self.input_constraints_sym,
-        ) = reset_constraints(self.env.constraints.constraints)
+        ) = reset_constraints(env.constraints.constraints)
         # Model parameters
-        self.model = self.get_prior(self.env)
+        self.model = self.get_prior(env)
+        self.t_symbolic_fn = env.T_mapping_func  # Required for GP_MPC. TODO: Remove
         self.dt = self.model.dt
         self.T = horizon
         self.Q = get_cost_weight_matrix(self.q_mpc, self.model.nx)
         self.R = get_cost_weight_matrix(self.r_mpc, self.model.nu)
+        self.traj = env.X_GOAL.T
+        self.traj_step = 0
+        self.u_goal = env.U_GOAL.reshape(-1, 1)
 
         self.constraint_tol = constraint_tol
-        self.solver = "ipopt"
         self.results_dict = {}  # Required to remain compatible with base_experiment
-        self._recompile_count = 0
 
-    def reset(self):
-        """Prepares for training or evaluation."""
-        # trajectory tracking task
-        start_time = time.time()
-        self.traj = self.env.X_GOAL.T
-        self.traj_step = 0
-        # Previously solved states & inputs, useful for warm start.
-        self.x_prev = None
-        self.u_prev = None
-
-        if hasattr(self, "acados_model"):
-            del self.acados_model
-        if hasattr(self, "ocp"):
-            del self.ocp
-        if hasattr(self, "acados_ocp_solver"):
-            del self.acados_ocp_solver
-
+        # Compile the acados model
         # delete the generated c code directory
         generated_code_path = self.output_dir / "mpc_c_generated_code"
         if generated_code_path.exists():
             shutil.rmtree(generated_code_path)
-            assert (
-                not generated_code_path.exists()
-            ), "Failed to delete the generated c code directory"
+            assert not generated_code_path.exists(), "Failed to delete the c code directory"
 
-        # Dynamics model.
         self.acados_model = self.setup_acados_model()
-        # Acados optimizer.
-        self.setup_acados_optimizer()
-
+        self.ocp = self.setup_acados_optimizer()
         self.acados_ocp_solver = AcadosOcpSolver(
             self.ocp, json_file=str(self.output_dir / "acados_ocp.json"), verbose=False
         )
-        self._recompile_count += 1
-        print(
-            f"MPC_ACADOS.reset(): Recompiled {self._recompile_count} times. "
-            f"Compilation took {time.time() - start_time:.2f} seconds."
-        )
+        env.close()
+
+    def reset(self):
+        """Prepares for training or evaluation."""
+        self.acados_ocp_solver.reset()
+        self.traj_step = 0
+        # Previously solved states & inputs, useful for warm start.
+        self.x_prev = None
+        self.u_prev = None
 
     def setup_acados_model(self) -> AcadosModel:
         """Set up the symbolic model for acados.
@@ -128,7 +116,6 @@ class MPC_ACADOS:
         acados_model = AcadosModel()
         acados_model.x = self.model.x_sym
         acados_model.u = self.model.u_sym
-        acados_model.name = self.env.NAME
 
         # continuous-time dynamics
         fc_func = self.model.fc_func
@@ -142,13 +129,14 @@ class MPC_ACADOS:
 
         acados_model.disc_dyn_expr = f_disc
         # store meta information
-        acados_model.x_labels = self.env.STATE_LABELS
-        acados_model.u_labels = self.env.ACTION_LABELS
+        acados_model.name = "mpc"
+        acados_model.x_labels = self.state_labels
+        acados_model.u_labels = self.action_labels
         acados_model.t_label = "time"
 
         return acados_model
 
-    def setup_acados_optimizer(self):
+    def setup_acados_optimizer(self) -> AcadosOcp:
         """Sets up nonlinear optimization problem."""
         nx, nu = self.model.nx, self.model.nu
         ny = nx + nu
@@ -208,8 +196,7 @@ class MPC_ACADOS:
         # NOTE: when using GP-MPC, a separated directory is needed;
         # otherwise, Acados solver can read the wrong c code
         ocp.code_export_directory = str(self.output_dir / "mpc_c_generated_code")
-
-        self.ocp = ocp
+        return ocp
 
     def processing_acados_constraints_expression(
         self,
@@ -293,7 +280,7 @@ class MPC_ACADOS:
         self.traj_step += 1
 
         y_ref = np.concatenate(
-            (goal_states[:, :-1], np.repeat(self.env.U_GOAL.reshape(-1, 1), self.T, axis=1)),
+            (goal_states[:, :-1], np.repeat(self.u_goal, self.T, axis=1)),
             axis=0,
         )
         for idx in range(self.T):
