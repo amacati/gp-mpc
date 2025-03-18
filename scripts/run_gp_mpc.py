@@ -3,6 +3,7 @@ from collections import defaultdict
 from functools import partial
 from pathlib import Path
 
+import gymnasium
 import matplotlib.pyplot as plt
 import numpy as np
 import yaml
@@ -10,7 +11,7 @@ from matplotlib.ticker import FormatStrFormatter
 from munch import munchify
 from tqdm import tqdm
 
-from safe_control_gym.mpc.gpmpc_acados_TRP import GpMpcAcadosTrp
+from safe_control_gym.mpc.gpmpc import GPMPC
 from safe_control_gym.mpc.plotting import make_quad_plots
 from safe_control_gym.utils.registration import make
 from safe_control_gym.utils.utils import mkdir_date
@@ -27,12 +28,12 @@ def load_config():
     return config
 
 
-def run_evaluation(env, ctrl, seed: int) -> dict:
+def run_evaluation(env, ctrl: GPMPC, seed: int) -> dict:
     episode_data = defaultdict(list)
     ctrl.reset()
     obs, info = env.reset(seed=seed)
 
-    step_data = dict(obs=obs, info=info, state=env.state)
+    step_data = {"obs": obs, "info": info, "state": env.state}
     for key, val in step_data.items():
         episode_data[key].append(val)
 
@@ -45,9 +46,15 @@ def run_evaluation(env, ctrl, seed: int) -> dict:
         action = ctrl.select_action(obs, info)
         inference_time_data.append(time.perf_counter() - time_start)
         obs, reward, done, info = env.step(action)
-        step_data = dict(
-            obs=obs, action=action, done=done, info=info, reward=reward, length=1, state=env.state
-        )
+        step_data = {
+            "obs": obs,
+            "action": action,
+            "done": done,
+            "info": info,
+            "reward": reward,
+            "length": 1,
+            "state": env.state,
+        }
         for key, val in step_data.items():
             episode_data[key].append(val)
         if done:
@@ -55,7 +62,7 @@ def run_evaluation(env, ctrl, seed: int) -> dict:
     for key, val in episode_data.items():
         episode_data[key] = np.array(val)
 
-    episode_data["controller_data"] = munchify(dict(ctrl_data))
+    episode_data["controller_data"] = dict(ctrl_data)
     episode_data["inference_time_data"] = inference_time_data
     return episode_data
 
@@ -73,10 +80,12 @@ def sample_data(data, n_samples: int, rng):
 
 def learn(
     n_epochs: int,
-    ctrl,
+    ctrl: GPMPC,
     train_env,
     test_env,
     test_data_ratio: float,
+    learning_rate: float,
+    gp_iterations: int,
     train_seed: int,
     test_seed: int,
 ):
@@ -87,33 +96,45 @@ def learn(
     epoch_seeds = [int(i) for i in rng.choice(np.iinfo(np.int32).max, size=n_epochs, replace=False)]
     pbar = tqdm(range(n_epochs), desc="GP-MPC", dynamic_ncols=True)
     # Run prior
-    train_runs[0] = munchify(run_evaluation(train_env, ctrl, seed=epoch_seeds[0]))
-    test_runs[0] = munchify(run_evaluation(test_env, ctrl, seed=test_seed))
+    train_runs[0] = run_evaluation(train_env, ctrl, seed=epoch_seeds[0])
+    test_runs[0] = run_evaluation(test_env, ctrl, seed=test_seed)
     pbar.update(1)
+    train_inputs, train_targets = np.zeros((0, 7)), np.zeros((0, 3))  # 7 inputs, 3 outputs
 
     for epoch in range(1, n_epochs):
         # Gather training data and train the GP
         x_seq, actions, x_next_seq = sample_data(train_runs[epoch - 1], ctrl.num_samples, rng)
-        train_inputs, train_targets = ctrl.preprocess_data(x_seq, actions, x_next_seq)
+        inputs, targets = ctrl.preprocess_data(x_seq, actions, x_next_seq)
+        train_inputs = np.vstack((train_inputs, inputs))
+        train_targets = np.vstack((train_targets, targets))
+        t3 = time.perf_counter()
         ctrl.train_gp(
-            input_data=train_inputs, target_data=train_targets, test_data_ratio=test_data_ratio
+            x=train_inputs,
+            y=train_targets,
+            test_data_ratio=test_data_ratio,
+            learning_rate=learning_rate,
+            iterations=gp_iterations,
         )
-
+        t4 = time.perf_counter()
         # Test new policy.
         ctrl.x_prev = test_runs[epoch - 1]["obs"][: ctrl.T + 1, :].T
         ctrl.u_prev = test_runs[epoch - 1]["action"][: ctrl.T, :].T
-        run_results = run_evaluation(test_env, ctrl, test_seed)
-        test_runs[epoch] = munchify(run_results)
-
+        test_runs[epoch] = run_evaluation(test_env, ctrl, test_seed)
+        t5 = time.perf_counter()
         # Gather training data
         ctrl.x_prev = train_runs[epoch - 1]["obs"][: ctrl.T + 1, :].T
         ctrl.u_prev = train_runs[epoch - 1]["action"][: ctrl.T, :].T
-        run_results = run_evaluation(train_env, ctrl, epoch_seeds[epoch])
-        train_runs[epoch] = munchify(run_results)
+        train_runs[epoch] = run_evaluation(train_env, ctrl, epoch_seeds[epoch])
+        t6 = time.perf_counter()
+        # Print timing table
+        print("\nExecution Times (seconds):")
+        print(f"{'Operation':<25} {'Time (s)':<15}")
+        print("-" * 40)
+        print(f"{'Train GP':<25} {t4-t3:.2e}")
+        print(f"{'Test Evaluation':<25} {t5-t4:.2e}")
+        print(f"{'Train Evaluation':<25} {t6-t5:.2e}")
         pbar.update(1)
 
-    train_env.close()
-    test_env.close()
     return train_runs, test_runs
 
 
@@ -125,7 +146,7 @@ def run():
     # Create a random initial state for all experiments
 
     # Create controller.
-    ctrl = GpMpcAcadosTrp(env_func, seed=config.seed, **config.algo_config)
+    ctrl = GPMPC(env_func, seed=config.seed, **config.algo_config)
 
     # Run the experiment.
     # Get initial state and create environments
@@ -140,9 +161,13 @@ def run():
         train_env=train_env,
         test_env=test_env,
         test_data_ratio=config.train.test_data_ratio,
+        learning_rate=config.train.learning_rate,
+        gp_iterations=config.train.iterations,
         train_seed=train_seed,
         test_seed=test_seed,
     )
+    train_env.close()
+    test_env.close()
 
     # plotting training and evaluation results
     make_quad_plots(
@@ -153,7 +178,6 @@ def run():
     eval_env = env_func(gui=False, randomized_init=False, seed=test_seed + 1)
     trajs_data = run_evaluation(eval_env, ctrl, seed=test_seed)
     eval_env.close()
-    ctrl.close()
 
     plot_quad_eval(trajs_data, eval_env, config.save_dir)
 

@@ -24,7 +24,7 @@ except ImportError as e:
     raise ImportError("Acados is not installed") from e
 
 
-class MPC_ACADOS:
+class MPC:
     """MPC with full nonlinear model."""
 
     state_labels = ["x", "d_x", "y", "d_y", "z", "d_z", "phi", "theta", "d_phi", "d_theta"]

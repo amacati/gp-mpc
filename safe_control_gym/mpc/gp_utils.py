@@ -1,11 +1,13 @@
 """Utility functions for Gaussian Processes."""
-from pathlib import Path
 
 import casadi as ca
 import gpytorch
-import matplotlib.pyplot as plt
 import numpy as np
 import torch
+from gpytorch.kernels import RBFKernel, ScaleKernel
+from gpytorch.likelihoods import GaussianLikelihood
+from gpytorch.means import ZeroMean
+from numpy.typing import NDArray
 
 torch.manual_seed(0)
 
@@ -53,38 +55,24 @@ def covMatern52ard(x, z, ell, sf2):
     return sf2 * (1 + ca.sqrt(5) * r_over_l + 5 / 3 * r_over_l**2) * ca.exp(-ca.sqrt(5) * r_over_l)
 
 
-class ZeroMeanIndependentGPModel(gpytorch.models.ExactGP):
-    """Single dimensional output Gaussian Process model with zero mean function.
+class GPRegressionModel(gpytorch.models.ExactGP):
+    """Single dimensional output Gaussian Process model with zero mean function and RBF kernel."""
 
-    Or constant mean and radial basis function kernel (SE).
-    """
-
-    def __init__(self, train_x, train_y, likelihood, kernel="RBF"):
+    def __init__(
+        self, train_x: torch.Tensor, train_y: torch.Tensor, likelihood: GaussianLikelihood
+    ):
         """Initialize a single dimensional Gaussian Process model with zero mean function.
 
         Args:
-            train_x (torch.Tensor): input training data (input_dim X N samples).
-            train_y (torch.Tensor): output training data (output dim x N samples).
-            likelihood (gpytorch.likelihood): Likelihood function (gpytorch.likelihoods.GaussianLikelihood).
+            train_x: input training data (input_dim X N samples).
+            train_y: output training data (output dim x N samples).
+            likelihood: likelihood function.
         """
         super().__init__(train_x, train_y, likelihood)
-        # For Zero mean function.
-        self.mean_module = gpytorch.means.ZeroMean()
-        # For constant mean function.
-        if kernel == "RBF":
-            self.covar_module = gpytorch.kernels.ScaleKernel(
-                gpytorch.kernels.RBFKernel(ard_num_dims=train_x.shape[1]),
-                ard_num_dims=train_x.shape[1],
-            )
-        elif kernel == "Matern":
-            self.covar_module = gpytorch.kernels.ScaleKernel(
-                gpytorch.kernels.MaternKernel(ard_num_dims=train_x.shape[1]),
-                ard_num_dims=train_x.shape[1],
-            )
-        elif kernel == "RBF_single":
-            self.covar_module = gpytorch.kernels.ScaleKernel(
-                gpytorch.kernels.RBFKernel(),
-            )
+        self.mean_module = ZeroMean().to(train_x.device)
+        self.covar_module = ScaleKernel(RBFKernel()).to(train_x.device)
+        # Materialize the covariance matrix
+        self.K = self.covar_module(train_x).add_diag(self.likelihood.noise).to_dense()
 
     def forward(self, x):
         mean_x = self.mean_module(x)
@@ -92,18 +80,71 @@ class ZeroMeanIndependentGPModel(gpytorch.models.ExactGP):
         return gpytorch.distributions.MultivariateNormal(mean_x, covar_x)
 
 
+def fit_gp(
+    model: GPRegressionModel,
+    likelihood: GaussianLikelihood,
+    iterations: int = 500,
+    learning_rate: float = 0.01,
+    device: str = "cpu",
+):
+    assert model.train_inputs is not None, "model train inputs must be set at initialization"
+    assert model.train_targets is not None, "model train targets must be set at initialization"
+    train_x = model.train_inputs[0].to(device)
+    train_y = model.train_targets[0].to(device)
+    model = model.to(device)
+    model.train()
+    likelihood = likelihood.to(device)
+    likelihood.train()
+
+    optim = torch.optim.Adam(model.parameters(), lr=learning_rate)
+    mll = gpytorch.mlls.ExactMarginalLogLikelihood(likelihood, model)
+    last_loss = torch.tensor(torch.inf)
+    for _ in range(iterations):
+        optim.zero_grad()
+        output = model(train_x)
+        loss = -mll(output, train_y)
+        loss.backward()
+        optim.step()
+        if torch.abs(last_loss - loss) < 1e-3:  # Early stopping if converged
+            break
+        last_loss = loss
+
+
+def gpytorch_predict2casadi(
+    model: GPRegressionModel, train_x: NDArray, train_y: NDArray
+) -> ca.Function:
+    """Convert the prediction function of a gpytorch model to casadi model."""
+    assert isinstance(model, GPRegressionModel), "Can only convert GPRegressionModels to casadi"
+    assert train_x.ndim == 2, "train_x must be a 2D array"
+    assert train_y.ndim == 2, "train_y must be a 2D array"
+    lengthscale = model.covar_module.base_kernel.lengthscale.numpy(force=True)
+    output_scale = model.covar_module.outputscale.numpy(force=True)
+    Nx = train_x.shape[1]
+    z = ca.SX.sym("z", Nx)
+    K_z_ztrain = ca.Function(
+        "k_z_ztrain",
+        [z],
+        [covSE_single(z, train_x.T, lengthscale.T, output_scale)],
+        ["z"],
+        ["K"],
+    )
+    K = model.covar_module(train_x).add_diag(model.likelihood.noise)
+    print(K, type(K))
+    K_noise_inv = K.inv_matmul(torch.eye(n_samples).double())
+    predict = ca.Function(
+        "pred",
+        [z],
+        [K_z_ztrain(z=z)["K"] @ self.model.K_plus_noise_inv.numpy(force=True) @ train_y],
+        ["z"],
+        ["mean"],
+    )
+    return predict
+
+
 class GaussianProcess:
     """Gaussian Process decorator for gpytorch."""
 
-    def __init__(
-        self,
-        model_type,
-        likelihood,
-        input_mask=None,
-        target_mask=None,
-        kernel="RBF",
-        noise_prior=None,
-    ):
+    def __init__(self, model_type, likelihood, kernel="RBF"):
         """Initialize Gaussian Process.
 
         Args:
@@ -114,20 +155,19 @@ class GaussianProcess:
         self.likelihood = likelihood
         self.optimizer = None
         self.model = None
-        self.input_mask = input_mask
-        self.target_mask = target_mask
         self.kernel = kernel
-        self.noise_prior = noise_prior
+        self.input_dimension = None
+        self.output_dimension = None
+        self.n_training_samples = None
 
     def _init_model(self, train_inputs, train_targets):
         """Init GP model from train inputs and train_targets."""
         target_dimension = train_targets.shape[1] if train_targets.ndim > 1 else 1
         input_dimension = train_inputs.shape[1] if train_inputs.ndim > 1 else 1
 
-        if self.model is None:
-            self.model = self.model_type(
-                train_inputs, train_targets, self.likelihood, kernel=self.kernel
-            )
+        self.model = self.model_type(
+            train_inputs, train_targets, self.likelihood, kernel=self.kernel
+        )
         # Extract dimensions for external use.
         self.input_dimension = input_dimension
         self.output_dimension = target_dimension
@@ -142,30 +182,8 @@ class GaussianProcess:
         self.model.K_plus_noise = K_lazy_plus_noise.matmul(torch.eye(n_samples).double())
         self.model.K_plus_noise_inv = K_lazy_plus_noise.inv_matmul(torch.eye(n_samples).double())
 
-    def init_with_hyperparam(self, train_inputs, train_targets, path_to_statedict):
-        """Load hyperparameters from a state_dict."""
-        if self.input_mask is not None:
-            train_inputs = train_inputs[:, self.input_mask]
-        if self.target_mask is not None:
-            train_targets = train_targets[:, self.target_mask]
-        device = torch.device("cpu")
-        state_dict = torch.load(path_to_statedict, map_location=device)
-        self._init_model(train_inputs, train_targets)
-        self.model.load_state_dict(state_dict)
-        self.model.double()  # needed otherwise loads state_dict as float32
-        self._compute_GP_covariances(train_inputs)
-        self.casadi_predict = self.make_casadi_prediction_func(train_inputs, train_targets)
-
     def train(
-        self,
-        train_input_data,
-        train_target_data,
-        test_input_data,
-        test_target_data,
-        n_train=500,
-        learning_rate=0.01,
-        device: str = "cpu",
-        fname: Path = Path("best_model.pth"),
+        self, train_inputs, train_targets, n_train=500, learning_rate=0.01, device: str = "cpu"
     ):
         """Train the GP using Train_x and Train_y.
 
@@ -173,26 +191,13 @@ class GaussianProcess:
             train_x: Torch tensor (N samples [rows] by input dim [cols])
             train_y: Torch tensor (N samples [rows] by target dim [cols])
         """
-        train_x_raw = train_input_data
-        train_y_raw = train_target_data
-        test_x_raw = test_input_data
-        test_y_raw = test_target_data
-        if self.input_mask is not None:
-            train_x_raw = train_x_raw[:, self.input_mask]
-            test_x_raw = test_x_raw[:, self.input_mask]
-        if self.target_mask is not None:
-            train_y_raw = train_y_raw[:, self.target_mask]
-            test_y_raw = test_y_raw[:, self.target_mask]
-        self._init_model(train_x_raw, train_y_raw)
-        train_x = train_x_raw.to(device)
-        train_y = train_y_raw.to(device)
-        test_x = test_x_raw.to(device)
-        test_y = test_y_raw.to(device)
+        self._init_model(train_inputs, train_targets)
+        train_x = train_inputs.to(device)
+        train_y = train_targets.to(device)
         self.model = self.model.to(device)
         self.likelihood = self.likelihood.to(device)
 
         if self.input_dimension == 1:
-            test_x = test_x.reshape(-1)
             train_x = train_x.reshape(-1)
 
         self.model.double()
@@ -200,46 +205,23 @@ class GaussianProcess:
         self.model.train()
         self.likelihood.train()
 
-        max_trial = 1
-        opti_result = []
-        loss_result = []
-        for trial_idx in range(max_trial):
-            self.optimizer = torch.optim.Adam(self.model.parameters(), lr=learning_rate)
-            mll = gpytorch.mlls.ExactMarginalLogLikelihood(self.likelihood, self.model)
-            last_loss = 99999999
-            best_loss = 99999999
-            loss = torch.tensor(0)
-            i = 0
-            while i < n_train and torch.abs(loss - last_loss) > 1e-2:
-                with torch.no_grad():
-                    self.model.eval()
-                    self.likelihood.eval()
-                    test_output = self.model(test_x)
-                    test_loss = -mll(test_output, test_y)
-                self.model.train()
-                self.likelihood.train()
-                self.optimizer.zero_grad()
-                output = self.model(train_x)
-                loss = -mll(output, train_y)
-                loss.backward()
+        optim = torch.optim.Adam(self.model.parameters(), lr=learning_rate)
+        mll = gpytorch.mlls.ExactMarginalLogLikelihood(self.likelihood, self.model)
+        last_loss = torch.tensor(torch.inf)
+        for i in range(n_train):
+            optim.zero_grad()
+            output = self.model(train_x)
+            loss = -mll(output, train_y)
+            loss.backward()
+            optim.step()
+            if torch.abs(last_loss - loss) < 1e-3:  # Early stopping if converged
+                break
+            last_loss = loss
 
-                self.optimizer.step()
-                if test_loss < best_loss:
-                    best_loss = test_loss
-                    state_dict = self.model.state_dict()
-                    torch.save(state_dict, fname)
-
-                i += 1
-            opti_result.append(state_dict)
-            loss_result.append(best_loss.cpu().detach().numpy())
-        # find and save the best model among the trials.
-        best_idx = np.argmin(loss_result)
-        torch.save(opti_result[best_idx], fname)
         self.model = self.model.cpu()
         self.likelihood = self.likelihood.cpu()
         train_x = train_x.cpu()
         train_y = train_y.cpu()
-        self.model.load_state_dict(torch.load(fname))
         self._compute_GP_covariances(train_x)
         self.casadi_predict = self.make_casadi_prediction_func(train_x, train_y)
 
@@ -258,8 +240,6 @@ class GaussianProcess:
         self.likelihood.eval()
         if isinstance(x, np.ndarray):
             x = torch.from_numpy(x).double()
-        if self.input_mask is not None:
-            x = x[:, self.input_mask]
         if requires_grad:
             predictions = self.likelihood(self.model(x))
             mean = predictions.mean
@@ -276,19 +256,12 @@ class GaussianProcess:
         else:
             return mean, cov
 
-    def prediction_jacobian(self, query):
-        mean_der, _ = torch.autograd.functional.jacobian(
-            lambda x: self.predict(x, requires_grad=True, return_pred=False), query.double()
-        )
-        return mean_der.detach().squeeze()
-
     def make_casadi_prediction_func(self, train_inputs, train_targets):
         """Assumes train_inputs and train_targets are already masked."""
         train_inputs = train_inputs.numpy()
         train_targets = train_targets.numpy()
         lengthscale = self.model.covar_module.base_kernel.lengthscale.detach().numpy()
         output_scale = self.model.covar_module.outputscale.detach().numpy()
-        # Nx = len(self.input_mask)
         Nx = self.input_dimension
         if train_targets.ndim == 1:
             train_targets = train_targets.reshape(-1, 1)
@@ -327,66 +300,3 @@ class GaussianProcess:
             ["mean"],
         )
         return predict
-
-    def plot_trained_gp(
-        self, inputs, targets, output_label, output_dir=None, fig_count=0, title=None, **kwargs
-    ):
-        """Plot the trained GP given the input and target data.
-
-        Args:
-            inputs (torch.Tensor): Input data (N_samples x input_dim).
-            targets (torch.Tensor): Target data (N_samples x 1).
-            output_label (str): Label for the output. Usually the index of the output.
-            output_dir (str): Directory to save the figure.
-        """
-        if isinstance(inputs, np.ndarray):
-            inputs = torch.from_numpy(inputs).double()
-        if isinstance(targets, np.ndarray):
-            targets = torch.from_numpy(targets).double()
-
-        num_data = inputs.shape[0]
-        residual_func = kwargs.get("residual_func", None)
-        residual = np.zeros((num_data, targets.shape[1]))
-        if residual_func is not None:
-            for i in range(num_data):
-                residual[i, :] = residual_func(inputs[i, :].numpy())[output_label]
-
-        if self.target_mask is not None:
-            targets = targets[:, self.target_mask]
-        means, _, preds = self.predict(inputs)
-        t = np.arange(inputs.shape[0])
-        lower, upper = preds.confidence_region()
-
-        fig_count += 1
-        plt.figure(fig_count, figsize=(5, 2))
-        # compute the percentage of test points within 2 std
-        num_within_2std = torch.sum((targets[:, i] > lower) & (targets[:, i] < upper)).numpy()
-        percentage_within_2std = num_within_2std / len(targets[:, i]) * 100
-        plt.fill_between(
-            t, lower.detach().numpy(), upper.detach().numpy(), alpha=0.5, label="2-$\sigma$"
-        )
-        plt.plot(t, means, "b", label="GP mean")
-        plt.scatter(t, targets, color="r", label="Target")
-        plt.plot(
-            t,
-            residual,
-            "g",
-            label="Residual",
-        )
-        plt.legend(ncol=2)
-        plt_title = f"GP validation {output_label}, {percentage_within_2std:.2f}% within 2-$\sigma$"
-        if title is not None:
-            plt_title += f" {title}"
-        plt.title(plt_title)
-
-        if output_dir is not None:
-            plt_name = (
-                f"gp_validation_{output_label}.png"
-                if title is None
-                else f"gp_validation_{output_label}_{title}.png"
-            )
-            plt.savefig(f"{output_dir}/{plt_name}")
-        # clean up the plot
-        plt.close(fig_count)
-
-        return fig_count
