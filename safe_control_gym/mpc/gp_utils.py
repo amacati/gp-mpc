@@ -141,17 +141,55 @@ def gpytorch_predict2casadi(
     return predict
 
 
+class ZeroMeanIndependentGPModel(gpytorch.models.ExactGP):
+    """Single dimensional output Gaussian Process model with zero mean function.
+
+    Or constant mean and radial basis function kernel (SE).
+    """
+
+    def __init__(self, train_x, train_y, likelihood, kernel="RBF"):
+        """Initialize a single dimensional Gaussian Process model with zero mean function.
+
+        Args:
+            train_x (torch.Tensor): input training data (input_dim X N samples).
+            train_y (torch.Tensor): output training data (output dim x N samples).
+            likelihood (gpytorch.likelihood): Likelihood function (gpytorch.likelihoods.GaussianLikelihood).
+        """
+        super().__init__(train_x, train_y, likelihood)
+        # For Zero mean function.
+        self.mean_module = gpytorch.means.ZeroMean()
+        # For constant mean function.
+        if kernel == "RBF":
+            self.covar_module = gpytorch.kernels.ScaleKernel(
+                gpytorch.kernels.RBFKernel(ard_num_dims=train_x.shape[1]),
+                ard_num_dims=train_x.shape[1],
+            )
+        elif kernel == "Matern":
+            self.covar_module = gpytorch.kernels.ScaleKernel(
+                gpytorch.kernels.MaternKernel(ard_num_dims=train_x.shape[1]),
+                ard_num_dims=train_x.shape[1],
+            )
+        elif kernel == "RBF_single":
+            self.covar_module = gpytorch.kernels.ScaleKernel(
+                gpytorch.kernels.RBFKernel(),
+            )
+
+    def forward(self, x):
+        mean_x = self.mean_module(x)
+        covar_x = self.covar_module(x)
+        return gpytorch.distributions.MultivariateNormal(mean_x, covar_x)
+
+
 class GaussianProcess:
     """Gaussian Process decorator for gpytorch."""
 
-    def __init__(self, model_type, likelihood, kernel="RBF"):
+    def __init__(self, likelihood, kernel="RBF"):
         """Initialize Gaussian Process.
 
         Args:
-            model_type (gpytorch model class): Model class for the GP (ZeroMeanIndependentMultitaskGPModel).
             likelihood (gpytorch.likelihood): likelihood function.
         """
-        self.model_type = model_type
+        self.model_type = ZeroMeanIndependentGPModel
         self.likelihood = likelihood
         self.optimizer = None
         self.model = None

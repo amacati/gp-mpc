@@ -11,7 +11,7 @@ from matplotlib.ticker import FormatStrFormatter
 from munch import munchify
 from tqdm import tqdm
 
-from safe_control_gym.mpc.gpmpc import GPMPC
+from safe_control_gym.mpc.gpmpc_acados_TRP import GpMpcAcadosTrp
 from safe_control_gym.mpc.plotting import make_quad_plots
 from safe_control_gym.utils.registration import make
 from safe_control_gym.utils.utils import mkdir_date
@@ -28,7 +28,7 @@ def load_config():
     return config
 
 
-def run_evaluation(env, ctrl: GPMPC, seed: int) -> dict:
+def run_evaluation(env, ctrl: GpMpcAcadosTrp, seed: int) -> dict:
     episode_data = defaultdict(list)
     ctrl.reset()
     obs, info = env.reset(seed=seed)
@@ -80,7 +80,7 @@ def sample_data(data, n_samples: int, rng):
 
 def learn(
     n_epochs: int,
-    ctrl: GPMPC,
+    ctrl: GpMpcAcadosTrp,
     train_env,
     test_env,
     test_data_ratio: float,
@@ -109,11 +109,11 @@ def learn(
         train_targets = np.vstack((train_targets, targets))
         t3 = time.perf_counter()
         ctrl.train_gp(
-            x=train_inputs,
-            y=train_targets,
-            test_data_ratio=test_data_ratio,
+            input_data=train_inputs,
+            target_data=train_targets,
             learning_rate=learning_rate,
             iterations=gp_iterations,
+            test_data_ratio=test_data_ratio,
         )
         t4 = time.perf_counter()
         # Test new policy.
@@ -146,7 +146,7 @@ def run():
     # Create a random initial state for all experiments
 
     # Create controller.
-    ctrl = GPMPC(env_func, seed=config.seed, **config.algo_config)
+    ctrl = GpMpcAcadosTrp(env_func, seed=config.seed, **config.algo_config)
 
     # Run the experiment.
     # Get initial state and create environments
