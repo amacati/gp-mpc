@@ -29,12 +29,12 @@ algo_config:
   output_dir: ./gpmpc_acados_TRP/results
 
 run:
-  num_epochs: 5
+  num_epochs: 3
 
 train:
-  test_data_ratio: 0.2
+  test_size: 0.2
   iterations: 500
-  learning_rate: 0.001
+  lr: 0.001
 
 
 # Try not to change this information

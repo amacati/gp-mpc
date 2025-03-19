@@ -12,7 +12,7 @@ from matplotlib.ticker import FormatStrFormatter
 from munch import munchify
 from tqdm import tqdm
 
-from safe_control_gym.mpc.gpmpc_acados_TRP import GpMpcAcadosTrp
+from safe_control_gym.mpc.gpmpc import GPMPC
 from safe_control_gym.mpc.plotting import make_quad_plots
 from safe_control_gym.utils.registration import make
 from safe_control_gym.utils.utils import mkdir_date
@@ -29,7 +29,7 @@ def load_config():
     return config
 
 
-def run_evaluation(env, ctrl: GpMpcAcadosTrp, seed: int) -> dict:
+def run_evaluation(env, ctrl: GPMPC, seed: int) -> dict:
     episode_data = defaultdict(list)
     ctrl.reset()
     obs, info = env.reset(seed=seed)
@@ -81,11 +81,11 @@ def sample_data(data, n_samples: int, rng):
 
 def learn(
     n_epochs: int,
-    ctrl: GpMpcAcadosTrp,
+    ctrl: GPMPC,
     train_env,
     test_env,
-    test_data_ratio: float,
-    learning_rate: float,
+    test_size: float,
+    lr: float,
     gp_iterations: int,
     train_seed: int,
     test_seed: int,
@@ -109,13 +109,7 @@ def learn(
         x_train = np.vstack((x_train, inputs))  # Add to the existing training dataset
         y_train = np.vstack((y_train, targets))
         t3 = time.perf_counter()
-        ctrl.train_gp(
-            x=x_train,
-            y=y_train,
-            learning_rate=learning_rate,
-            iterations=gp_iterations,
-            test_data_ratio=test_data_ratio,
-        )
+        ctrl.train_gp(x=x_train, y=y_train, lr=lr, iterations=gp_iterations, test_size=test_size)
         t4 = time.perf_counter()
         # Test new policy.
         ctrl.x_prev = test_runs[epoch - 1]["obs"][: ctrl.T + 1, :].T
@@ -148,7 +142,7 @@ def run():
     # Create a random initial state for all experiments
 
     # Create controller.
-    ctrl = GpMpcAcadosTrp(env_func, seed=config.seed, **config.algo_config)
+    ctrl = GPMPC(env_func, seed=config.seed, **config.algo_config)
 
     # Run the experiment.
     # Get initial state and create environments
@@ -162,8 +156,8 @@ def run():
         ctrl=ctrl,
         train_env=train_env,
         test_env=test_env,
-        test_data_ratio=config.train.test_data_ratio,
-        learning_rate=config.train.learning_rate,
+        test_size=config.train.test_size,
+        lr=config.train.lr,
         gp_iterations=config.train.iterations,
         train_seed=train_seed,
         test_seed=test_seed,

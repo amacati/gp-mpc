@@ -1,9 +1,7 @@
 """Model Predictive Control using Acados."""
 
 import shutil
-import time
 from pathlib import Path
-from typing import Any
 
 import casadi as cs
 import numpy as np
@@ -37,7 +35,6 @@ class MPC:
         r_mpc: list,
         output_dir: Path,
         horizon: int = 5,
-        constraint_tol: float = 1e-6,
         device: str = "cpu",
         seed: int = 0,
         prior_info: dict | None = None,
@@ -50,7 +47,6 @@ class MPC:
             r_mpc: diagonals of input/action cost weight.
             output_dir: output directory to write logs and results.
             horizon: mpc planning horizon.
-            constraint_tol: Tolerance to add the the constraint as sometimes solvers are not exact.
             device: torch device.
             seed: random seed.
             prior_info: prior model information.
@@ -81,8 +77,6 @@ class MPC:
         self.traj = env.X_GOAL.T
         self.traj_step = 0
         self.u_goal = env.U_GOAL.reshape(-1, 1)
-
-        self.constraint_tol = constraint_tol
 
         # Compile the acados model
         # delete the generated c code directory
@@ -203,6 +197,7 @@ class MPC:
         h0_expr: cs.MX,
         h_expr: cs.MX,
         he_expr: cs.MX,
+        tol: float = 1e-8,
     ) -> AcadosOcp:
         """Preprocess the constraints to be compatible with acados.
 
@@ -217,9 +212,9 @@ class MPC:
         """
 
         ub = {
-            "h": set_acados_constraint_bound(h_expr, "ub", self.constraint_tol),
-            "h0": set_acados_constraint_bound(h0_expr, "ub", self.constraint_tol),
-            "he": set_acados_constraint_bound(he_expr, "ub", self.constraint_tol),
+            "h": set_acados_constraint_bound(h_expr, "ub", tol),
+            "h0": set_acados_constraint_bound(h0_expr, "ub", tol),
+            "he": set_acados_constraint_bound(he_expr, "ub", tol),
         }
 
         lb = {
@@ -275,7 +270,7 @@ class MPC:
         self.acados_ocp_solver.set(0, "lbx", obs)
         self.acados_ocp_solver.set(0, "ubx", obs)
         # Skip warmstart for simplicity. Acados has built-in warmstart (?)
-        goal_states = self.get_references()
+        goal_states = self.reference_trajectory()
         self.traj_step += 1
 
         y_ref = np.concatenate(
@@ -340,20 +335,15 @@ class MPC:
         dynamics_fn = rk_discrete(self.model.fc_func, self.model.nx, self.model.nu, self.dt)
         return dynamics_fn, linear_dynamics_fn, dfdx, dfdu
 
-    def get_references(self):
-        """Constructs reference states along mpc horizon.(nx, T+1)."""
+    def reference_trajectory(self):
+        """Construct reference states along mpc horizon.(nx, T+1)."""
         # We append the T+1 states of the trajectory to the goal_states such that the vel states
         # won't drop at the end of an episode
-        extended_ref_traj = np.concatenate([self.traj, self.traj[:, : self.T + 1]], axis=1)
+        extended_traj = np.concatenate([self.traj, self.traj[:, : self.T + 1]], axis=1)
         # Slice trajectory for horizon steps, if not long enough, repeat last state.
-        start = min(self.traj_step, extended_ref_traj.shape[-1])
-        end = min(self.traj_step + self.T + 1, extended_ref_traj.shape[-1])
+        start = min(self.traj_step, extended_traj.shape[-1])
+        end = min(self.traj_step + self.T + 1, extended_traj.shape[-1])
         remain = max(0, self.T + 1 - (end - start))
-        goal_states = np.concatenate(
-            [
-                extended_ref_traj[:, start:end],
-                np.tile(extended_ref_traj[:, -1:], (1, remain)),
-            ],
-            -1,
-        )
-        return goal_states  # (nx, T+1).
+        tail = np.tile(extended_traj[:, end][:, None], (1, remain))
+        goal_states = np.concatenate([extended_traj[:, start:end], tail], -1)
+        return goal_states
