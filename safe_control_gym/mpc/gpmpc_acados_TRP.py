@@ -2,7 +2,6 @@ from functools import partial
 from pathlib import Path
 
 import casadi as cs
-import gpytorch
 import numpy as np
 import scipy
 import torch
@@ -10,7 +9,7 @@ from acados_template import AcadosModel, AcadosOcp, AcadosOcpSolver
 from numpy.typing import NDArray
 from sklearn.model_selection import train_test_split
 
-from safe_control_gym.mpc.gp_utils import GaussianProcess, covSE_single
+from safe_control_gym.mpc.gp_utils import GaussianProcess, covSE_single, fit_gp
 from safe_control_gym.mpc.mpc import MPC
 from safe_control_gym.mpc.mpc_utils import (
     discretize_linear_system,
@@ -86,22 +85,17 @@ class GpMpcAcadosTrp:
         self.Q = get_cost_weight_matrix(self.q_mpc, self.model.nx)
         self.R = get_cost_weight_matrix(self.r_mpc, self.model.nu)
 
-        self.constraint_tol = constraint_tol
-
         # Setup environments.
         self.traj = env.X_GOAL.T
         self.ref_action = np.repeat(env.U_GOAL.reshape(-1, 1), self.T, axis=1)
         self.traj_step = 0
         self.np_random = np.random.default_rng(seed)
 
-        # No training data accumulated yet so keep the dynamics function as linear prior.
-        self.train_data = None
-        self.data_inputs = None
-        self.data_targets = None
-        self._requires_recompile = False
-
         # GP and training parameters.
         self.gaussian_process = None
+        self.constraint_tol = constraint_tol
+        self.train_data = None
+        self._requires_recompile = False
         self.prob = prob
         self.n_ind_points = n_ind_points
         self.max_n_ind_points = n_ind_points  # TODO: Move to max n ind points once debugged
@@ -137,7 +131,7 @@ class GpMpcAcadosTrp:
         # Dynamics model.
         if self._requires_recompile:
             assert self.gaussian_process is not None, "GP must be trained before reinitializing"
-            n_ind_points = self.train_data["train_targets"].shape[0]
+            n_ind_points = self.train_data["y_train"].shape[0]
             if self.sparse:
                 # TODO: Fix by setting to max_n_ind_points
                 n_ind_points = min(n_ind_points, self.n_ind_points)
@@ -154,10 +148,8 @@ class GpMpcAcadosTrp:
         self.x_prev = None
         self.u_prev = None
 
-    def preprocess_data(
-        self, x_seq: list[NDArray], u_seq: list[NDArray], x_next_seq: list[NDArray]
-    ) -> tuple[NDArray, NDArray]:
-        """Converts trajectory data for GP trianing.
+    def preprocess_data(self, x: NDArray, u: NDArray, x_next: NDArray) -> tuple[NDArray, NDArray]:
+        """Convert trajectory data for GP trianing.
 
         Args:
             x_seq: state sequence of Arrays (nx,).
@@ -171,147 +163,70 @@ class GpMpcAcadosTrp:
         # that it is linearized about an eq using self.X_GOAL and self.U_GOAL.
         g = 9.81
         dt = 1 / 60
-        T_cmd = u_seq[:, 0]
-        T_prior_data = self.prior_ctrl.t_symbolic_fn(T_cmd).full().flatten()
-        # numerical differentiation
-        x_dot_seq = [(x_next_seq[i, :] - x_seq[i, :]) / dt for i in range(x_seq.shape[0])]
-        x_dot_seq = np.array(x_dot_seq)
-        T_true_data = np.sqrt(
-            (x_dot_seq[:, 5] + g) ** 2 + (x_dot_seq[:, 1] ** 2) + (x_dot_seq[:, 3] ** 2)
-        )
-        targets_T = (T_true_data - T_prior_data).reshape(-1, 1)
-        input_T = u_seq[:, 0].reshape(-1, 1)
+        thrust_cmd = u[:, 0]
+        x_dot = (x_next - x) / dt  # Approximate via numerical differentiation
 
-        theta_true = x_dot_seq[:, self.idx["theta"]]
-        theta_prior = self.prior_dynamics_fn(x=x_seq.T, u=u_seq.T)["f"].toarray()[
-            self.idx["theta"], :
-        ]
-        targets_theta = (theta_true - theta_prior).reshape(-1, 1)
-        input_theta = np.concatenate(
-            [
-                x_seq[:, self.idx["theta"]].reshape(-1, 1),
-                x_seq[:, self.idx["theta_dot"]].reshape(-1, 1),
-                u_seq[:, self.idx["theta_cmd"]].reshape(-1, 1),
-            ],
-            axis=1,
-        )
+        # Faster than broadcasted version of np.linalg.norm
+        acc = np.sqrt(x_dot[:, 1] ** 2 + x_dot[:, 3] ** 2 + (x_dot[:, 5] + g) ** 2)
+        acc_prior = self.prior_ctrl.t_symbolic_fn(thrust_cmd).full().flatten()
+        acc_target = acc - acc_prior
+        acc_input = thrust_cmd.reshape(-1, 1)
 
-        phi_true = x_dot_seq[:, self.idx["phi"]]
-        phi_prior = self.prior_dynamics_fn(x=x_seq.T, u=u_seq.T)["f"].toarray()[self.idx["phi"], :]
-        targets_phi = (phi_true - phi_prior).reshape(-1, 1)
-        input_phi = np.concatenate(
-            [
-                x_seq[:, self.idx["phi"]].reshape(-1, 1),
-                x_seq[:, self.idx["phi_dot"]].reshape(-1, 1),
-                u_seq[:, self.idx["phi_cmd"]].reshape(-1, 1),
-            ],
-            axis=1,
-        )
+        theta = x_dot[:, self.idx["theta"]]
+        theta_prior = self.prior_dynamics_fn(x=x.T, u=u.T)["f"].toarray()[self.idx["theta"], :]
+        theta_target = theta - theta_prior
+        theta_input = np.vstack(
+            (x[:, self.idx["theta"]], x[:, self.idx["theta_dot"]], u[:, self.idx["theta_cmd"]])
+        ).T
 
-        train_input = np.concatenate([input_T, input_phi, input_theta], axis=1)
-        train_output = np.concatenate([targets_T, targets_phi, targets_theta], axis=1)
+        phi = x_dot[:, self.idx["phi"]]
+        phi_prior = self.prior_dynamics_fn(x=x.T, u=u.T)["f"].toarray()[self.idx["phi"], :]
+        phi_target = phi - phi_prior
+        phi_input = np.vstack(
+            (x[:, self.idx["phi"]], x[:, self.idx["phi_dot"]], u[:, self.idx["phi_cmd"]])
+        ).T
 
+        train_input = np.concatenate([acc_input, phi_input, theta_input], axis=-1)
+        train_output = np.vstack((acc_target, phi_target, theta_target)).T
         return train_input, train_output
 
     def train_gp(
         self,
-        input_data,
-        target_data,
+        x: NDArray,
+        y: NDArray,
         learning_rate: float,
         iterations: int,
         test_data_ratio: float = 0.2,
     ):
-        """Performs GP training.
-
-        Args:
-            input_data, target_data (optiona, np.array): data to use for training
-            overwrite_saved_data (bool): Overwrite the input and target data to the already saved data if it exists.
-
-        Returns:
-            training_results (dict): Dictionary of the training results.
-        """
-        train_inputs = input_data
-        train_targets = target_data
-        if self.data_inputs is None and self.data_targets is None:
-            self.data_inputs = train_inputs
-            self.data_targets = train_targets
-        else:
-            self.data_inputs = np.vstack((self.data_inputs, train_inputs))
-            self.data_targets = np.vstack((self.data_targets, train_targets))
-
-        # If validation set is desired.
-        data_idx = list(range(self.data_inputs.shape[0]))
-        train_idx, test_idx = train_test_split(
-            data_idx, test_size=test_data_ratio, random_state=self.seed
+        """Fit the GPs to the training data."""
+        x_train, _, y_train, _ = train_test_split(
+            x, y, test_size=test_data_ratio, random_state=self.np_random.integers(0, 2**32 - 1)
         )
+        self.train_data = {"x_train": x_train, "y_train": y_train}
 
-        train_inputs = self.data_inputs[train_idx, :]
-        train_targets = self.data_targets[train_idx, :]
-        self.train_data = {"train_inputs": train_inputs, "train_targets": train_targets}
-        test_inputs = self.data_inputs[test_idx, :]
-        test_targets = self.data_targets[test_idx, :]
-        self.test_data = {"test_inputs": test_inputs, "test_targets": test_targets}
-
-        train_inputs_tensor = torch.Tensor(train_inputs).double()
-        train_targets_tensor = torch.Tensor(train_targets).double()
+        x_train_tensor = torch.tensor(x_train)
+        y_train_tensor = torch.tensor(y_train)
 
         # seperate the data for T R P
-        train_input_T = train_inputs_tensor[:, 0].reshape(-1)
-        train_target_T = train_targets_tensor[:, 0].reshape(-1)
+        x_train_T = x_train_tensor[:, 0]
+        y_train_T = y_train_tensor[:, 0]
 
-        R_data_idx = [1, 2, 3]
-        train_input_R = train_inputs_tensor[:, R_data_idx].reshape(-1, 3)
-        train_target_R = train_targets_tensor[:, 1].reshape(-1)
+        x_train_R = x_train_tensor[:, [1, 2, 3]]
+        y_train_R = y_train_tensor[:, 1]
 
-        P_data_idx = [4, 5, 6]
-        train_input_P = train_inputs_tensor[:, P_data_idx].reshape(-1, 3)
-        train_target_P = train_targets_tensor[:, 2].reshape(-1)
+        x_train_P = x_train_tensor[:, [4, 5, 6]]
+        y_train_P = y_train_tensor[:, 2]
 
-        # Define likelihood.
-        likelihood_T = gpytorch.likelihoods.GaussianLikelihood(
-            noise_constraint=gpytorch.constraints.GreaterThan(1e-6),
-        ).double()
-        likelihood_R = gpytorch.likelihoods.GaussianLikelihood(
-            noise_constraint=gpytorch.constraints.GreaterThan(1e-6),
-        ).double()
-        likelihood_P = gpytorch.likelihoods.GaussianLikelihood(
-            noise_constraint=gpytorch.constraints.GreaterThan(1e-6),
-        ).double()
+        GP_T = GaussianProcess(x_train_T, y_train_T)
+        GP_R = GaussianProcess(x_train_R, y_train_R)
+        GP_P = GaussianProcess(x_train_P, y_train_P)
 
-        GP_T = GaussianProcess(likelihood=likelihood_T, kernel="RBF_single")
-        GP_R = GaussianProcess(likelihood=likelihood_R, kernel="RBF_single")
-        GP_P = GaussianProcess(likelihood=likelihood_P, kernel="RBF_single")
-
-        GP_T.train(
-            train_input_T,
-            train_target_T,
-            n_train=iterations,
-            learning_rate=learning_rate,
-            device=self.device,
-        )
-        GP_R.train(
-            train_input_R,
-            train_target_R,
-            n_train=iterations,
-            learning_rate=learning_rate,
-            device=self.device,
-        )
-        GP_P.train(
-            train_input_P,
-            train_target_P,
-            n_train=iterations,
-            learning_rate=learning_rate,
-            device=self.device,
-        )
+        fit_gp(GP_T, n_train=iterations, learning_rate=learning_rate, device=self.device)
+        fit_gp(GP_R, n_train=iterations, learning_rate=learning_rate, device=self.device)
+        fit_gp(GP_P, n_train=iterations, learning_rate=learning_rate, device=self.device)
 
         self.gaussian_process = [GP_T, GP_R, GP_P]
         self._requires_recompile = True
-
-        # Collect training results.
-        training_results = {}
-        training_results["train_targets"] = train_targets
-        training_results["train_inputs"] = train_inputs
-        return training_results
 
     def setup_acados_model(self, n_ind_points) -> AcadosModel:
         # setup GP related
@@ -479,22 +394,12 @@ class GpMpcAcadosTrp:
 
         self.n_ind_points = n_ind_points  # TODO: Maybe remove
         # compute sparse GP values
-        # the actual values will be set in select_action_with_gp
-        (
-            self.mean_post_factor_val_all,
-            self.z_ind_val_all,
-        ) = self.precompute_mean_post_factor_all_data()
         if self.sparse:
-            mean_post_factor_val, _, _, z_ind_val = self.precompute_sparse_gp_values(n_ind_points)
-            self.mean_post_factor_val = mean_post_factor_val
-            self.z_ind_val = z_ind_val
+            mean_post_factor_val, z_ind_val = self.precompute_sparse_gp_values(n_ind_points)
         else:
-            (
-                mean_post_factor_val,
-                z_ind_val,
-            ) = self.precompute_mean_post_factor_all_data()
-            self.mean_post_factor_val = mean_post_factor_val
-            self.z_ind_val = z_ind_val
+            mean_post_factor_val, z_ind_val = self.precompute_gp_values()
+        self.mean_post_factor_val = mean_post_factor_val
+        self.z_ind_val = z_ind_val
         return ocp
 
     def processing_acados_constraints_expression(
@@ -629,9 +534,9 @@ class GpMpcAcadosTrp:
                 parameter_values = np.concatenate((dyn_value, tighten_value))
                 # self.acados_ocp_solver.set(idx, "p", dyn_value)
                 # check the shapes
-                assert (
-                    self.ocp.model.p.shape[0] == parameter_values.shape[0]
-                ), f"parameter_values.shape: {parameter_values.shape}; model.p.shape: {self.ocp.model.p.shape}"
+                assert self.ocp.model.p.shape[0] == parameter_values.shape[0], (
+                    f"parameter_values.shape: {parameter_values.shape}; model.p.shape: {self.ocp.model.p.shape}"
+                )
                 self.acados_ocp_solver.set(idx, "p", parameter_values)
             # tighten terminal state constraints
             tighten_value = np.concatenate(
@@ -680,18 +585,18 @@ class GpMpcAcadosTrp:
             self.u_prev[:, i] = self.acados_ocp_solver.get(i, "u")
         return action
 
-    def precompute_mean_post_factor_all_data(self):
+    def precompute_gp_values(self):
         """If the number of data points is less than the number of inducing points, use all the data
         as kernel points.
         """
         dim_gp_outputs = len(self.gaussian_process)
-        n_training_samples = self.train_data["train_targets"].shape[0]
-        inputs = self.train_data["train_inputs"]
-        targets = self.train_data["train_targets"]
+        n_training_samples = self.train_data["y_train"].shape[0]
+        inputs = self.train_data["x_train"]
+        targets = self.train_data["y_train"]
         mean_post_factor = np.zeros((dim_gp_outputs, n_training_samples))
         for i in range(dim_gp_outputs):
-            K_z_z = self.gaussian_process[i].model.K_plus_noise_inv
-            mean_post_factor[i] = K_z_z.detach().numpy() @ targets[:, i]
+            K_z_z = self.gaussian_process[i].K_plus_noise_inv
+            mean_post_factor[i] = K_z_z.numpy(force=True) @ targets[:, i]
 
         return mean_post_factor, inputs
 
@@ -701,10 +606,10 @@ class GpMpcAcadosTrp:
         Args:
             n_ind_points: Number of inducing points.
         """
-        n_data_points = self.train_data["train_targets"].shape[0]
+        n_data_points = self.train_data["y_train"].shape[0]
         dim_gp_outputs = len(self.gaussian_process)
-        inputs = self.train_data["train_inputs"]
-        targets = self.train_data["train_targets"]
+        inputs = self.train_data["x_train"]
+        targets = self.train_data["y_train"]
         # Choose T random training set points.
         inds = self.np_random.choice(range(n_data_points), size=n_ind_points, replace=False)
         z_ind = inputs[inds]
@@ -715,24 +620,24 @@ class GpMpcAcadosTrp:
         T_data_idx = [0]
         R_data_idx = [1, 2, 3]
         P_data_idx = [4, 5, 6]
-        K_zind_zind_T = GP_T.model.covar_module(torch.from_numpy(z_ind[:, T_data_idx]).double())
-        K_zind_zind_R = GP_R.model.covar_module(torch.from_numpy(z_ind[:, R_data_idx]).double())
-        K_zind_zind_P = GP_P.model.covar_module(torch.from_numpy(z_ind[:, P_data_idx]).double())
+        K_zind_zind_T = GP_T.covar_module(torch.from_numpy(z_ind[:, T_data_idx]).to(self.device))
+        K_zind_zind_R = GP_R.covar_module(torch.from_numpy(z_ind[:, R_data_idx]).to(self.device))
+        K_zind_zind_P = GP_P.covar_module(torch.from_numpy(z_ind[:, P_data_idx]).to(self.device))
         K_zind_zind_inv_T = torch.pinverse(K_zind_zind_T.evaluate().detach())
         K_zind_zind_inv_R = torch.pinverse(K_zind_zind_R.evaluate().detach())
         K_zind_zind_inv_P = torch.pinverse(K_zind_zind_P.evaluate().detach())
         K_zind_zind_T = (
-            GP_T.model.covar_module(torch.from_numpy(z_ind[:, T_data_idx]).double())
+            GP_T.covar_module(torch.from_numpy(z_ind[:, T_data_idx]).to(self.device))
             .evaluate()
             .detach()
         )
         K_zind_zind_R = (
-            GP_R.model.covar_module(torch.from_numpy(z_ind[:, R_data_idx]).double())
+            GP_R.covar_module(torch.from_numpy(z_ind[:, R_data_idx]).to(self.device))
             .evaluate()
             .detach()
         )
         K_zind_zind_P = (
-            GP_P.model.covar_module(torch.from_numpy(z_ind[:, P_data_idx]).double())
+            GP_P.covar_module(torch.from_numpy(z_ind[:, P_data_idx]).to(self.device))
             .evaluate()
             .detach()
         )
@@ -742,33 +647,33 @@ class GpMpcAcadosTrp:
         K_zind_zind_inv[1] = K_zind_zind_inv_R
         K_zind_zind_inv[2] = K_zind_zind_inv_P
         K_x_zind_T = (
-            GP_T.model.covar_module(
-                torch.from_numpy(inputs[:, T_data_idx]).double(),
-                torch.from_numpy(z_ind[:, 0]).double(),
+            GP_T.covar_module(
+                torch.from_numpy(inputs[:, T_data_idx]).to(self.device),
+                torch.from_numpy(z_ind[:, 0]).to(self.device),
             )
             .evaluate()
             .detach()
         )
         K_x_zind_R = (
-            GP_R.model.covar_module(
-                torch.from_numpy(inputs[:, R_data_idx]).double(),
-                torch.from_numpy(z_ind[:, R_data_idx]).double(),
+            GP_R.covar_module(
+                torch.from_numpy(inputs[:, R_data_idx]).to(self.device),
+                torch.from_numpy(z_ind[:, R_data_idx]).to(self.device),
             )
             .evaluate()
             .detach()
         )
         K_x_zind_P = (
-            GP_P.model.covar_module(
-                torch.from_numpy(inputs[:, P_data_idx]).double(),
-                torch.from_numpy(z_ind[:, P_data_idx]).double(),
+            GP_P.covar_module(
+                torch.from_numpy(inputs[:, P_data_idx]).to(self.device),
+                torch.from_numpy(z_ind[:, P_data_idx]).to(self.device),
             )
             .evaluate()
             .detach()
         )
 
-        K_plus_noise_T = GP_T.model.K_plus_noise.detach()
-        K_plus_noise_R = GP_R.model.K_plus_noise.detach()
-        K_plus_noise_P = GP_P.model.K_plus_noise.detach()
+        K_plus_noise_T = GP_T.K_plus_noise.detach()
+        K_plus_noise_R = GP_R.K_plus_noise.detach()
+        K_plus_noise_P = GP_P.K_plus_noise.detach()
         K_plus_noise = torch.zeros((dim_gp_outputs, n_data_points, n_data_points))
         K_plus_noise[0] = K_plus_noise_T
         K_plus_noise[1] = K_plus_noise_R
@@ -797,13 +702,13 @@ class GpMpcAcadosTrp:
         Sigma_R = torch.pinverse(Sigma_inv_R)
         Sigma_P = torch.pinverse(Sigma_inv_P)
         mean_post_factor_T = (
-            Sigma_T @ K_x_zind_T.T @ Gamma_inv_T @ torch.from_numpy(targets[:, 0]).double()
+            Sigma_T @ K_x_zind_T.T @ Gamma_inv_T @ torch.from_numpy(targets[:, 0]).to(self.device)
         )
         mean_post_factor_R = (
-            Sigma_R @ K_x_zind_R.T @ Gamma_inv_R @ torch.from_numpy(targets[:, 1]).double()
+            Sigma_R @ K_x_zind_R.T @ Gamma_inv_R @ torch.from_numpy(targets[:, 1]).to(self.device)
         )
         mean_post_factor_P = (
-            Sigma_P @ K_x_zind_P.T @ Gamma_inv_P @ torch.from_numpy(targets[:, 2]).double()
+            Sigma_P @ K_x_zind_P.T @ Gamma_inv_P @ torch.from_numpy(targets[:, 2]).to(self.device)
         )
 
         mean_post_factor = torch.zeros((dim_gp_outputs, n_ind_points))
@@ -811,12 +716,7 @@ class GpMpcAcadosTrp:
         mean_post_factor[1] = mean_post_factor_R
         mean_post_factor[2] = mean_post_factor_P
 
-        return (
-            mean_post_factor.detach().numpy(),
-            Sigma_inv.detach().numpy(),
-            K_zind_zind_inv.detach().numpy(),
-            z_ind,
-        )
+        return mean_post_factor.numpy(force=True), z_ind
 
     def create_sparse_GP_machinery(self, n_ind_points):
         """This setups the gaussian process approximations for FITC formulation."""
@@ -828,15 +728,15 @@ class GpMpcAcadosTrp:
         GP_R = self.gaussian_process[1]
         GP_P = self.gaussian_process[2]
 
-        lengthscales_T = GP_T.model.covar_module.base_kernel.lengthscale.detach().numpy()
-        lengthscales_R = GP_R.model.covar_module.base_kernel.lengthscale.detach().numpy()
-        lengthscales_P = GP_P.model.covar_module.base_kernel.lengthscale.detach().numpy()
-        signal_var_T = GP_T.model.covar_module.outputscale.detach().numpy()
-        signal_var_R = GP_R.model.covar_module.outputscale.detach().numpy()
-        signal_var_P = GP_P.model.covar_module.outputscale.detach().numpy()
-        gp_K_plus_noise_T = GP_T.model.K_plus_noise.detach().numpy()
-        gp_K_plus_noise_R = GP_R.model.K_plus_noise.detach().numpy()
-        gp_K_plus_noise_P = GP_P.model.K_plus_noise.detach().numpy()
+        lengthscales_T = GP_T.covar_module.base_kernel.lengthscale.numpy(force=True)
+        lengthscales_R = GP_R.covar_module.base_kernel.lengthscale.numpy(force=True)
+        lengthscales_P = GP_P.covar_module.base_kernel.lengthscale.numpy(force=True)
+        signal_var_T = GP_T.covar_module.outputscale.numpy(force=True)
+        signal_var_R = GP_R.covar_module.outputscale.numpy(force=True)
+        signal_var_P = GP_P.covar_module.outputscale.numpy(force=True)
+        gp_K_plus_noise_T = GP_T.K_plus_noise.numpy(force=True)
+        gp_K_plus_noise_R = GP_R.K_plus_noise.numpy(force=True)
+        gp_K_plus_noise_P = GP_P.K_plus_noise.numpy(force=True)
 
         # stacking
         lengthscales = np.vstack((lengthscales_T, lengthscales_R, lengthscales_P))
@@ -848,7 +748,7 @@ class GpMpcAcadosTrp:
 
         length_scales = lengthscales.squeeze()
         signal_var = signal_var.squeeze()
-        Nx = self.train_data["train_inputs"].shape[1]
+        Nx = self.train_data["x_train"].shape[1]
         # Create CasADI function for computing the kernel K_z_zind with parameters for z, z_ind, length scales and signal variance.
         # We need the CasADI version of this so that it can by symbolically differentiated in in the MPC optimization.
         z1_T = cs.SX.sym("z1", 1)
@@ -937,9 +837,9 @@ class GpMpcAcadosTrp:
                     self.model.nx + self.idx["theta_cmd"],
                 ],
             ]
-            cov_d_batch_T = np.diag(GP_T.predict(T_pred_point_batch, return_pred=False)[1])
-            cov_d_batch_R = np.diag(GP_R.predict(R_pred_point_batch, return_pred=False)[1])
-            cov_d_batch_P = np.diag(GP_P.predict(P_pred_point_batch, return_pred=False)[1])
+            cov_d_batch_T = np.diag(GP_T.predict(T_pred_point_batch)[1])
+            cov_d_batch_R = np.diag(GP_R.predict(R_pred_point_batch)[1])
+            cov_d_batch_P = np.diag(GP_P.predict(P_pred_point_batch)[1])
             num_batch = z_batch.shape[0]
             cov_d_batch = np.zeros((num_batch, 5, 5))
             cov_d_batch[:, 0, 0] = (
@@ -953,9 +853,9 @@ class GpMpcAcadosTrp:
             )
             cov_d_batch[:, 3, 3] = cov_d_batch_R
             cov_d_batch[:, 4, 4] = cov_d_batch_P
-            cov_noise_T = GP_T.likelihood.noise.detach().numpy()
-            cov_noise_R = GP_R.likelihood.noise.detach().numpy()
-            cov_noise_P = GP_P.likelihood.noise.detach().numpy()
+            cov_noise_T = GP_T.likelihood.noise.numpy(force=True)
+            cov_noise_R = GP_R.likelihood.noise.numpy(force=True)
+            cov_noise_P = GP_P.likelihood.noise.numpy(force=True)
             cov_noise_batch = np.zeros((num_batch, 5, 5))
             cov_noise_batch[:, 0, 0] = (
                 cov_noise_T

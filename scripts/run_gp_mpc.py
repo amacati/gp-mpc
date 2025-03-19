@@ -6,6 +6,7 @@ from pathlib import Path
 import gymnasium
 import matplotlib.pyplot as plt
 import numpy as np
+import torch
 import yaml
 from matplotlib.ticker import FormatStrFormatter
 from munch import munchify
@@ -99,18 +100,18 @@ def learn(
     train_runs[0] = run_evaluation(train_env, ctrl, seed=epoch_seeds[0])
     test_runs[0] = run_evaluation(test_env, ctrl, seed=test_seed)
     pbar.update(1)
-    train_inputs, train_targets = np.zeros((0, 7)), np.zeros((0, 3))  # 7 inputs, 3 outputs
+    x_train, y_train = np.zeros((0, 7)), np.zeros((0, 3))  # 7 inputs, 3 outputs
 
     for epoch in range(1, n_epochs):
         # Gather training data and train the GP
         x_seq, actions, x_next_seq = sample_data(train_runs[epoch - 1], ctrl.num_samples, rng)
         inputs, targets = ctrl.preprocess_data(x_seq, actions, x_next_seq)
-        train_inputs = np.vstack((train_inputs, inputs))
-        train_targets = np.vstack((train_targets, targets))
+        x_train = np.vstack((x_train, inputs))  # Add to the existing training dataset
+        y_train = np.vstack((y_train, targets))
         t3 = time.perf_counter()
         ctrl.train_gp(
-            input_data=train_inputs,
-            target_data=train_targets,
+            x=x_train,
+            y=y_train,
             learning_rate=learning_rate,
             iterations=gp_iterations,
             test_data_ratio=test_data_ratio,
@@ -130,9 +131,9 @@ def learn(
         print("\nExecution Times (seconds):")
         print(f"{'Operation':<25} {'Time (s)':<15}")
         print("-" * 40)
-        print(f"{'Train GP':<25} {t4-t3:.2e}")
-        print(f"{'Test Evaluation':<25} {t5-t4:.2e}")
-        print(f"{'Train Evaluation':<25} {t6-t5:.2e}")
+        print(f"{'Train GP':<25} {t4 - t3:.2e}")
+        print(f"{'Test Evaluation':<25} {t5 - t4:.2e}")
+        print(f"{'Train Evaluation':<25} {t6 - t5:.2e}")
         pbar.update(1)
 
     return train_runs, test_runs
@@ -141,6 +142,7 @@ def learn(
 def run():
     """The main function running experiments for model-based methods."""
     config = load_config()
+    torch.manual_seed(config.seed)
     rng = np.random.default_rng(config.seed)
     env_func = partial(make, config.task, seed=config.seed, **config.task_config)
     # Create a random initial state for all experiments
