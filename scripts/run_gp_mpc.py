@@ -32,11 +32,10 @@ def load_config():
 def run_evaluation(env, ctrl: GPMPC, seed: int) -> dict:
     episode_data = defaultdict(list)
     ctrl.reset()
-    obs, info = env.reset(seed=seed)
+    obs, _ = env.reset(seed=seed)
 
-    step_data = {"obs": obs, "info": info, "state": env.state}
-    for key, val in step_data.items():
-        episode_data[key].append(val)
+    episode_data["obs"].append(obs)
+    episode_data["state"].append(env.state)
 
     env.action_space.seed(seed)
     ctrl_data = defaultdict(list)
@@ -44,14 +43,13 @@ def run_evaluation(env, ctrl: GPMPC, seed: int) -> dict:
 
     while True:
         time_start = time.perf_counter()
-        action = ctrl.select_action(obs, info)
+        action = ctrl.select_action(obs)
         inference_time_data.append(time.perf_counter() - time_start)
-        obs, reward, done, info = env.step(action)
+        obs, reward, done, _ = env.step(action)
         step_data = {
             "obs": obs,
             "action": action,
             "done": done,
-            "info": info,
             "reward": reward,
             "length": 1,
             "state": env.state,
@@ -112,22 +110,18 @@ def learn(
         ctrl.train_gp(x=x_train, y=y_train, lr=lr, iterations=gp_iterations, test_size=test_size)
         t4 = time.perf_counter()
         # Test new policy.
-        ctrl.x_prev = test_runs[epoch - 1]["obs"][: ctrl.T + 1, :].T
-        ctrl.u_prev = test_runs[epoch - 1]["action"][: ctrl.T, :].T
         test_runs[epoch] = run_evaluation(test_env, ctrl, test_seed)
         t5 = time.perf_counter()
         # Gather training data
-        ctrl.x_prev = train_runs[epoch - 1]["obs"][: ctrl.T + 1, :].T
-        ctrl.u_prev = train_runs[epoch - 1]["action"][: ctrl.T, :].T
         train_runs[epoch] = run_evaluation(train_env, ctrl, epoch_seeds[epoch])
         t6 = time.perf_counter()
         # Print timing table
         print("\nExecution Times (seconds):")
-        print(f"{'Operation':<25} {'Time (s)':<15}")
-        print("-" * 40)
-        print(f"{'Train GP':<25} {t4 - t3:.2e}")
-        print(f"{'Test Evaluation':<25} {t5 - t4:.2e}")
-        print(f"{'Train Evaluation':<25} {t6 - t5:.2e}")
+        print(f"{'Operation':<25} {'Time (s)':<10}")
+        print("-" * 35)
+        print(f"{'Train GP':<25} {t4 - t3:>10.2f}")
+        print(f"{'Test GPMPC Performance':<25} {t5 - t4:>10.2f}")
+        print(f"{'Collect GP Data':<25} {t6 - t5:>10.2f}")
         pbar.update(1)
 
     return train_runs, test_runs

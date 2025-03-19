@@ -17,11 +17,7 @@ from safe_control_gym.mpc.gp import (
     gpytorch_predict2casadi,
 )
 from safe_control_gym.mpc.mpc import MPC
-from safe_control_gym.mpc.mpc_utils import (
-    discretize_linear_system,
-    get_cost_weight_matrix,
-    reset_constraints,
-)
+from safe_control_gym.mpc.mpc_utils import discretize_linear_system, reset_constraints
 
 
 class GPMPC:
@@ -55,8 +51,6 @@ class GPMPC:
         sparse_gp: bool = False,
         output_dir: Path = Path("results/temp"),
     ):
-        self.q_mpc = q_mpc
-        self.r_mpc = r_mpc
         self.num_samples = num_samples
 
         if prior_info is None or prior_info == {}:
@@ -87,8 +81,9 @@ class GPMPC:
         self.model = env.symbolic
         self.dt = self.model.dt
         self.T = horizon
-        self.Q = get_cost_weight_matrix(self.q_mpc, self.model.nx)
-        self.R = get_cost_weight_matrix(self.r_mpc, self.model.nu)
+        assert len(q_mpc) == self.model.nx and len(r_mpc) == self.model.nu
+        self.Q = np.diag(q_mpc)
+        self.R = np.diag(r_mpc)
 
         # Setup environments.
         self.traj = env.X_GOAL.T
@@ -121,7 +116,9 @@ class GPMPC:
             seed=seed,
             prior_info=prior_info,
         )
-        _, _, prior_dfdx, prior_dfdu = self.prior_ctrl.dynamics_fn()
+        x_eq, u_eq = self.prior_ctrl.model.X_EQ, self.prior_ctrl.model.U_EQ
+        dfdx_dfdu = self.prior_ctrl.model.df_func(x=x_eq, u=u_eq)
+        prior_dfdx, prior_dfdu = dfdx_dfdu["dfdx"].toarray(), dfdx_dfdu["dfdu"].toarray()
         self.discrete_dfdx, self.discrete_dfdu, self.lqr_gain = self.setup_prior_dynamics(
             prior_dfdx, prior_dfdu, self.Q, self.R, self.dt
         )
@@ -461,14 +458,13 @@ class GPMPC:
         ocp.constraints.lh_e = lb["he"]
         return ocp
 
-    # TODO: Refactor
-    def select_action(self, obs, info: dict | None = None):
+    def select_action(self, obs) -> NDArray:
         if self.gaussian_process is None:
             return self.prior_ctrl.select_action(obs)
         return self.select_action_with_gp(obs)
 
     # TODO: Refactor
-    def select_action_with_gp(self, obs):
+    def select_action_with_gp(self, obs: NDArray) -> NDArray:
         assert not self._requires_recompile, "Acados model must be recompiled"
         nx, nu = self.model.nx, self.model.nu
         # set initial condition (0-th state)
