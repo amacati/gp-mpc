@@ -12,7 +12,7 @@ from sklearn.model_selection import train_test_split
 
 from safe_control_gym.mpc.gp import (
     GaussianProcess,
-    covSE_single,
+    covSE_vectorized,
     fit_gp,
     gpytorch_predict2casadi,
 )
@@ -412,70 +412,28 @@ class GPMPC:
         posterior_mean = torch.stack(posterior_means)
         return posterior_mean.numpy(force=True), sparse_inputs.numpy(force=True)
 
-    # TODO: Refactor
     def sparse_gp_kernels_cs(self, n_ind_points) -> tuple[cs.Function, cs.Function, cs.Function]:
         """This setups the gaussian process approximations for FITC formulation."""
-        idx_T, idx_R, idx_P = [0], [1, 2, 3], [4, 5, 6]
-        GP_T, GP_R, GP_P = self.gaussian_process
+        gps = self.gaussian_process
 
-        lengthscales_T = GP_T.covar_module.base_kernel.lengthscale.numpy(force=True)
-        lengthscales_R = GP_R.covar_module.base_kernel.lengthscale.numpy(force=True)
-        lengthscales_P = GP_P.covar_module.base_kernel.lengthscale.numpy(force=True)
-        scale_T = GP_T.covar_module.outputscale.numpy(force=True)
-        scale_R = GP_R.covar_module.outputscale.numpy(force=True)
-        scale_P = GP_P.covar_module.outputscale.numpy(force=True)
-
+        lengthscales = [gp.covar_module.base_kernel.lengthscale.numpy(force=True) for gp in gps]
+        scales = [gp.covar_module.outputscale.numpy(force=True) for gp in gps]
         Nx = sum([gp.train_inputs[0].shape[1] for gp in self.gaussian_process])
+
         # Create CasADI function for computing the kernel K_zs with parameters for z, s, length
         # scales and output scaling. We need the CasADI version of this for symbolic differentiation
         # in the MPC optimization.
-        z1_T = cs.SX.sym("z1", 1)
-        z2_T = cs.SX.sym("z2", 1)
-        ell_s_T = cs.SX.sym("ell", 1)
-        sf2_s_T = cs.SX.sym("sf2")
-        z1_R = cs.SX.sym("z1", 3)
-        z2_R = cs.SX.sym("z2", 3)
-        ell_s_R = cs.SX.sym("ell", 1)
-        sf2_s_R = cs.SX.sym("sf2")
-        z1_P = cs.SX.sym("z1", 3)
-        z2_P = cs.SX.sym("z2", 3)
-        ell_s_P = cs.SX.sym("ell", 1)
-        sf2_s_P = cs.SX.sym("sf2")
-        sparse_idx = cs.SX.sym("sparse_idx", n_ind_points, Nx)
-        ks_T = cs.SX.zeros(1, n_ind_points)  # kernel vector
-        ks_R = cs.SX.zeros(1, n_ind_points)  # kernel vector
-        ks_P = cs.SX.zeros(1, n_ind_points)  # kernel vector
-
-        covSE_T = cs.Function(
-            "covSE",
-            [z1_T, z2_T, ell_s_T, sf2_s_T],
-            [covSE_single(z1_T, z2_T, ell_s_T, sf2_s_T)],
-        )
-        covSE_R = cs.Function(
-            "covSE",
-            [z1_R, z2_R, ell_s_R, sf2_s_R],
-            [covSE_single(z1_R, z2_R, ell_s_R, sf2_s_R)],
-        )
-        covSE_P = cs.Function(
-            "covSE",
-            [z1_P, z2_P, ell_s_P, sf2_s_P],
-            [covSE_single(z1_P, z2_P, ell_s_P, sf2_s_P)],
-        )
-        for i in range(n_ind_points):
-            ks_T[i] = covSE_T(z1_T, sparse_idx[i, idx_T], ell_s_T, sf2_s_T)
-            ks_R[i] = covSE_R(z1_R, sparse_idx[i, idx_R], ell_s_R, sf2_s_R)
-            ks_P[i] = covSE_P(z1_P, sparse_idx[i, idx_P], ell_s_P, sf2_s_P)
-        ks_func_T = cs.Function("K_s", [z1_T, sparse_idx, ell_s_T, sf2_s_T], [ks_T])
-        ks_func_R = cs.Function("K_s", [z1_R, sparse_idx, ell_s_R, sf2_s_R], [ks_R])
-        ks_func_P = cs.Function("K_s", [z1_P, sparse_idx, ell_s_P, sf2_s_P], [ks_P])
-
-        K_z_zind_T = ks_func_T(z1_T, sparse_idx, lengthscales_T, scale_T)
-        K_z_zind_R = ks_func_R(z1_R, sparse_idx, lengthscales_R, scale_R)
-        K_z_zind_P = ks_func_P(z1_P, sparse_idx, lengthscales_P, scale_P)
-        K_zs_T_cs = cs.Function("K_z_zind", [z1_T, sparse_idx], [K_z_zind_T], ["z1", "z2"], ["K"])
-        K_zs_R_cs = cs.Function("K_z_zind", [z1_R, sparse_idx], [K_z_zind_R], ["z1", "z2"], ["K"])
-        K_zs_P_cs = cs.Function("K_z_zind", [z1_P, sparse_idx], [K_z_zind_P], ["z1", "z2"], ["K"])
-        return K_zs_T_cs, K_zs_R_cs, K_zs_P_cs
+        z1s = [cs.SX.sym("z1", gp.train_inputs[0].shape[1]) for gp in gps]
+        z2 = cs.SX.sym("z2", n_ind_points, Nx)
+        # Compute the kernel functions for each GP
+        ks = [
+            covSE_vectorized(z1s[i], z2[:, self.gp_idx[i]], lengthscales[i], scales[i])
+            for i in range(len(gps))
+        ]
+        ks_fn = [
+            cs.Function("K_s", [z1s[i], z2], [ks[i]], ["z1", "z2"], ["K"]) for i in range(len(gps))
+        ]
+        return ks_fn
 
     @torch.no_grad()
     def propagate_constraint_limits(self) -> tuple[np.ndarray, np.ndarray]:

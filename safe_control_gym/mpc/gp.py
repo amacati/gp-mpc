@@ -1,6 +1,6 @@
 """Utility functions for Gaussian Processes."""
 
-import casadi as ca
+import casadi as cs
 import gpytorch
 import torch
 from gpytorch.distributions import MultivariateNormal
@@ -10,8 +10,15 @@ from gpytorch.means import ZeroMean
 
 
 def covSE_single(x, z, ell, sf2):
-    dist = ca.sum1((x - z) ** 2 / ell**2)
-    return sf2 * ca.exp(-0.5 * dist)
+    dist = cs.sum1((x - z) ** 2 / ell**2)
+    return sf2 * cs.exp(-0.5 * dist)
+
+
+def covSE_vectorized(x, Z, ell, sf2):
+    """Vectorized kernel version of covSE_single."""
+    x_reshaped = cs.repmat(x, 1, Z.shape[0])  # Reshape x to match Z's dimensions for broadcasting
+    dist = cs.sum1((x_reshaped - Z.T) ** 2 / ell**2)
+    return sf2 * cs.exp(-0.5 * dist)
 
 
 class GaussianProcess(gpytorch.models.ExactGP):
@@ -62,7 +69,7 @@ def fit_gp(gp: GaussianProcess, n_train=500, lr=0.01, device: str = "cpu"):
     gp.K, gp.K_inv = gp.compute_covariances()
 
 
-def gpytorch_predict2casadi(gp: GaussianProcess) -> ca.Function:
+def gpytorch_predict2casadi(gp: GaussianProcess) -> cs.Function:
     """Convert the prediction function of a gpytorch model to casadi model."""
     assert isinstance(gp, GaussianProcess), f"Expected a GaussianProcess, got {type(gp)}"
     train_inputs = gp.train_inputs[0].numpy(force=True)
@@ -71,8 +78,8 @@ def gpytorch_predict2casadi(gp: GaussianProcess) -> ca.Function:
     lengthscale = gp.covar_module.base_kernel.lengthscale.to_dense().numpy(force=True)
     output_scale = gp.covar_module.outputscale.to_dense().numpy(force=True)
 
-    z = ca.SX.sym("z", train_inputs.shape[1])
+    z = cs.SX.sym("z", train_inputs.shape[1])
     kernel_fn = covSE_single(z, train_inputs.T, lengthscale.T, output_scale)
-    K_xz = ca.Function("K_xz", [z], [kernel_fn], ["z"], ["K"])
+    K_xz = cs.Function("K_xz", [z], [kernel_fn], ["z"], ["K"])
     K_xx_inv = gp.K_inv.numpy(force=True)
-    return ca.Function("pred", [z], [K_xz(z=z)["K"] @ K_xx_inv @ train_targets], ["z"], ["mean"])
+    return cs.Function("pred", [z], [K_xz(z=z)["K"] @ K_xx_inv @ train_targets], ["z"], ["mean"])
