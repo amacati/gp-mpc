@@ -3,8 +3,6 @@ save_dir: "saves/"
 task: quadrotor
 seed: 1
 
-algo: gpmpc_acados_TRP
-
 algo_config:
   horizon: 25
   q_mpc: [8, 0.1, 8, 0.1, 8, 0.1, 0.5, 0.5, 0.001,0.001]

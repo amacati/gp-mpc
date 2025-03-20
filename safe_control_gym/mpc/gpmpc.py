@@ -37,7 +37,7 @@ class GPMPC:
 
     def __init__(
         self,
-        env_func,
+        env_fn,
         num_samples: int,
         prior_info: dict,
         horizon: int,
@@ -69,7 +69,7 @@ class GPMPC:
         self.seed = seed
 
         # Task
-        env = env_func(randomized_init=False, seed=seed)
+        env = env_fn(randomized_init=False, seed=seed)
         (
             self.constraints,
             self.state_constraints_sym,
@@ -106,15 +106,9 @@ class GPMPC:
         self.Bd = np.eye(self.model.nx)[:, uncertain_dim]
 
         # MPC params
+        env_fn = partial(env_fn, inertial_prop=prior_info["prior_prop"])
         self.prior_ctrl = MPC(
-            env_func=partial(env_func, inertial_prop=prior_info["prior_prop"]),
-            horizon=horizon,
-            q_mpc=q_mpc,
-            r_mpc=r_mpc,
-            output_dir=output_dir,
-            device=device,
-            seed=seed,
-            prior_info=prior_info,
+            env_fn=env_fn, horizon=horizon, q_mpc=q_mpc, r_mpc=r_mpc, output_dir=output_dir
         )
         x_eq, u_eq = self.prior_ctrl.model.X_EQ, self.prior_ctrl.model.U_EQ
         dfdx_dfdu = self.prior_ctrl.model.df_func(x=x_eq, u=u_eq)
