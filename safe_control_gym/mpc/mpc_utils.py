@@ -4,8 +4,6 @@ import numpy as np
 import scipy
 import scipy.linalg
 
-from safe_control_gym.core.constraints import ConstraintList
-
 
 def discretize_linear_system(A, B, dt, exact=False):
     """Discretization of a linear system
@@ -32,17 +30,3 @@ def discretize_linear_system(A, B, dt, exact=False):
         return Md[:state_dim, :state_dim], Md[:state_dim, state_dim:]
 
     return np.eye(state_dim) + A * dt, B * dt
-
-
-def reset_constraints(constraints):
-    """Setup the constraints list.
-
-    Args:
-        constraints (list): List of constraints controller is subject too.
-    """
-    constraints_list = ConstraintList(constraints)
-    state_constraints_sym = constraints_list.get_state_constraint_symbolic_models()
-    input_constraints_sym = constraints_list.get_input_constraint_symbolic_models()
-    if len(constraints_list.input_state_constraints) > 0:
-        raise NotImplementedError("[Error] Cannot handle combined state input constraints yet.")
-    return constraints_list, state_constraints_sym, input_constraints_sym

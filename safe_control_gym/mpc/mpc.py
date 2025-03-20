@@ -8,8 +8,6 @@ import scipy
 from acados_template import AcadosModel, AcadosOcp, AcadosOcpSolver
 from numpy.typing import NDArray
 
-from safe_control_gym.mpc.mpc_utils import reset_constraints
-
 
 class MPC:
     """MPC with full nonlinear model."""
@@ -32,9 +30,11 @@ class MPC:
         """
         # Model parameters
         env = env_fn()
-        _, state_cnstrs, input_cnstrs = reset_constraints(env.constraints.constraints)
-        assert len(state_cnstrs) == 1 and len(input_cnstrs) == 1
-        # env._setup_symbolic ignores prior_info about identified model parameters
+        state_cnstr, input_cnstr = env.constraints.constraints
+        assert state_cnstr.constrained_variable == "state"
+        assert input_cnstr.constrained_variable == "input"
+        # env._setup_symbolic ignores prior_info about identified model parameters, so we need to
+        # set up the symbolic model manually.
         env._setup_symbolic(prior_prop=env.INERTIAL_PROP)
         self.model = env.symbolic
         self.t_symbolic_fn = env.T_mapping_func  # Required for GP_MPC. TODO: Remove
@@ -52,7 +52,8 @@ class MPC:
         self.output_dir = output_dir
         acados_model = self.setup_acados_model()
         ocp = self.setup_acados_optimizer(acados_model, Q, R)
-        state_cnstr, input_cnstr = (state_cnstrs[0](ocp.model.x), input_cnstrs[0](ocp.model.u))
+        state_cnstr = state_cnstr.sym_func(ocp.model.x)
+        input_cnstr = input_cnstr.sym_func(ocp.model.u)
         ocp = self.setup_acados_constraints(ocp, state_cnstr, input_cnstr)
         json_file = output_dir / "acados_ocp.json"
         self.acados_solver = AcadosOcpSolver(ocp, json_file=str(json_file), verbose=False)
@@ -112,7 +113,7 @@ class MPC:
         ocp.cost.yref_e = np.zeros(ny_e)
         ocp.constraints.x0 = np.zeros(nx)
 
-        # set up solver options
+        # Set up solver options
         ocp.solver_options.N_horizon = self.T  # prediction horizon
         ocp.solver_options.qp_solver = "PARTIAL_CONDENSING_HPIPM"
         ocp.solver_options.hessian_approx = "GAUSS_NEWTON"
@@ -128,7 +129,7 @@ class MPC:
     def setup_acados_constraints(
         ocp: AcadosOcp, state_cnstr: cs.MX, input_cnstr: cs.MX, tol: float = 1e-8
     ) -> AcadosOcp:
-        """Preprocess the constraints to be compatible with acados.
+        """Preprocess the constraints to be compatible with Acados.
 
         Args:
             ocp: Acados ocp object
@@ -150,9 +151,12 @@ class MPC:
         ocp.dims.nh_0 = initial_cnstr.shape[0]
         ocp.dims.nh = cnstr.shape[0]
         ocp.dims.nh_e = terminal_cnstr.shape[0]
-        # assign constraints upper and lower bounds. lower bounds are set to -1e8 to ensure that the
-        # constraints are not active. np.prod makes sure all ub and lb are 1D numpy arrays
-        # (see: https://discourse.acados.org/t/infeasible-qps-when-using-nonlinear-casadi-constraint-expressions/1595/5?u=mxche)
+        # All constraints are defined as g(x, u) <= tol. Acados requires the constraints to be
+        # defined as lb <= g(x, u) <= ub. Thus, a large negative number (-1e8) is used as the lower
+        # bound to ensure that the constraints are not active. np.prod makes sure all ub and lb are
+        # 1D numpy arrays
+        # See: https://github.com/acados/acados/issues/650
+        # See: https://discourse.acados.org/t/infeasible-qps-when-using-nonlinear-casadi-constraint-expressions/1595/5?u=mxche
         ocp.constraints.uh_0 = tol * np.ones(np.prod(initial_cnstr.shape))
         ocp.constraints.lh_0 = -1e8 * np.ones(np.prod(initial_cnstr.shape))
         ocp.constraints.uh = tol * np.ones(np.prod(cnstr.shape))
@@ -162,7 +166,7 @@ class MPC:
         return ocp
 
     def select_action(self, obs: NDArray) -> NDArray:
-        """Solves the nonlinear mpc problem to get next action."""
+        """Solve the nonlinear mpc problem to get next action."""
         # Set initial condition (0-th state)
         self.acados_solver.set(0, "lbx", obs)
         self.acados_solver.set(0, "ubx", obs)
@@ -174,10 +178,11 @@ class MPC:
             self.acados_solver.set(idx, "yref", y_ref[:, idx])
         y_ref_e = goal_states[:, -1]
         self.acados_solver.set(self.T, "yref", y_ref_e)
-        self.acados_solver.solve()
+        status = self.acados_solver.solve()
+        assert status in [0, 2], f"acados returned unexpected status {status}."
         return self.acados_solver.get(0, "u")
 
-    def reference_trajectory(self):
+    def reference_trajectory(self) -> NDArray:
         """Construct reference states along mpc horizon.(nx, T+1)."""
         # We append the T+1 states of the trajectory to the goal_states to avoid discontinuities
         extended_traj = np.concatenate([self.traj, self.traj[:, : self.T + 1]], axis=1)
@@ -186,5 +191,4 @@ class MPC:
         end = min(self.traj_step + self.T + 1, extended_traj.shape[-1])
         remain = max(0, self.T + 1 - (end - start))
         tail = np.tile(extended_traj[:, end][:, None], (1, remain))
-        goal_states = np.concatenate([extended_traj[:, start:end], tail], -1)
-        return goal_states
+        return np.concatenate([extended_traj[:, start:end], tail], -1)

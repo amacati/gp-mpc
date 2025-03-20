@@ -95,8 +95,8 @@ def learn(
     epoch_seeds = [int(i) for i in rng.choice(np.iinfo(np.int32).max, size=n_epochs, replace=False)]
     pbar = tqdm(range(n_epochs), desc="GP-MPC", dynamic_ncols=True)
     # Run prior
-    train_runs[0] = run_evaluation(train_env, ctrl, seed=epoch_seeds[0])
-    test_runs[0] = run_evaluation(test_env, ctrl, seed=test_seed)
+    train_runs[0] = run_evaluation(train_env, ctrl.prior_ctrl, seed=epoch_seeds[0])
+    test_runs[0] = run_evaluation(test_env, ctrl.prior_ctrl, seed=test_seed)
     pbar.update(1)
     x_train, y_train = np.zeros((0, 7)), np.zeros((0, 3))  # 7 inputs, 3 outputs
 

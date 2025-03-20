@@ -20,7 +20,7 @@ algo_config:
       l: 39.8653
   initial_rollout_std: 0.0
   prob: 0.95
-  device: "cuda"
+  device: "cpu"
   sparse_gp: true
   n_ind_points: 40
   num_samples: 20
