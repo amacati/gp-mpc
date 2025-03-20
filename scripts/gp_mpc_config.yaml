@@ -18,7 +18,6 @@ algo_config:
       f: -72.08
       h: -7.5755
       l: 39.8653
-  initial_rollout_std: 0.0
   prob: 0.95
   device: "cpu"
   sparse_gp: true

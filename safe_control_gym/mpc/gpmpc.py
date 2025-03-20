@@ -69,7 +69,6 @@ class GPMPC:
         device: str = "cpu",
         n_ind_points: int = 30,
         prob: float = 0.955,
-        initial_rollout_std: float = 0.005,
         sparse_gp: bool = False,
         output_dir: Path = Path("results/temp"),
     ):
@@ -118,7 +117,6 @@ class GPMPC:
         )
         self.n_ind_points = n_ind_points
         self.max_n_ind_points = n_ind_points  # TODO: Move to max n ind points once debugged
-        self.initial_rollout_std = initial_rollout_std
 
         uncertain_dim = [1, 3, 5, 7, 9]
         self.Bd = np.eye(self.model.nx)[:, uncertain_dim]
@@ -134,7 +132,8 @@ class GPMPC:
         self.discrete_dfdx, self.discrete_dfdu, self.lqr_gain = self.setup_prior_dynamics(
             prior_dfdx, prior_dfdu, self.Q, self.R, self.dt
         )
-        self.prior_dynamics_fn = self.prior_ctrl.model.fc_func
+        self.prior_dynamics: cs.Function = self.prior_ctrl.model.fc_func
+        assert isinstance(self.prior_dynamics, cs.Function)
 
         self.x_prev = None
         self.u_prev = None
@@ -142,14 +141,13 @@ class GPMPC:
     def reset(self):
         """Reset the controller before running."""
         self.traj_step = 0
-        # Dynamics model.
-        if self._requires_recompile:
+        if self._requires_recompile:  # GPs have changed, Acados must be recompiled
             assert self.gaussian_process is not None, "GP must be trained before reinitializing"
             n_ind_points = self.gaussian_process[0].train_targets.shape[0]
             if self.sparse:
                 # TODO: Fix by setting to max_n_ind_points
                 n_ind_points = min(n_ind_points, self.n_ind_points)
-            # reinitialize the acados model and solver
+            # Reinitialize Acados model and solver -> leads to recompilation of the Acados solver
             acados_model = self.setup_acados_model(n_ind_points)
             self.ocp = self.setup_acados_optimizer(acados_model, n_ind_points)
             self.acados_solver = AcadosOcpSolver(
@@ -166,9 +164,9 @@ class GPMPC:
         """Convert trajectory data for GP trianing.
 
         Args:
-            x_seq: state sequence of Arrays (nx,).
-            u_seq: action sequence of Arrays (nu,).
-            x_next_seq: next state sequence of Arrays (nx,).
+            x: state sequence of Arrays (nx,).
+            u: action sequence of Arrays (nu,).
+            x_next: next state sequence of Arrays (nx,).
 
         Returns:
             Inputs and targets for GP training, (N, nx+nu) and (N, nx).
@@ -186,19 +184,17 @@ class GPMPC:
         acc_target = acc - acc_prior
         acc_input = thrust_cmd.reshape(-1, 1)
 
-        theta = x_dot[:, self.idx["theta"]]
-        theta_prior = self.prior_dynamics_fn(x=x.T, u=u.T)["f"].toarray()[self.idx["theta"], :]
+        idx_theta, idx_d_theta, idx_theta_cmd = 7, 9, 2
+        theta = x_dot[:, idx_theta]
+        theta_prior = self.prior_dynamics(x=x.T, u=u.T)["f"].toarray()[idx_theta, :]
         theta_target = theta - theta_prior
-        theta_input = np.vstack(
-            (x[:, self.idx["theta"]], x[:, self.idx["theta_dot"]], u[:, self.idx["theta_cmd"]])
-        ).T
+        theta_input = np.vstack((x[:, idx_theta], x[:, idx_d_theta], u[:, idx_theta_cmd])).T
 
-        phi = x_dot[:, self.idx["phi"]]
-        phi_prior = self.prior_dynamics_fn(x=x.T, u=u.T)["f"].toarray()[self.idx["phi"], :]
+        idx_phi, idx_d_phi, idx_phi_cmd = 6, 8, 1
+        phi = x_dot[:, idx_phi]
+        phi_prior = self.prior_dynamics(x=x.T, u=u.T)["f"].toarray()[idx_phi, :]
         phi_target = phi - phi_prior
-        phi_input = np.vstack(
-            (x[:, self.idx["phi"]], x[:, self.idx["phi_dot"]], u[:, self.idx["phi_cmd"]])
-        ).T
+        phi_input = np.vstack((x[:, idx_phi], x[:, idx_d_phi], u[:, idx_phi_cmd])).T
 
         train_input = np.concatenate([acc_input, phi_input, theta_input], axis=-1)
         train_output = np.vstack((acc_target, phi_target, theta_target)).T
@@ -211,7 +207,6 @@ class GPMPC:
         x_train = torch.tensor(x_train).to(self.device)
         y_train = torch.tensor(y_train).to(self.device)
 
-        # Initialize GPs
         self.gaussian_process = []
         for i, gp_idx in enumerate(self.gp_idx):
             gp = GaussianProcess(x_train[:, gp_idx], y_train[:, i])
@@ -220,64 +215,49 @@ class GPMPC:
 
         self._requires_recompile = True
 
-    # TODO: Refactor
-    def setup_acados_model(self, n_ind_points) -> AcadosModel:
+    def setup_acados_model(self, n_ind_points: int) -> AcadosModel:
         acados_model = AcadosModel()
         acados_model.x = self.model.x_sym
         acados_model.u = self.model.u_sym
 
         z = cs.vertcat(acados_model.x, acados_model.u)  # GP prediction point
-
-        idx_cs_T = [self.idx["T_cmd"] + self.model.nx]
-        idx_cs_R = [self.idx["phi"], self.idx["phi_dot"], self.idx["phi_cmd"] + self.model.nx]
-        idx_cs_P = [self.idx["theta"], self.idx["theta_dot"], self.idx["theta_cmd"] + self.model.nx]
+        nx = self.model.nx
+        idx_T, idx_R, idx_P = [0 + nx], [6, 8, 1 + nx], [7, 9, 2 + nx]
 
         if self.sparse:
-            self.create_sparse_GP_machinery(n_ind_points)
-            # Here we create the corresponding parameters since acados supports only 1D parameters
-            sparse_idx = cs.MX.sym("sparse_idx", n_ind_points, 7)
+            K_zs_T_cs, K_zs_R_cs, K_zs_P_cs = self.sparse_gp_kernels_cs(n_ind_points)
+
+            x_sparse = cs.MX.sym("x_sparse", n_ind_points, 7)
             posterior_mean = cs.MX.sym("posterior_mean", 3, n_ind_points)
-            acados_model.p = cs.vertcat(
-                cs.reshape(sparse_idx, -1, 1), cs.reshape(posterior_mean, -1, 1)
-            )
+            # Acados supports only 1D parameters
+            flat_x_sparse = cs.reshape(x_sparse, -1, 1)
+            flat_posterior_mean = cs.reshape(posterior_mean, -1, 1)
+            acados_model.p = cs.vertcat(flat_x_sparse, flat_posterior_mean)
 
-            T_pred = cs.sum2(
-                self.K_zs_T_cs(z1=z[idx_cs_T], z2=sparse_idx)["K"] * posterior_mean[0, :]
-            )
-            R_pred = cs.sum2(
-                self.K_zs_R_cs(z1=z[idx_cs_R], z2=sparse_idx)["K"] * posterior_mean[1, :]
-            )
-            P_pred = cs.sum2(
-                self.K_zs_P_cs(z1=z[idx_cs_P], z2=sparse_idx)["K"] * posterior_mean[2, :]
-            )
+            T_pred = cs.sum2(K_zs_T_cs(z1=z[idx_T], z2=x_sparse)["K"] * posterior_mean[0, :])
+            R_pred = cs.sum2(K_zs_R_cs(z1=z[idx_R], z2=x_sparse)["K"] * posterior_mean[1, :])
+            P_pred = cs.sum2(K_zs_P_cs(z1=z[idx_P], z2=x_sparse)["K"] * posterior_mean[2, :])
         else:
-            T_pred = gpytorch_predict2casadi(self.gaussian_process[0])(z=z[idx_cs_T])["mean"]
-            R_pred = gpytorch_predict2casadi(self.gaussian_process[1])(z=z[idx_cs_R])["mean"]
-            P_pred = gpytorch_predict2casadi(self.gaussian_process[2])(z=z[idx_cs_P])["mean"]
+            T_pred = gpytorch_predict2casadi(self.gaussian_process[0])(z=z[idx_T])["mean"]
+            R_pred = gpytorch_predict2casadi(self.gaussian_process[1])(z=z[idx_R])["mean"]
+            P_pred = gpytorch_predict2casadi(self.gaussian_process[2])(z=z[idx_P])["mean"]
 
-        f_cont = self.prior_dynamics_fn(x=acados_model.x, u=acados_model.u)["f"] + cs.vertcat(
-            0,
-            T_pred
-            * (cs.cos(acados_model.x[self.idx["phi"]]) * cs.sin(acados_model.x[self.idx["theta"]])),
-            0,
-            T_pred * (-cs.sin(acados_model.x[self.idx["phi"]])),
-            0,
-            T_pred
-            * (cs.cos(acados_model.x[self.idx["phi"]]) * cs.cos(acados_model.x[self.idx["theta"]])),
-            0,
-            0,
-            R_pred,
-            P_pred,
-        )
-        f_cont_func = cs.Function(
-            "f_cont_func", [acados_model.x, acados_model.u, acados_model.p], [f_cont]
+        idx_phi, idx_theta = 6, 7
+        ax_sym = T_pred * (cs.cos(acados_model.x[idx_phi]) * cs.sin(acados_model.x[idx_theta]))
+        ay_sym = T_pred * (-cs.sin(acados_model.x[idx_phi]))
+        az_sym = T_pred * (cs.cos(acados_model.x[idx_phi]) * cs.cos(acados_model.x[idx_theta]))
+        res_dyn = cs.vertcat(0, ax_sym, 0, ay_sym, 0, az_sym, 0, 0, R_pred, P_pred)
+
+        f_cont = self.prior_dynamics(x=acados_model.x, u=acados_model.u)["f"] + res_dyn
+        f_cont_fn = cs.Function(
+            "f_cont_fn", [acados_model.x, acados_model.u, acados_model.p], [f_cont]
         )
 
-        # use rk4 to discretize the continuous dynamics
-        k1 = f_cont_func(acados_model.x, acados_model.u, acados_model.p)
-        k2 = f_cont_func(acados_model.x + self.dt / 2 * k1, acados_model.u, acados_model.p)
-        k3 = f_cont_func(acados_model.x + self.dt / 2 * k2, acados_model.u, acados_model.p)
-        k4 = f_cont_func(acados_model.x + self.dt * k3, acados_model.u, acados_model.p)
+        # Use rk4 to discretize the continuous dynamics
+        k1 = f_cont_fn(acados_model.x, acados_model.u, acados_model.p)
+        k2 = f_cont_fn(acados_model.x + self.dt / 2 * k1, acados_model.u, acados_model.p)
+        k3 = f_cont_fn(acados_model.x + self.dt / 2 * k2, acados_model.u, acados_model.p)
+        k4 = f_cont_fn(acados_model.x + self.dt * k3, acados_model.u, acados_model.p)
         f_disc = acados_model.x + self.dt / 6 * (k1 + 2 * k2 + 2 * k3 + k4)
 
         acados_model.disc_dyn_expr = f_disc
@@ -397,9 +377,7 @@ class GPMPC:
         nu = self.model.nu
 
         # Set the probabilistic state and input constraint set limits
-        (state_constraint_set_prev, input_constraint_set_prev) = (
-            self.precompute_probabilistic_limits()
-        )
+        state_constraint_prev, input_constraint_prev = self.precompute_probabilistic_limits()
         # set acados parameters
         if self.sparse:
             posterior_mean = self.posterior_mean
@@ -415,8 +393,8 @@ class GPMPC:
             # tighten constraints
             for idx in range(self.T):
                 # tighten initial and path constraints
-                state_constraint_set = state_constraint_set_prev[0][:, idx]
-                input_constraint_set = input_constraint_set_prev[0][:, idx]
+                state_constraint_set = state_constraint_prev[:, idx]
+                input_constraint_set = input_constraint_prev[:, idx]
                 tighten_value = np.concatenate((state_constraint_set, input_constraint_set))
                 # set the parameter values
                 parameter_values = np.concatenate((dyn_value, tighten_value))
@@ -427,23 +405,19 @@ class GPMPC:
                 )
                 self.acados_solver.set(idx, "p", parameter_values)
             # tighten terminal state constraints
-            tighten_value = np.concatenate(
-                (state_constraint_set_prev[0][:, self.T], np.zeros((2 * nu,)))
-            )
+            tighten_value = np.concatenate((state_constraint_prev[:, self.T], np.zeros((2 * nu,))))
             # set the parameter values
             parameter_values = np.concatenate((dyn_value, tighten_value))
             self.acados_solver.set(self.T, "p", parameter_values)
         else:
             for idx in range(self.T):
                 # tighten initial and path constraints
-                state_constraint_set = state_constraint_set_prev[0][:, idx]
-                input_constraint_set = input_constraint_set_prev[0][:, idx]
+                state_constraint_set = state_constraint_prev[:, idx]
+                input_constraint_set = input_constraint_prev[:, idx]
                 tighten_value = np.concatenate((state_constraint_set, input_constraint_set))
                 self.acados_solver.set(idx, "p", tighten_value)
             # tighten terminal state constraints
-            tighten_value = np.concatenate(
-                (state_constraint_set_prev[0][:, self.T], np.zeros((2 * nu,)))
-            )
+            tighten_value = np.concatenate((state_constraint_prev[:, self.T], np.zeros((2 * nu,))))
             self.acados_solver.set(self.T, "p", tighten_value)
 
         # Set reference for the control horizon
@@ -494,7 +468,7 @@ class GPMPC:
         return posterior_mean.numpy(force=True), sparse_inputs.numpy(force=True)
 
     # TODO: Refactor
-    def create_sparse_GP_machinery(self, n_ind_points):
+    def sparse_gp_kernels_cs(self, n_ind_points) -> tuple[cs.Function, cs.Function, cs.Function]:
         """This setups the gaussian process approximations for FITC formulation."""
         idx_T, idx_R, idx_P = [0], [1, 2, 3], [4, 5, 6]
         GP_T, GP_R, GP_P = self.gaussian_process
@@ -553,128 +527,105 @@ class GPMPC:
         K_z_zind_T = ks_func_T(z1_T, sparse_idx, lengthscales_T, scale_T)
         K_z_zind_R = ks_func_R(z1_R, sparse_idx, lengthscales_R, scale_R)
         K_z_zind_P = ks_func_P(z1_P, sparse_idx, lengthscales_P, scale_P)
-        self.K_zs_T_cs = cs.Function(
-            "K_z_zind", [z1_T, sparse_idx], [K_z_zind_T], ["z1", "z2"], ["K"]
-        )
-        self.K_zs_R_cs = cs.Function(
-            "K_z_zind", [z1_R, sparse_idx], [K_z_zind_R], ["z1", "z2"], ["K"]
-        )
-        self.K_zs_P_cs = cs.Function(
-            "K_z_zind", [z1_P, sparse_idx], [K_z_zind_P], ["z1", "z2"], ["K"]
-        )
+        K_zs_T_cs = cs.Function("K_z_zind", [z1_T, sparse_idx], [K_z_zind_T], ["z1", "z2"], ["K"])
+        K_zs_R_cs = cs.Function("K_z_zind", [z1_R, sparse_idx], [K_z_zind_R], ["z1", "z2"], ["K"])
+        K_zs_P_cs = cs.Function("K_z_zind", [z1_P, sparse_idx], [K_z_zind_P], ["z1", "z2"], ["K"])
+        return K_zs_T_cs, K_zs_R_cs, K_zs_P_cs
 
     # TODO: Refactor
-    def precompute_probabilistic_limits(self):
+    def precompute_probabilistic_limits(self) -> tuple[np.ndarray, np.ndarray]:
         """Update the constraint value limits to account for the uncertainty in the rollout."""
-        nx, nu = self.model.nx, self.model.nu
-        T = self.T
-        state_covariances = np.zeros((self.T + 1, nx, nx))
-        input_covariances = np.zeros((self.T, nu, nu))
-        # Initilize lists for the tightening of each constraint.
-        state_constraint_set = [np.zeros((self.state_cnstr.num_constraints, T + 1))]
-        input_constraint_set = [np.zeros((self.input_cnstr.num_constraints, T))]
-        if self.x_prev is not None and self.u_prev is not None:
-            cov_x = np.diag([self.initial_rollout_std**2] * nx)
-            z_batch = np.hstack((self.x_prev[:, :-1].T, self.u_prev.T))  # (T, input_dim)
+        state_constraint = np.zeros((self.state_cnstr.num_constraints, self.T + 1))
+        input_constraint = np.zeros((self.input_cnstr.num_constraints, self.T))
 
-            # Compute the covariance of the dynamics at each time step.
-            GP_T = self.gaussian_process[0]
-            GP_R = self.gaussian_process[1]
-            GP_P = self.gaussian_process[2]
-            T_pred_point_batch = z_batch[:, [self.model.nx + self.idx["T_cmd"]]]
-            T_pred_point_batch = torch.from_numpy(T_pred_point_batch).to(self.device)
-            R_pred_point_batch = z_batch[
-                :, [self.idx["phi"], self.idx["phi_dot"], self.model.nx + self.idx["phi_cmd"]]
-            ]
-            R_pred_point_batch = torch.from_numpy(R_pred_point_batch).to(self.device)
-            P_pred_point_batch = z_batch[
-                :,
-                [
-                    self.idx["theta"],
-                    self.idx["theta_dot"],
-                    self.model.nx + self.idx["theta_cmd"],
-                ],
-            ]
-            P_pred_point_batch = torch.from_numpy(P_pred_point_batch).to(self.device)
-            # Predict the covariance of the dynamics at each time step.
-            for gp in self.gaussian_process:
-                gp.eval()
-            with torch.no_grad(), fast_pred_var(state=True), fast_pred_samples(state=True):
-                cov = GP_T.likelihood(GP_T(T_pred_point_batch)).covariance_matrix
-                cov_d_batch_T = torch.diag(cov).numpy(force=True)
-                cov = GP_R.likelihood(GP_R(R_pred_point_batch)).covariance_matrix
-                cov_d_batch_R = torch.diag(cov).numpy(force=True)
-                cov = GP_P.likelihood(GP_P(P_pred_point_batch)).covariance_matrix
-                cov_d_batch_P = torch.diag(cov).numpy(force=True)
+        if self.x_prev is None or self.u_prev is None:  # No previous rollout, return all zeros
+            return state_constraint, input_constraint
 
-            num_batch = z_batch.shape[0]
-            cov_d_batch = np.zeros((num_batch, 5, 5))
-            cov_d_batch[:, 0, 0] = (
-                cov_d_batch_T
-                * (np.cos(z_batch[:, self.idx["phi"]]) * np.sin(z_batch[:, self.idx["theta"]])) ** 2
-            )
-            cov_d_batch[:, 1, 1] = cov_d_batch_T * (-np.sin(z_batch[:, self.idx["phi"]])) ** 2
-            cov_d_batch[:, 2, 2] = (
-                cov_d_batch_T
-                * (np.cos(z_batch[:, self.idx["phi"]]) * np.cos(z_batch[:, self.idx["theta"]])) ** 2
-            )
-            cov_d_batch[:, 3, 3] = cov_d_batch_R
-            cov_d_batch[:, 4, 4] = cov_d_batch_P
-            cov_noise_T = GP_T.likelihood.noise.numpy(force=True)
-            cov_noise_R = GP_R.likelihood.noise.numpy(force=True)
-            cov_noise_P = GP_P.likelihood.noise.numpy(force=True)
-            cov_noise_batch = np.zeros((num_batch, 5, 5))
-            cov_noise_batch[:, 0, 0] = (
-                cov_noise_T
-                * (np.cos(z_batch[:, self.idx["phi"]]) * np.sin(z_batch[:, self.idx["theta"]])) ** 2
-            )
-            cov_noise_batch[:, 1, 1] = cov_noise_T * (-np.sin(z_batch[:, self.idx["phi"]])) ** 2
-            cov_noise_batch[:, 2, 2] = (
-                cov_noise_T
-                * (np.cos(z_batch[:, self.idx["phi"]]) * np.cos(z_batch[:, self.idx["theta"]])) ** 2
-            )
-            cov_noise_batch[:, 3, 3] = cov_noise_R
-            cov_noise_batch[:, 4, 4] = cov_noise_P
-            # discretize
-            cov_noise_batch = cov_noise_batch * self.dt**2
-            cov_d_batch = cov_d_batch * self.dt**2
+        cov_x = np.zeros((self.model.nx, self.model.nx))
+        # Could also be initialized with a diagonal matrix of sigmas
+        # cov_x = torch.zeros((self.model.nx, self.model.nx), device=self.device)
+        z_batch = np.hstack((self.x_prev[:, :-1].T, self.u_prev.T))  # (T, input_dim)
 
-            for i in range(T):
-                state_covariances[i] = cov_x
-                cov_u = self.lqr_gain @ cov_x @ self.lqr_gain.T
-                input_covariances[i] = cov_u
-                cov_xu = cov_x @ self.lqr_gain.T
-                # GP mean approximation
-                cov_d = cov_d_batch[i, :, :]
-                cov_noise = cov_noise_batch[i, :, :]
-                cov_d = cov_d + cov_noise
-                # Loop through input constraints and tighten by the required ammount.
-                input_constraint_set[0][:, i] = (
-                    -1
-                    * self.inverse_cdf
-                    * np.absolute(self.input_cnstr.A)
-                    @ np.sqrt(np.diag(cov_u))
-                )
-                state_constraint_set[0][:, i] = (
-                    -1
-                    * self.inverse_cdf
-                    * np.absolute(self.state_cnstr.A)
-                    @ np.sqrt(np.diag(cov_x))
-                )
-                # Compute the next step propogated state covariance using mean equivilence.
-                cov_x = (
-                    self.discrete_dfdx @ cov_x @ self.discrete_dfdx.T
-                    + self.discrete_dfdx @ cov_xu @ self.discrete_dfdu.T
-                    + self.discrete_dfdu @ cov_xu.T @ self.discrete_dfdx.T
-                    + self.discrete_dfdu @ cov_u @ self.discrete_dfdu.T
-                    + self.Bd @ cov_d @ self.Bd.T
-                )
-            # Update Final covariance.
-            state_constraint_set[0][:, -1] = (
+        # Compute the covariance of the dynamics at each time step.
+        idx_T, idx_R, idx_P = [0], [1, 2, 3], [4, 5, 6]
+
+        GP_T = self.gaussian_process[0]
+        GP_R = self.gaussian_process[1]
+        GP_P = self.gaussian_process[2]
+        T_pred_point_batch = z_batch[:, idx_T]
+        T_pred_point_batch = torch.from_numpy(T_pred_point_batch).to(self.device)
+        R_pred_point_batch = z_batch[:, idx_R]
+        R_pred_point_batch = torch.from_numpy(R_pred_point_batch).to(self.device)
+        P_pred_point_batch = z_batch[:, idx_P]
+        P_pred_point_batch = torch.from_numpy(P_pred_point_batch).to(self.device)
+        # Predict the covariance of the dynamics at each time step.
+        for gp in self.gaussian_process:
+            gp.eval()
+        with torch.no_grad(), fast_pred_var(state=True), fast_pred_samples(state=True):
+            cov = GP_T.likelihood(GP_T(T_pred_point_batch)).covariance_matrix
+            cov_d_batch_T = torch.diag(cov).numpy(force=True)
+            cov = GP_R.likelihood(GP_R(R_pred_point_batch)).covariance_matrix
+            cov_d_batch_R = torch.diag(cov).numpy(force=True)
+            cov = GP_P.likelihood(GP_P(P_pred_point_batch)).covariance_matrix
+            cov_d_batch_P = torch.diag(cov).numpy(force=True)
+
+        num_batch = z_batch.shape[0]
+        cov_d_batch = np.zeros((num_batch, 5, 5))
+
+        idx_phi, idx_theta = 6, 7
+        cov_d_batch[:, 0, 0] = (
+            cov_d_batch_T * (np.cos(z_batch[:, idx_phi]) * np.sin(z_batch[:, idx_theta])) ** 2
+        )
+        cov_d_batch[:, 1, 1] = cov_d_batch_T * (-np.sin(z_batch[:, idx_phi])) ** 2
+        cov_d_batch[:, 2, 2] = (
+            cov_d_batch_T * (np.cos(z_batch[:, idx_phi]) * np.cos(z_batch[:, idx_theta])) ** 2
+        )
+        cov_d_batch[:, 3, 3] = cov_d_batch_R
+        cov_d_batch[:, 4, 4] = cov_d_batch_P
+        cov_noise_T = GP_T.likelihood.noise.numpy(force=True)
+        cov_noise_R = GP_R.likelihood.noise.numpy(force=True)
+        cov_noise_P = GP_P.likelihood.noise.numpy(force=True)
+        cov_noise_batch = np.zeros((num_batch, 5, 5))
+        cov_noise_batch[:, 0, 0] = (
+            cov_noise_T * (np.cos(z_batch[:, idx_phi]) * np.sin(z_batch[:, idx_theta])) ** 2
+        )
+        cov_noise_batch[:, 1, 1] = cov_noise_T * (-np.sin(z_batch[:, idx_phi])) ** 2
+        cov_noise_batch[:, 2, 2] = (
+            cov_noise_T * (np.cos(z_batch[:, idx_phi]) * np.cos(z_batch[:, idx_theta])) ** 2
+        )
+        cov_noise_batch[:, 3, 3] = cov_noise_R
+        cov_noise_batch[:, 4, 4] = cov_noise_P
+        # discretize
+        cov_noise_batch = cov_noise_batch * self.dt**2
+        cov_d_batch = cov_d_batch * self.dt**2
+
+        for i in range(self.T):
+            cov_u = self.lqr_gain @ cov_x @ self.lqr_gain.T
+            cov_xu = cov_x @ self.lqr_gain.T
+            # GP mean approximation
+            cov_d = cov_d_batch[i, :, :]
+            cov_noise = cov_noise_batch[i, :, :]
+            cov_d = cov_d + cov_noise
+            # Loop through input constraints and tighten by the required ammount.
+            input_constraint[:, i] = (
+                -1 * self.inverse_cdf * np.absolute(self.input_cnstr.A) @ np.sqrt(np.diag(cov_u))
+            )
+            state_constraint[:, i] = (
                 -1 * self.inverse_cdf * np.absolute(self.state_cnstr.A) @ np.sqrt(np.diag(cov_x))
             )
-            state_covariances[-1] = cov_x
-        return state_constraint_set, input_constraint_set
+            # Compute the next step propogated state covariance using mean equivilence.
+            cov_x = (
+                self.discrete_dfdx @ cov_x @ self.discrete_dfdx.T
+                + self.discrete_dfdx @ cov_xu @ self.discrete_dfdu.T
+                + self.discrete_dfdu @ cov_xu.T @ self.discrete_dfdx.T
+                + self.discrete_dfdu @ cov_u @ self.discrete_dfdu.T
+                + self.Bd @ cov_d @ self.Bd.T
+            )
+        # Update Final covariance.
+        state_constraint[:, -1] = (
+            -1 * self.inverse_cdf * np.absolute(self.state_cnstr.A) @ np.sqrt(np.diag(cov_x))
+        )
+        return state_constraint, input_constraint
 
     @staticmethod
     def setup_prior_dynamics(dfdx: NDArray, dfdu: NDArray, Q: NDArray, R: NDArray, dt: float):
