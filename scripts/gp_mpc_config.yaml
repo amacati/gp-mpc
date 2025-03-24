@@ -1,9 +1,8 @@
-device: "cuda"
 save_dir: "saves/"
 task: quadrotor
 seed: 1
 
-algo_config:
+gpmpc:
   horizon: 25
   q_mpc: [8, 0.1, 8, 0.1, 8, 0.1, 0.5, 0.5, 0.001,0.001]
   r_mpc: [3, 3, 3]
@@ -21,8 +20,7 @@ algo_config:
   prob: 0.95
   device: "cpu"
   sparse_gp: true
-  n_ind_points: 40
-  num_samples: 20
+  max_gp_samples: 40
   output_dir: ./gpmpc_acados_TRP/results
 
 run:
@@ -32,13 +30,13 @@ train:
   test_size: 0.2
   iterations: 500
   lr: 0.001
-
+  samples_per_epoch: 20
 
 # Try not to change this information
 task_config:
   info_in_reset: True
-  ctrl_freq: 60
-  pyb_freq: 60
+  ctrl_freq: 50
+  pyb_freq: 50
   physics: dyn_si_3d_10
   quad_type: 8
 

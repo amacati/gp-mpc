@@ -25,7 +25,7 @@ def load_config():
     root_dir = Path(__file__).parents[1] / config.save_dir
     root_dir.mkdir(parents=True, exist_ok=True)
     config.save_dir = mkdir_date(root_dir)
-    config.algo_config.output_dir = config.save_dir
+    config.gpmpc.output_dir = config.save_dir
     return config
 
 
@@ -87,23 +87,29 @@ def learn(
     gp_iterations: int,
     train_seed: int,
     test_seed: int,
+    samples_per_epoch: int,
 ):
     """Performs multiple epochs learning."""
     train_runs, test_runs = {}, {}
     # Generate n unique random integers for epoch seeds and one for evaluation
     rng = np.random.default_rng(train_seed)
-    epoch_seeds = [int(i) for i in rng.choice(np.iinfo(np.int32).max, size=n_epochs, replace=False)]
+    # To make the results reproducible across runs with varying number of epochs, we create seeds
+    # for 1e6 epochs and then use the first n_epochs of them. This guarantees that the same seeds
+    # are used for the episodes no matter how many epochs are run. We could also reseed the rng
+    # after sampling and sample each episode independently, but this prevents us from using replace.
+    assert n_epochs < int(1e6), f"Number of epochs must be less than 1e6, got {n_epochs}"
+    epoch_seeds = rng.choice(np.iinfo(np.int32).max, size=int(1e6), replace=False)[: n_epochs + 1]
+
     pbar = tqdm(range(n_epochs), desc="GP-MPC", dynamic_ncols=True)
     # Run prior
-    train_runs[0] = run_evaluation(train_env, ctrl.prior_ctrl, seed=epoch_seeds[0])
+    train_runs[0] = run_evaluation(train_env, ctrl.prior_ctrl, seed=int(epoch_seeds[0]))
     test_runs[0] = run_evaluation(test_env, ctrl.prior_ctrl, seed=test_seed)
-    pbar.update(1)
     x_train, y_train = np.zeros((0, 7)), np.zeros((0, 3))  # 7 inputs, 3 outputs
 
-    for epoch in range(1, n_epochs):
+    for epoch in range(1, n_epochs + 1):
         # Gather training data and train the GP
-        x_seq, actions, x_next_seq = sample_data(train_runs[epoch - 1], ctrl.num_samples, rng)
-        inputs, targets = ctrl.preprocess_data(x_seq, actions, x_next_seq)
+        state, actions, next_state = sample_data(train_runs[epoch - 1], samples_per_epoch, rng)
+        inputs, targets = ctrl.preprocess_data(state, actions, next_state)
         x_train = np.vstack((x_train, inputs))  # Add to the existing training dataset
         y_train = np.vstack((y_train, targets))
         t3 = time.perf_counter()
@@ -113,7 +119,7 @@ def learn(
         test_runs[epoch] = run_evaluation(test_env, ctrl, test_seed)
         t5 = time.perf_counter()
         # Gather training data
-        train_runs[epoch] = run_evaluation(train_env, ctrl, epoch_seeds[epoch])
+        train_runs[epoch] = run_evaluation(train_env, ctrl, int(epoch_seeds[epoch]))
         t6 = time.perf_counter()
         # Print timing table
         print("\nExecution Times (seconds):")
@@ -136,7 +142,7 @@ def run():
     # Create a random initial state for all experiments
 
     # Create controller.
-    ctrl = GPMPC(env_func, seed=config.seed, **config.algo_config)
+    ctrl = GPMPC(env_func, seed=config.seed, **config.gpmpc)
 
     # Run the experiment.
     # Get initial state and create environments
@@ -155,6 +161,7 @@ def run():
         gp_iterations=config.train.iterations,
         train_seed=train_seed,
         test_seed=test_seed,
+        samples_per_epoch=config.train.samples_per_epoch,
     )
     train_env.close()
     test_env.close()

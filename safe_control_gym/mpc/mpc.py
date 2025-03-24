@@ -37,7 +37,6 @@ class MPC:
         # set up the symbolic model manually.
         env._setup_symbolic(prior_prop=env.INERTIAL_PROP)
         self.model = env.symbolic
-        self.t_symbolic_fn = env.T_mapping_func  # Required for GP_MPC. TODO: Remove
         self.dt = self.model.dt
         self.T = horizon
         self.traj = env.X_GOAL.T

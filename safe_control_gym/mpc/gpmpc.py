@@ -23,43 +23,25 @@ from safe_control_gym.mpc.mpc_utils import discretize_linear_system
 class GPMPC:
     """Implements a GP-MPC controller with Acados optimization."""
 
-    idx = {
-        "phi": 6,
-        "theta": 7,
-        "phi_dot": 8,
-        "theta_dot": 9,
-        "T_cmd": 0,
-        "phi_cmd": 1,
-        "theta_cmd": 2,
-    }
     state_labels = ["x", "d_x", "y", "d_y", "z", "d_z", "phi", "theta", "d_phi", "d_theta"]
     action_labels = ["T_c", "R_c", "P_c"]
 
     def __init__(
         self,
         env_fn,
-        num_samples: int,
         prior_info: dict,
         horizon: int,
         q_mpc: list,
         r_mpc: list,
         seed: int = 1337,
         device: str = "cpu",
-        n_ind_points: int = 30,
+        max_gp_samples: int = 30,
         prob: float = 0.955,
         sparse_gp: bool = False,
         output_dir: Path = Path("results/temp"),
     ):
-        self.num_samples = num_samples
-
         if prior_info is None or prior_info == {}:
             raise ValueError("GPMPC requires prior_prop to be defined.")
-        self.soft_constraints_params = {
-            "gp_soft_constraints": False,
-            "gp_soft_constraints_coeff": 0,
-            "prior_soft_constraints": False,
-            "prior_soft_constraints_coeff": 0,
-        }
         self.sparse = sparse_gp
         self.output_dir = output_dir
         if "cuda" in device and not torch.cuda.is_available():
@@ -73,6 +55,7 @@ class GPMPC:
         # Model parameters
         assert prior_info is not None
         env._setup_symbolic(prior_prop=prior_info.get("prior_prop", {}))
+        self.t_symbolic_fn = env.T_mapping_func
         self.model = env.symbolic
         self.dt = self.model.dt
         self.T = horizon
@@ -94,26 +77,27 @@ class GPMPC:
         self.inverse_cdf = scipy.stats.norm.ppf(
             1 - (1 / self.model.nx - (prob + 1) / (2 * self.model.nx))
         )
-        self.n_ind_points = n_ind_points
-        self.max_n_ind_points = n_ind_points  # TODO: Move to max n ind points once debugged
+        self.max_gp_samples = max_gp_samples
 
         uncertain_dim = [1, 3, 5, 7, 9]
         self.Bd = np.eye(self.model.nx)[:, uncertain_dim]
 
         # MPC params
         env_fn = partial(env_fn, inertial_prop=prior_info["prior_prop"])
-        self.prior_ctrl = MPC(
+        prior_ctrl = MPC(
             env_fn=env_fn, horizon=horizon, q_mpc=q_mpc, r_mpc=r_mpc, output_dir=output_dir
         )
-        x_eq, u_eq = self.prior_ctrl.model.X_EQ, self.prior_ctrl.model.U_EQ
-        dfdx_dfdu = self.prior_ctrl.model.df_func(x=x_eq, u=u_eq)
+        self.prior_ctrl = prior_ctrl  # Required for selecting actions with the prior dynamics only
+        x_eq, u_eq = prior_ctrl.model.X_EQ, prior_ctrl.model.U_EQ
+        dfdx_dfdu = prior_ctrl.model.df_func(x=x_eq, u=u_eq)
         prior_dfdx, prior_dfdu = dfdx_dfdu["dfdx"].toarray(), dfdx_dfdu["dfdu"].toarray()
         self.discrete_dfdx, self.discrete_dfdu, self.lqr_gain = self.setup_prior_dynamics(
             prior_dfdx, prior_dfdu, self.Q, self.R, self.dt
         )
-        self.prior_dynamics: cs.Function = self.prior_ctrl.model.fc_func
+        self.prior_dynamics: cs.Function = prior_ctrl.model.fc_func
         assert isinstance(self.prior_dynamics, cs.Function)
 
+        self.acados_solver = None  # Gets compiled in reset() if GP has been trained
         self.x_prev = None
         self.u_prev = None
 
@@ -122,19 +106,16 @@ class GPMPC:
         self.traj_step = 0
         if self._requires_recompile:  # GPs have changed, Acados must be recompiled
             assert self.gaussian_process is not None, "GP must be trained before reinitializing"
-            n_ind_points = self.gaussian_process[0].train_targets.shape[0]
+            n_samples = self.gaussian_process[0].train_targets.shape[0]
             if self.sparse:
-                # TODO: Fix by setting to max_n_ind_points
-                n_ind_points = min(n_ind_points, self.n_ind_points)
+                n_samples = min(n_samples, self.max_gp_samples)
             # Reinitialize Acados model and solver -> leads to recompilation of the Acados solver
-            acados_model = self.setup_acados_model(n_ind_points)
-            self.ocp = self.setup_acados_optimizer(acados_model, n_ind_points)
+            acados_model = self.setup_acados_model(n_samples)
+            ocp = self.setup_acados_optimizer(acados_model, n_samples)
             self.acados_solver = AcadosOcpSolver(
-                self.ocp, str(self.output_dir / "gpmpc_acados_ocp_solver.json"), verbose=False
+                ocp, str(self.output_dir / "gpmpc_acados_ocp_solver.json"), verbose=False
             )
             self._requires_recompile = False
-
-        self.prior_ctrl.reset()
         # Previously solved states & inputs
         self.x_prev = None
         self.u_prev = None
@@ -159,7 +140,7 @@ class GPMPC:
 
         # Faster than broadcasted version of np.linalg.norm
         acc = np.sqrt(x_dot[:, 1] ** 2 + x_dot[:, 3] ** 2 + (x_dot[:, 5] + g) ** 2)
-        acc_prior = self.prior_ctrl.t_symbolic_fn(thrust_cmd).full().flatten()
+        acc_prior = self.t_symbolic_fn(thrust_cmd).full().flatten()
         acc_target = acc - acc_prior
         acc_input = thrust_cmd.reshape(-1, 1)
 
@@ -194,7 +175,7 @@ class GPMPC:
 
         self._requires_recompile = True
 
-    def setup_acados_model(self, n_ind_points: int) -> AcadosModel:
+    def setup_acados_model(self, n_samples: int) -> AcadosModel:
         acados_model = AcadosModel()
         acados_model.x = self.model.x_sym
         acados_model.u = self.model.u_sym
@@ -204,10 +185,10 @@ class GPMPC:
         idx_T, idx_R, idx_P = [0 + nx], [6, 8, 1 + nx], [7, 9, 2 + nx]
 
         if self.sparse:
-            K_zs_T_cs, K_zs_R_cs, K_zs_P_cs = self.sparse_gp_kernels_cs(n_ind_points)
+            K_zs_T_cs, K_zs_R_cs, K_zs_P_cs = self.sparse_gp_kernels_cs(n_samples)
 
-            x_sparse = cs.MX.sym("x_sparse", n_ind_points, 7)
-            posterior_mean = cs.MX.sym("posterior_mean", 3, n_ind_points)
+            x_sparse = cs.MX.sym("x_sparse", n_samples, 7)
+            posterior_mean = cs.MX.sym("posterior_mean", 3, n_samples)
             # Acados supports only 1D parameters
             flat_x_sparse = cs.reshape(x_sparse, -1, 1)
             flat_posterior_mean = cs.reshape(posterior_mean, -1, 1)
@@ -241,14 +222,19 @@ class GPMPC:
 
         acados_model.disc_dyn_expr = f_disc
 
-        acados_model.name = "gpmpc"
+        # It is critical to change the name of the model for different number of samples. Acados
+        # will silently reuse parts of a previous model if the names are the same. This leads to
+        # shape mismatch errors in the constraints, which grow with the number of samples. Hence, we
+        # add a postfix to the model name that changes with the number of samples used to construct
+        # the model and avoid the reuse of params. See: https://github.com/acados/acados/issues/905
+        acados_model.name = "gpmpc" + str(n_samples)
         acados_model.x_labels = self.state_labels
         acados_model.u_labels = self.action_labels
         acados_model.t_label = "time"
 
         return acados_model
 
-    def setup_acados_optimizer(self, acados_model: AcadosModel, n_ind_points: int) -> AcadosOcp:
+    def setup_acados_optimizer(self, acados_model: AcadosModel, n_samples: int) -> AcadosOcp:
         ocp = AcadosOcp()
         ocp.model = acados_model
         nx, nu = self.model.nx, self.model.nu
@@ -287,10 +273,8 @@ class GPMPC:
         ocp.solver_options.tf = self.T * self.dt  # prediction duration
         ocp.code_export_directory = str(self.output_dir / "gpmpc_c_generated_code")
 
-        self.n_ind_points = n_ind_points  # TODO: Maybe remove
-
         if self.sparse:
-            posterior_mean, sparse_inputs = self.precompute_sparse_posterior_mean(n_ind_points)
+            posterior_mean, sparse_inputs = self.precompute_sparse_posterior_mean(n_samples)
             # Casadi use column major order, while np uses row major order by default
             sparse_inputs = sparse_inputs.reshape(-1, 1, order="F")
             posterior_mean = posterior_mean.reshape(-1, 1, order="F")
@@ -362,7 +346,8 @@ class GPMPC:
         else:
             p = np.concatenate((state_constraint, input_constraint), axis=0)
         p = p.T.flatten()
-        assert self.acados_solver.get_flat("p").shape == p.shape, "p shape mismatch"
+        if (p_acados := self.acados_solver.get_flat("p")).shape != p.shape:
+            raise ValueError(f"p shape mismatch: {p_acados.shape} != {p.shape}")
         self.acados_solver.set_flat("p", p)
 
         # Set reference for the control horizon
@@ -387,17 +372,17 @@ class GPMPC:
         train_data = torch.cat([gp.train_inputs[0] for gp in gps], dim=-1)
         return posterior_mean.numpy(force=True), train_data.numpy(force=True)
 
-    def precompute_sparse_posterior_mean(self, n_ind_points: int) -> tuple[np.ndarray, np.ndarray]:
+    def precompute_sparse_posterior_mean(self, n_samples: int) -> tuple[np.ndarray, np.ndarray]:
         """Use the last MPC solution to precomupte values with the FITC GP approximation.
 
         Args:
-            n_ind_points: Number of inducing points.
+            n_samples: Number of samples used for the FITC approximation.
         """
         inputs = torch.cat([gp.train_inputs[0] for gp in self.gaussian_process], dim=-1)
         targets = torch.stack([gp.train_targets for gp in self.gaussian_process], dim=1)
 
         # Choose T random training set points.
-        rand_idx = self.np_random.choice(range(inputs.shape[0]), size=n_ind_points, replace=False)
+        rand_idx = self.np_random.choice(range(inputs.shape[0]), size=n_samples, replace=False)
         sparse_inputs = inputs[rand_idx]
 
         posterior_means = []
@@ -412,7 +397,7 @@ class GPMPC:
         posterior_mean = torch.stack(posterior_means)
         return posterior_mean.numpy(force=True), sparse_inputs.numpy(force=True)
 
-    def sparse_gp_kernels_cs(self, n_ind_points) -> tuple[cs.Function, cs.Function, cs.Function]:
+    def sparse_gp_kernels_cs(self, n_samples) -> tuple[cs.Function, cs.Function, cs.Function]:
         """This setups the gaussian process approximations for FITC formulation."""
         gps = self.gaussian_process
 
@@ -424,7 +409,7 @@ class GPMPC:
         # scales and output scaling. We need the CasADI version of this for symbolic differentiation
         # in the MPC optimization.
         z1s = [cs.SX.sym("z1", gp.train_inputs[0].shape[1]) for gp in gps]
-        z2 = cs.SX.sym("z2", n_ind_points, Nx)
+        z2 = cs.SX.sym("z2", n_samples, Nx)
         # Compute the kernel functions for each GP
         ks = [
             covSE_vectorized(z1s[i], z2[:, self.gp_idx[i]], lengthscales[i], scales[i])
@@ -468,7 +453,7 @@ class GPMPC:
         cov_d_batch[:, 3, 3] = covs_diag[1]
         cov_d_batch[:, 4, 4] = covs_diag[2]
 
-        cov_noise = [gp.likelihood.noise for gp in self.gaussian_process]
+        cov_noise = [gp.likelihood.noise.numpy(force=True) for gp in self.gaussian_process]
         cov_noise_batch = np.zeros((z.shape[0], 5, 5))
         cov_noise_batch[:, 0, 0] = cov_noise[0] * cos_phi_sin_theta_2
         cov_noise_batch[:, 1, 1] = cov_noise[0] * sin_phi_2
