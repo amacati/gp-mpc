@@ -3,11 +3,13 @@ from collections import defaultdict
 from functools import partial
 from pathlib import Path
 
+import crazyflow  # noqa: F401, register environments
 import gymnasium
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
 import yaml
+from crazyflow.sim.symbolic import symbolic_attitude
 from matplotlib.ticker import FormatStrFormatter
 from munch import munchify
 from tqdm import tqdm
@@ -140,9 +142,7 @@ def run():
     rng = np.random.default_rng(config.seed)
     env_func = partial(make, config.task, seed=config.seed, **config.task_config)
     # Create a random initial state for all experiments
-
-    # Create controller.
-    ctrl = GPMPC(env_func, seed=config.seed, **config.gpmpc)
+    prior_model = symbolic_attitude(dt=0.02)
 
     # Run the experiment.
     # Get initial state and create environments
@@ -150,6 +150,15 @@ def run():
     train_env = env_func(randomized_init=True, seed=train_seed)
     test_seed = int(rng.integers(np.iinfo(np.int32).max))
     test_env = env_func(randomized_init=True, seed=test_seed)
+
+    # Create controller.
+    env = env_func(inertial_prop=config.gpmpc.prior_info["prior_prop"])
+    # env._setup_symbolic ignores prior_info about identified model parameters, so we need to
+    # set up the symbolic model manually.
+    env._setup_symbolic(prior_prop=env.INERTIAL_PROP)
+    symbolic_model = env.symbolic
+    env.close()
+    ctrl = GPMPC(symbolic_model, traj=train_env.X_GOAL.T, seed=config.seed, **config.gpmpc)
 
     train_runs, test_runs = learn(
         n_epochs=config.run.num_epochs,

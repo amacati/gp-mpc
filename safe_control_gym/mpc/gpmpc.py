@@ -1,4 +1,3 @@
-from functools import partial
 from pathlib import Path
 
 import casadi as cs
@@ -25,10 +24,12 @@ class GPMPC:
 
     state_labels = ["x", "d_x", "y", "d_y", "z", "d_z", "phi", "theta", "d_phi", "d_theta"]
     action_labels = ["T_c", "R_c", "P_c"]
+    u_eq: NDArray = np.array([0.1078, 0.1078, 0.1078])
 
     def __init__(
         self,
-        env_fn,
+        symbolic_model,
+        traj: NDArray,
         prior_info: dict,
         horizon: int,
         q_mpc: list,
@@ -49,23 +50,19 @@ class GPMPC:
         self.device = device
         self.seed = seed
 
-        # Task
-        env = env_fn(randomized_init=False, seed=seed)
-        self.state_cnstr, self.input_cnstr = env.constraints.constraints
         # Model parameters
+        self.model = symbolic_model
         assert prior_info is not None
-        env._setup_symbolic(prior_prop=prior_info.get("prior_prop", {}))
-        self.t_symbolic_fn = env.T_mapping_func
-        self.model = env.symbolic
+        self.acc_symbolic_fn = self.setup_symbolic_acceleration(prior_info["prior_prop"])
         self.dt = self.model.dt
         self.T = horizon
         assert len(q_mpc) == self.model.nx and len(r_mpc) == self.model.nu
         self.Q = np.diag(q_mpc)
         self.R = np.diag(r_mpc)
 
-        # Setup environments.
-        self.traj = env.X_GOAL.T
-        self.ref_action = np.repeat(env.U_GOAL.reshape(-1, 1), self.T, axis=1)
+        # Setup references.
+        self.traj = traj
+        self.ref_action = np.repeat(self.u_eq[..., None], self.T, axis=1)
         self.traj_step = 0
         self.np_random = np.random.default_rng(seed)
 
@@ -83,9 +80,13 @@ class GPMPC:
         self.Bd = np.eye(self.model.nx)[:, uncertain_dim]
 
         # MPC params
-        env_fn = partial(env_fn, inertial_prop=prior_info["prior_prop"])
         prior_ctrl = MPC(
-            env_fn=env_fn, horizon=horizon, q_mpc=q_mpc, r_mpc=r_mpc, output_dir=output_dir
+            symbolic_model,
+            traj=traj,
+            horizon=horizon,
+            q_mpc=q_mpc,
+            r_mpc=r_mpc,
+            output_dir=output_dir,
         )
         self.prior_ctrl = prior_ctrl  # Required for selecting actions with the prior dynamics only
         x_eq, u_eq = prior_ctrl.model.X_EQ, prior_ctrl.model.U_EQ
@@ -140,7 +141,7 @@ class GPMPC:
 
         # Faster than broadcasted version of np.linalg.norm
         acc = np.sqrt(x_dot[:, 1] ** 2 + x_dot[:, 3] ** 2 + (x_dot[:, 5] + g) ** 2)
-        acc_prior = self.t_symbolic_fn(thrust_cmd).full().flatten()
+        acc_prior = self.acc_symbolic_fn(thrust_cmd).full().flatten()
         acc_target = acc - acc_prior
         acc_input = thrust_cmd.reshape(-1, 1)
 
@@ -253,8 +254,8 @@ class GPMPC:
         ocp.cost.Vx_e = np.eye(nx)
 
         # Constraints
-        state_cnstr = self.state_cnstr.sym_func(ocp.model.x)
-        input_cnstr = self.input_cnstr.sym_func(ocp.model.u)
+        state_cnstr = self.setup_state_constraints(ocp.model.x)
+        input_cnstr = self.setup_input_constraints(ocp.model.u)
         ocp = self.setup_acados_constraints(ocp, state_cnstr, input_cnstr)
 
         # Initialize with placeholder zero values
@@ -328,6 +329,33 @@ class GPMPC:
         ocp.model.p = cs.vertcat(ocp.model.p, tighten_param) if self.sparse else tighten_param
 
         return ocp
+
+    def setup_symbolic_acceleration(self, params: dict) -> cs.Function:
+        T = cs.MX.sym("T_c")
+        T_mapping = params["a"] * T + params["b"]
+        return cs.Function("T_mapping", [T], [T_mapping])
+
+    @staticmethod
+    def setup_state_constraints(x_sym: cs.MX) -> cs.MX:
+        s_low = np.array(
+            [-2.0, -15.0, -2.0, -15.0, -0.05, -15.0, -1.4835298, -1.4835298, -8.726646, -8.726646]
+        )
+        s_high = np.array(
+            [2.0, 15.0, 2.0, 15.0, 2.0, 15.0, 1.4835298, 1.4835298, 8.726646, 8.726646]
+        )
+        dim = s_low.shape[0]
+        A = np.vstack((-np.eye(dim), np.eye(dim)))
+        b = np.hstack((-s_low, s_high))
+        return A @ x_sym - b
+
+    @staticmethod
+    def setup_input_constraints(u_sym: cs.MX) -> cs.MX:
+        u_low = np.array([0.11264675, -0.43633232, -0.43633232])
+        u_high = np.array([0.5933658, 0.43633232, 0.43633232])
+        dim = u_low.shape[0]
+        A = np.vstack((-np.eye(dim), np.eye(dim)))
+        b = np.hstack((-u_low, u_high))
+        return A @ u_sym - b
 
     def select_action(self, obs: NDArray) -> NDArray:
         """Solve the nonlinear MPC problem to get the next action."""
@@ -423,8 +451,9 @@ class GPMPC:
     @torch.no_grad()
     def propagate_constraint_limits(self) -> tuple[np.ndarray, np.ndarray]:
         """Update the constraint value limits to account for the uncertainty in the rollout."""
-        state_constraint = np.zeros((self.state_cnstr.num_constraints, self.T + 1))
-        input_constraint = np.zeros((self.input_cnstr.num_constraints, self.T))
+        # 2 constraints per state and input. One to bound from below, one to bound from above.
+        state_constraint = np.zeros((self.model.nx * 2, self.T + 1))
+        input_constraint = np.zeros((self.model.nu * 2, self.T))
 
         if self.x_prev is None or self.u_prev is None:  # No previous rollout, return all zeros
             return state_constraint, input_constraint
@@ -465,8 +494,12 @@ class GPMPC:
         cov_noise_batch = cov_noise_batch * self.dt**2
         cov_d_batch = cov_d_batch * self.dt**2
 
-        inv_cdf_A_abs_state = self.inverse_cdf * np.abs(self.state_cnstr.A)
-        inv_cdf_A_abs_input = self.inverse_cdf * np.abs(self.input_cnstr.A)
+        # Assuming that the state constraints are of the form A * x <= b and that the first half of
+        # the constraints are negative -> A = [-I, I]
+        state_cnstr_A = np.concatenate([-np.eye(self.model.nx), np.eye(self.model.nx)], axis=0)
+        input_cnstr_A = np.concatenate([-np.eye(self.model.nu), np.eye(self.model.nu)], axis=0)
+        inv_cdf_A_abs_state = self.inverse_cdf * np.abs(state_cnstr_A)
+        inv_cdf_A_abs_input = self.inverse_cdf * np.abs(input_cnstr_A)
         # Compute the covariance of the dynamics at each time step.
         for i in range(self.T):
             cov_xu = cov_x @ self.lqr_gain.T

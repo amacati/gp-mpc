@@ -14,8 +14,17 @@ class MPC:
 
     state_labels = ["x", "d_x", "y", "d_y", "z", "d_z", "phi", "theta", "d_phi", "d_theta"]
     action_labels = ["T_c", "R_c", "P_c"]
+    u_eq: NDArray = np.array([0.1078, 0.1078, 0.1078])
 
-    def __init__(self, env_fn, q_mpc: list, r_mpc: list, output_dir: Path, horizon: int = 5):
+    def __init__(
+        self,
+        symbolic_model,
+        traj: NDArray,
+        q_mpc: list,
+        r_mpc: list,
+        output_dir: Path,
+        horizon: int = 5,
+    ):
         """Creates task and controller.
 
         Args:
@@ -29,20 +38,12 @@ class MPC:
             prior_info: prior model information.
         """
         # Model parameters
-        env = env_fn()
-        state_cnstr, input_cnstr = env.constraints.constraints
-        assert state_cnstr.constrained_variable == "state"
-        assert input_cnstr.constrained_variable == "input"
-        # env._setup_symbolic ignores prior_info about identified model parameters, so we need to
-        # set up the symbolic model manually.
-        env._setup_symbolic(prior_prop=env.INERTIAL_PROP)
-        self.model = env.symbolic
+        self.model = symbolic_model
         self.dt = self.model.dt
         self.T = horizon
-        self.traj = env.X_GOAL.T
+        self.traj = traj
         self.traj_step = 0
-        self.u_ref = np.repeat(env.U_GOAL[:, None], self.T, axis=-1)
-        env.close()
+        self.u_ref = np.repeat(self.u_eq[..., None], self.T, axis=-1)
         assert len(q_mpc) == self.model.nx
         assert len(r_mpc) == self.model.nu
         Q = np.diag(q_mpc)
@@ -51,8 +52,8 @@ class MPC:
         self.output_dir = output_dir
         acados_model = self.setup_acados_model()
         ocp = self.setup_acados_optimizer(acados_model, Q, R)
-        state_cnstr = state_cnstr.sym_func(ocp.model.x)
-        input_cnstr = input_cnstr.sym_func(ocp.model.u)
+        state_cnstr = self.setup_state_constraints(ocp.model.x)
+        input_cnstr = self.setup_input_constraints(ocp.model.u)
         ocp = self.setup_acados_constraints(ocp, state_cnstr, input_cnstr)
         json_file = output_dir / "acados_ocp.json"
         self.acados_solver = AcadosOcpSolver(ocp, json_file=str(json_file), verbose=False)
@@ -164,8 +165,29 @@ class MPC:
         ocp.constraints.lh_e = -1e8 * np.ones(np.prod(terminal_cnstr.shape))
         return ocp
 
+    @staticmethod
+    def setup_state_constraints(x_sym: cs.MX) -> cs.MX:
+        s_low = np.array(
+            [-2.0, -15.0, -2.0, -15.0, -0.05, -15.0, -1.4835298, -1.4835298, -8.726646, -8.726646]
+        )
+        s_high = np.array(
+            [2.0, 15.0, 2.0, 15.0, 2.0, 15.0, 1.4835298, 1.4835298, 8.726646, 8.726646]
+        )
+        dim = s_low.shape[0]
+        A = np.vstack((-np.eye(dim), np.eye(dim)))
+        b = np.hstack((-s_low, s_high))
+        return A @ x_sym - b
+
+    @staticmethod
+    def setup_input_constraints(u_sym: cs.MX) -> cs.MX:
+        u_low = np.array([0.11264675, -0.43633232, -0.43633232])
+        u_high = np.array([0.5933658, 0.43633232, 0.43633232])
+        dim = u_low.shape[0]
+        A = np.vstack((-np.eye(dim), np.eye(dim)))
+        b = np.hstack((-u_low, u_high))
+        return A @ u_sym - b
+
     def select_action(self, obs: NDArray) -> NDArray:
-        """Solve the nonlinear mpc problem to get next action."""
         # Set initial condition (0-th state)
         self.acados_solver.set(0, "lbx", obs)
         self.acados_solver.set(0, "ubx", obs)
