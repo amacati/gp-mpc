@@ -26,7 +26,6 @@ def load_config():
     root_dir = Path(__file__).parents[1] / config.save_dir
     root_dir.mkdir(parents=True, exist_ok=True)
     config.save_dir = mkdir_date(root_dir)
-    config.gpmpc.output_dir = config.save_dir
     return config
 
 
@@ -88,7 +87,6 @@ def learn(
     n_epochs: int,
     ctrl: GPMPC,
     env: JaxToNumpy,
-    eval_size: float,
     lr: float,
     gp_iterations: int,
     seed: int,
@@ -119,7 +117,7 @@ def learn(
         x_train = np.vstack((x_train, inputs))  # Add to the existing training dataset
         y_train = np.vstack((y_train, targets))
         t3 = time.perf_counter()
-        ctrl.train_gp(x=x_train, y=y_train, lr=lr, iterations=gp_iterations, test_size=eval_size)
+        ctrl.train_gp(x=x_train, y=y_train, lr=lr, iterations=gp_iterations)
         t4 = time.perf_counter()
         # Test new policy.
         test_runs[epoch] = run_evaluation(env, ctrl, eval_seed)
@@ -153,13 +151,25 @@ def run():
     traj = env.unwrapped.trajectory.T
 
     # Create controller.
-    ctrl = GPMPC(prior_model, traj=traj, seed=config.seed, **config.gpmpc)
+    ctrl = GPMPC(
+        prior_model,
+        traj=traj,
+        prior_params=config.gpmpc.prior_params,
+        horizon=config.gpmpc.horizon,
+        q_mpc=config.gpmpc.q_mpc,
+        r_mpc=config.gpmpc.r_mpc,
+        sparse_gp=config.gpmpc.sparse_gp,
+        prob=config.gpmpc.prob,
+        max_gp_samples=config.gpmpc.max_gp_samples,
+        seed=config.seed,
+        device=config.gpmpc.device,
+        output_dir=config.save_dir,
+    )
 
     train_runs, test_runs = learn(
         n_epochs=config.run.num_epochs,
         ctrl=ctrl,
         env=env,
-        eval_size=config.train.eval_size,
         lr=config.train.lr,
         gp_iterations=config.train.iterations,
         seed=config.seed,

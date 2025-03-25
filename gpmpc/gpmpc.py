@@ -7,7 +7,6 @@ import torch
 from acados_template import AcadosModel, AcadosOcp, AcadosOcpSolver
 from gpytorch.settings import fast_pred_samples, fast_pred_var
 from numpy.typing import NDArray
-from sklearn.model_selection import train_test_split
 
 from gpmpc.gp import GaussianProcess, covSE_vectorized, fit_gp, gpytorch_predict2casadi
 from gpmpc.mpc import MPC
@@ -26,11 +25,11 @@ class GPMPC:
         horizon: int,
         q_mpc: list,
         r_mpc: list,
+        sparse_gp: bool = False,
+        prob: float = 0.955,
+        max_gp_samples: int = 30,
         seed: int = 1337,
         device: str = "cpu",
-        max_gp_samples: int = 30,
-        prob: float = 0.955,
-        sparse_gp: bool = False,
         output_dir: Path = Path("results/temp"),
     ):
         self.sparse = sparse_gp
@@ -38,7 +37,6 @@ class GPMPC:
         if "cuda" in device and not torch.cuda.is_available():
             raise RuntimeError("CUDA device requested but not available.")
         self.device = device
-        self.seed = seed
 
         # Model parameters
         self.model = symbolic_model
@@ -152,12 +150,10 @@ class GPMPC:
         train_output = np.vstack((acc_target, phi_target, theta_target)).T
         return train_input, train_output
 
-    def train_gp(self, x: NDArray, y: NDArray, lr: float, iterations: int, test_size: float = 0.2):
+    def train_gp(self, x: NDArray, y: NDArray, lr: float, iterations: int):
         """Fit the GPs to the training data."""
-        seed = self.np_random.integers(0, 2**32 - 1)
-        x_train, _, y_train, _ = train_test_split(x, y, test_size=test_size, random_state=seed)
-        x_train = torch.tensor(x_train).to(self.device)
-        y_train = torch.tensor(y_train).to(self.device)
+        x_train = torch.tensor(x).to(self.device)
+        y_train = torch.tensor(y).to(self.device)
 
         self.gaussian_process = []
         for i, gp_idx in enumerate(self.gp_idx):
