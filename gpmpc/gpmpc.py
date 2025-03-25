@@ -243,8 +243,12 @@ class GPMPC:
         ocp.cost.Vx_e = np.eye(nx)
 
         # Constraints
-        state_cnstr = self.setup_state_constraints(ocp.model.x)
-        input_cnstr = self.setup_input_constraints(ocp.model.u)
+        s_low = np.array([-2, -15, -2, -15, -0.05, -15, -1.5, -1.5, -10, -8.5, -8.5, -10])
+        s_high = np.array([2, 15, 2, 15, 2, 15, 1.5, 1.5, 10, 8.5, 8.5, 10])
+        state_cnstr = self.setup_constraints(ocp.model.x, s_low, s_high)
+        u_low = np.array([0.12, -0.43, -0.43, -0.43])
+        u_high = np.array([0.59, 0.43, 0.43, 0.43])
+        input_cnstr = self.setup_constraints(ocp.model.u, u_low, u_high)
         ocp = self.setup_acados_constraints(ocp, state_cnstr, input_cnstr)
 
         # Initialize with placeholder zero values
@@ -325,22 +329,11 @@ class GPMPC:
         return cs.Function("T_mapping", [T], [T_mapping])
 
     @staticmethod
-    def setup_state_constraints(x_sym: cs.MX) -> cs.MX:
-        s_low = np.array([-2, -15, -2, -15, -0.05, -15, -1.5, -1.5, -10, -8.5, -8.5, -10])
-        s_high = np.array([2, 15, 2, 15, 2, 15, 1.5, 1.5, 10, 8.5, 8.5, 10])
-        dim = s_low.shape[0]
+    def setup_constraints(sym: cs.MX, low: NDArray, high: NDArray) -> cs.MX:
+        dim = low.shape[0]
         A = np.vstack((-np.eye(dim), np.eye(dim)))
-        b = np.hstack((-s_low, s_high))
-        return A @ x_sym - b
-
-    @staticmethod
-    def setup_input_constraints(u_sym: cs.MX) -> cs.MX:
-        u_low = np.array([0.12, -0.43, -0.43, -0.43])
-        u_high = np.array([0.59, 0.43, 0.43, 0.43])
-        dim = u_low.shape[0]
-        A = np.vstack((-np.eye(dim), np.eye(dim)))
-        b = np.hstack((-u_low, u_high))
-        return A @ u_sym - b
+        b = np.hstack((-low, high))
+        return A @ sym - b
 
     def select_action(self, obs: NDArray) -> NDArray:
         """Solve the nonlinear MPC problem to get the next action."""
