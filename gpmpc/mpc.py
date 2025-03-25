@@ -12,9 +12,7 @@ from numpy.typing import NDArray
 class MPC:
     """MPC with full nonlinear model."""
 
-    state_labels = ["x", "d_x", "y", "d_y", "z", "d_z", "phi", "theta", "d_phi", "d_theta"]
-    action_labels = ["T_c", "R_c", "P_c"]
-    u_eq: NDArray = np.array([0.1078, 0.1078, 0.1078])
+    U_EQ: NDArray = np.array([0.3234, 0, 0, 0])
 
     def __init__(
         self,
@@ -28,22 +26,19 @@ class MPC:
         """Creates task and controller.
 
         Args:
-            env_fn: function to instantiate task/environment. Assumes that the environment already
-                uses the correct prior information to set up the symbolic model.
+            symbolic_model: Symbolic casadi model for the environment dynamics.
+            traj: Reference trajectory.
             q_mpc: diagonals of state cost weight.
             r_mpc: diagonals of input/action cost weight.
             output_dir: output directory to write logs and results.
             horizon: mpc planning horizon.
-            device: torch device.
-            prior_info: prior model information.
         """
         # Model parameters
         self.model = symbolic_model
-        self.dt = self.model.dt
         self.T = horizon
         self.traj = traj
         self.traj_step = 0
-        self.u_ref = np.repeat(self.u_eq[..., None], self.T, axis=-1)
+        self.u_ref = np.repeat(self.U_EQ[..., None], self.T, axis=-1)
         assert len(q_mpc) == self.model.nx
         assert len(r_mpc) == self.model.nu
         Q = np.diag(q_mpc)
@@ -76,16 +71,14 @@ class MPC:
         # set up rk4 (acados need symbolic expression of dynamics, not function)
         fc_func = self.model.fc_func  # continuous-time dynamics
         k1 = fc_func(acados_model.x, acados_model.u)
-        k2 = fc_func(acados_model.x + self.dt / 2 * k1, acados_model.u)
-        k3 = fc_func(acados_model.x + self.dt / 2 * k2, acados_model.u)
-        k4 = fc_func(acados_model.x + self.dt * k3, acados_model.u)
-        f_disc = acados_model.x + self.dt / 6 * (k1 + 2 * k2 + 2 * k3 + k4)
+        k2 = fc_func(acados_model.x + self.model.dt / 2 * k1, acados_model.u)
+        k3 = fc_func(acados_model.x + self.model.dt / 2 * k2, acados_model.u)
+        k4 = fc_func(acados_model.x + self.model.dt * k3, acados_model.u)
+        f_disc = acados_model.x + self.model.dt / 6 * (k1 + 2 * k2 + 2 * k3 + k4)
         acados_model.disc_dyn_expr = f_disc
 
         # store meta information
         acados_model.name = "mpc"
-        acados_model.x_labels = self.state_labels
-        acados_model.u_labels = self.action_labels
         acados_model.t_label = "time"
 
         return acados_model
@@ -120,7 +113,7 @@ class MPC:
         ocp.solver_options.integrator_type = "DISCRETE"
         ocp.solver_options.nlp_solver_type = "SQP"
         ocp.solver_options.nlp_solver_max_iter = 25
-        ocp.solver_options.tf = self.T * self.dt  # prediction duration
+        ocp.solver_options.tf = self.T * self.model.dt  # prediction duration
         ocp.code_export_directory = str(self.output_dir / "mpc_c_generated_code")
 
         return ocp
@@ -167,12 +160,8 @@ class MPC:
 
     @staticmethod
     def setup_state_constraints(x_sym: cs.MX) -> cs.MX:
-        s_low = np.array(
-            [-2.0, -15.0, -2.0, -15.0, -0.05, -15.0, -1.4835298, -1.4835298, -8.726646, -8.726646]
-        )
-        s_high = np.array(
-            [2.0, 15.0, 2.0, 15.0, 2.0, 15.0, 1.4835298, 1.4835298, 8.726646, 8.726646]
-        )
+        s_low = np.array([-2, -15, -2, -15, -0.05, -15, -1.5, -1.5, -10, -8.5, -8.5, -10])
+        s_high = np.array([2, 15, 2, 15, 2, 15, 1.5, 1.5, 10, 8.5, 8.5, 10])
         dim = s_low.shape[0]
         A = np.vstack((-np.eye(dim), np.eye(dim)))
         b = np.hstack((-s_low, s_high))
@@ -180,8 +169,8 @@ class MPC:
 
     @staticmethod
     def setup_input_constraints(u_sym: cs.MX) -> cs.MX:
-        u_low = np.array([0.11264675, -0.43633232, -0.43633232])
-        u_high = np.array([0.5933658, 0.43633232, 0.43633232])
+        u_low = np.array([0.12, -0.43, -0.43, -0.43])
+        u_high = np.array([0.59, 0.43, 0.43, 0.43])
         dim = u_low.shape[0]
         A = np.vstack((-np.eye(dim), np.eye(dim)))
         b = np.hstack((-u_low, u_high))
@@ -204,12 +193,8 @@ class MPC:
         return self.acados_solver.get(0, "u")
 
     def reference_trajectory(self) -> NDArray:
-        """Construct reference states along mpc horizon.(nx, T+1)."""
-        # We append the T+1 states of the trajectory to the goal_states to avoid discontinuities
-        extended_traj = np.concatenate([self.traj, self.traj[:, : self.T + 1]], axis=1)
-        # Slice trajectory for horizon steps, if not long enough, repeat last state.
-        start = min(self.traj_step, extended_traj.shape[-1])
-        end = min(self.traj_step + self.T + 1, extended_traj.shape[-1])
-        remain = max(0, self.T + 1 - (end - start))
-        tail = np.tile(extended_traj[:, end][:, None], (1, remain))
-        return np.concatenate([extended_traj[:, start:end], tail], -1)
+        """Construct reference states along mpc horizon."""
+        # We wrap around the trajectory if it is not long enough. Note that this assumes that the
+        # trajectory is periodic!
+        indices = np.arange(self.traj_step, self.traj_step + self.T + 1) % self.traj.shape[-1]
+        return self.traj[:, indices]  # (nx, T+1)

@@ -9,28 +9,20 @@ from gpytorch.settings import fast_pred_samples, fast_pred_var
 from numpy.typing import NDArray
 from sklearn.model_selection import train_test_split
 
-from safe_control_gym.mpc.gp import (
-    GaussianProcess,
-    covSE_vectorized,
-    fit_gp,
-    gpytorch_predict2casadi,
-)
-from safe_control_gym.mpc.mpc import MPC
-from safe_control_gym.mpc.mpc_utils import discretize_linear_system
+from gpmpc.gp import GaussianProcess, covSE_vectorized, fit_gp, gpytorch_predict2casadi
+from gpmpc.mpc import MPC
 
 
 class GPMPC:
     """Implements a GP-MPC controller with Acados optimization."""
 
-    state_labels = ["x", "d_x", "y", "d_y", "z", "d_z", "phi", "theta", "d_phi", "d_theta"]
-    action_labels = ["T_c", "R_c", "P_c"]
-    u_eq: NDArray = np.array([0.1078, 0.1078, 0.1078])
+    U_EQ: NDArray = np.array([0.3234, 0, 0, 0])
 
     def __init__(
         self,
         symbolic_model,
         traj: NDArray,
-        prior_info: dict,
+        prior_params: dict,
         horizon: int,
         q_mpc: list,
         r_mpc: list,
@@ -41,8 +33,6 @@ class GPMPC:
         sparse_gp: bool = False,
         output_dir: Path = Path("results/temp"),
     ):
-        if prior_info is None or prior_info == {}:
-            raise ValueError("GPMPC requires prior_prop to be defined.")
         self.sparse = sparse_gp
         self.output_dir = output_dir
         if "cuda" in device and not torch.cuda.is_available():
@@ -52,8 +42,9 @@ class GPMPC:
 
         # Model parameters
         self.model = symbolic_model
-        assert prior_info is not None
-        self.acc_symbolic_fn = self.setup_symbolic_acceleration(prior_info["prior_prop"])
+        if prior_params is None or any(k not in prior_params for k in ("a", "b")):
+            raise ValueError("GPMPC requires prior_params to be defined and contain 'a' and 'b'.")
+        self.acc_symbolic_fn = self.setup_symbolic_acceleration(prior_params)
         self.dt = self.model.dt
         self.T = horizon
         assert len(q_mpc) == self.model.nx and len(r_mpc) == self.model.nu
@@ -62,7 +53,7 @@ class GPMPC:
 
         # Setup references.
         self.traj = traj
-        self.ref_action = np.repeat(self.u_eq[..., None], self.T, axis=1)
+        self.ref_action = np.repeat(self.U_EQ[..., None], self.T, axis=1)
         self.traj_step = 0
         self.np_random = np.random.default_rng(seed)
 
@@ -76,7 +67,7 @@ class GPMPC:
         )
         self.max_gp_samples = max_gp_samples
 
-        uncertain_dim = [1, 3, 5, 7, 9]
+        uncertain_dim = [1, 3, 5, 9, 10]  # dx, dy, dz, dphi, dtheta
         self.Bd = np.eye(self.model.nx)[:, uncertain_dim]
 
         # MPC params
@@ -89,7 +80,7 @@ class GPMPC:
             output_dir=output_dir,
         )
         self.prior_ctrl = prior_ctrl  # Required for selecting actions with the prior dynamics only
-        x_eq, u_eq = prior_ctrl.model.X_EQ, prior_ctrl.model.U_EQ
+        x_eq, u_eq = np.zeros(self.model.nx), self.U_EQ
         dfdx_dfdu = prior_ctrl.model.df_func(x=x_eq, u=u_eq)
         prior_dfdx, prior_dfdu = dfdx_dfdu["dfdx"].toarray(), dfdx_dfdu["dfdu"].toarray()
         self.discrete_dfdx, self.discrete_dfdu, self.lqr_gain = self.setup_prior_dynamics(
@@ -145,17 +136,17 @@ class GPMPC:
         acc_target = acc - acc_prior
         acc_input = thrust_cmd.reshape(-1, 1)
 
-        idx_theta, idx_d_theta, idx_theta_cmd = 7, 9, 2
-        theta = x_dot[:, idx_theta]
-        theta_prior = self.prior_dynamics(x=x.T, u=u.T)["f"].toarray()[idx_theta, :]
-        theta_target = theta - theta_prior
-        theta_input = np.vstack((x[:, idx_theta], x[:, idx_d_theta], u[:, idx_theta_cmd])).T
-
-        idx_phi, idx_d_phi, idx_phi_cmd = 6, 8, 1
+        idx_phi, idx_d_phi, idx_phi_cmd = 6, 9, 1
         phi = x_dot[:, idx_phi]
         phi_prior = self.prior_dynamics(x=x.T, u=u.T)["f"].toarray()[idx_phi, :]
         phi_target = phi - phi_prior
         phi_input = np.vstack((x[:, idx_phi], x[:, idx_d_phi], u[:, idx_phi_cmd])).T
+
+        idx_theta, idx_d_theta, idx_theta_cmd = 7, 10, 2
+        theta = x_dot[:, idx_theta]
+        theta_prior = self.prior_dynamics(x=x.T, u=u.T)["f"].toarray()[idx_theta, :]
+        theta_target = theta - theta_prior
+        theta_input = np.vstack((x[:, idx_theta], x[:, idx_d_theta], u[:, idx_theta_cmd])).T
 
         train_input = np.concatenate([acc_input, phi_input, theta_input], axis=-1)
         train_output = np.vstack((acc_target, phi_target, theta_target)).T
@@ -183,7 +174,7 @@ class GPMPC:
 
         z = cs.vertcat(acados_model.x, acados_model.u)  # GP prediction point
         nx = self.model.nx
-        idx_T, idx_R, idx_P = [0 + nx], [6, 8, 1 + nx], [7, 9, 2 + nx]
+        idx_T, idx_R, idx_P = [0 + nx], [6, 9, 1 + nx], [7, 10, 2 + nx]
 
         if self.sparse:
             K_zs_T_cs, K_zs_R_cs, K_zs_P_cs = self.sparse_gp_kernels_cs(n_samples)
@@ -207,7 +198,7 @@ class GPMPC:
         ax_sym = T_pred * (cs.cos(acados_model.x[idx_phi]) * cs.sin(acados_model.x[idx_theta]))
         ay_sym = T_pred * (-cs.sin(acados_model.x[idx_phi]))
         az_sym = T_pred * (cs.cos(acados_model.x[idx_phi]) * cs.cos(acados_model.x[idx_theta]))
-        res_dyn = cs.vertcat(0, ax_sym, 0, ay_sym, 0, az_sym, 0, 0, R_pred, P_pred)
+        res_dyn = cs.vertcat(0, ax_sym, 0, ay_sym, 0, az_sym, 0, 0, 0, R_pred, P_pred, 0)
 
         f_cont = self.prior_dynamics(x=acados_model.x, u=acados_model.u)["f"] + res_dyn
         f_cont_fn = cs.Function(
@@ -229,8 +220,6 @@ class GPMPC:
         # add a postfix to the model name that changes with the number of samples used to construct
         # the model and avoid the reuse of params. See: https://github.com/acados/acados/issues/905
         acados_model.name = "gpmpc" + str(n_samples)
-        acados_model.x_labels = self.state_labels
-        acados_model.u_labels = self.action_labels
         acados_model.t_label = "time"
 
         return acados_model
@@ -337,12 +326,8 @@ class GPMPC:
 
     @staticmethod
     def setup_state_constraints(x_sym: cs.MX) -> cs.MX:
-        s_low = np.array(
-            [-2.0, -15.0, -2.0, -15.0, -0.05, -15.0, -1.4835298, -1.4835298, -8.726646, -8.726646]
-        )
-        s_high = np.array(
-            [2.0, 15.0, 2.0, 15.0, 2.0, 15.0, 1.4835298, 1.4835298, 8.726646, 8.726646]
-        )
+        s_low = np.array([-2, -15, -2, -15, -0.05, -15, -1.5, -1.5, -10, -8.5, -8.5, -10])
+        s_high = np.array([2, 15, 2, 15, 2, 15, 1.5, 1.5, 10, 8.5, 8.5, 10])
         dim = s_low.shape[0]
         A = np.vstack((-np.eye(dim), np.eye(dim)))
         b = np.hstack((-s_low, s_high))
@@ -350,8 +335,8 @@ class GPMPC:
 
     @staticmethod
     def setup_input_constraints(u_sym: cs.MX) -> cs.MX:
-        u_low = np.array([0.11264675, -0.43633232, -0.43633232])
-        u_high = np.array([0.5933658, 0.43633232, 0.43633232])
+        u_low = np.array([0.12, -0.43, -0.43, -0.43])
+        u_high = np.array([0.59, 0.43, 0.43, 0.43])
         dim = u_low.shape[0]
         A = np.vstack((-np.eye(dim), np.eye(dim)))
         b = np.hstack((-u_low, u_high))
@@ -526,19 +511,28 @@ class GPMPC:
     @staticmethod
     def setup_prior_dynamics(dfdx: NDArray, dfdu: NDArray, Q: NDArray, R: NDArray, dt: float):
         """Compute the LQR gain used for propograting GP uncertainty from the prior dynamics."""
-        A, B = discretize_linear_system(dfdx, dfdu, dt)
+        A, B = discretize_linear_system(dfdx, dfdu, dt, exact=True)
         P = scipy.linalg.solve_discrete_are(A, B, Q, R)
         btp = np.dot(B.T, P)
         lqr_gain = -np.dot(np.linalg.inv(R + np.dot(btp, B)), np.dot(btp, A))
         return A, B, lqr_gain
 
     def reference_trajectory(self) -> NDArray:
-        """Construct reference states along mpc horizon.(nx, T+1)."""
-        # We append the T+1 states of the trajectory to the goal_states to avoid discontinuities
-        extended_traj = np.concatenate([self.traj, self.traj[:, : self.T + 1]], axis=1)
-        # Slice trajectory for horizon steps, if not long enough, repeat last state.
-        start = min(self.traj_step, extended_traj.shape[-1])
-        end = min(self.traj_step + self.T + 1, extended_traj.shape[-1])
-        remain = max(0, self.T + 1 - (end - start))
-        tail = np.tile(extended_traj[:, end][:, None], (1, remain))
-        return np.concatenate([extended_traj[:, start:end], tail], -1)
+        """Construct reference states along mpc horizon."""
+        # We wrap around the trajectory if it is not long enough. Note that this assumes that the
+        # trajectory is periodic!
+        indices = np.arange(self.traj_step, self.traj_step + self.T + 1) % self.traj.shape[-1]
+        return self.traj[:, indices]  # (nx, T+1)
+
+
+def discretize_linear_system(A, B, dt: float, exact: bool = False):
+    """(Non-exact) Discretization of a linear system."""
+    state_dim, input_dim = A.shape[1], B.shape[1]
+    if exact:
+        M = np.zeros((state_dim + input_dim, state_dim + input_dim))
+        M[:state_dim, :state_dim] = A
+        M[:state_dim, state_dim:] = B
+        Md = scipy.linalg.expm(M * dt)
+        return Md[:state_dim, :state_dim], Md[:state_dim, state_dim:]
+
+    return np.eye(state_dim) + A * dt, B * dt

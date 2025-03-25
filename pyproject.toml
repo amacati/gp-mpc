@@ -1,8 +1,7 @@
 [tool.poetry]
-name = "safe-control-gym"
-version = "2.0.0"
-description = "PyBullet CartPole and Quadrotor environments—with CasADi symbolic a priori dynamics—for learning-based control and RL"
-authors = ["Your Name <you@example.com>"]
+name = "gpmpc"
+version = "0.1.0"
+description = "Gaussian Process Model Predictive Control"
 license = "MIT"
 
 [tool.poetry.dependencies]

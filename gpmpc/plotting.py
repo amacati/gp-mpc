@@ -4,6 +4,7 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
+from matplotlib.ticker import FormatStrFormatter
 
 
 def get_runtime(test_runs, train_runs):
@@ -68,11 +69,11 @@ def plot_runs(
     if traj is not None:
         plt.plot(traj[:, ind], label="Reference", color="gray", linestyle="--")
     # plot the prior controller
-    plt.plot(all_runs[0]["state"][:, ind], label="prior MPC")
+    plt.plot(all_runs[0]["obs"][:, ind], label="prior MPC")
     # plot each learning epoch
     for epoch in range(1, num_epochs):
         # plot the first episode of each epoch
-        plt.plot(all_runs[epoch]["state"][:, ind], label=f"GP-MPC {epoch}")
+        plt.plot(all_runs[epoch]["obs"][:, ind], label=f"GP-MPC {epoch}")
     plt.title(ylabel)
     plt.xlabel("Step")
     plt.ylabel(ylabel)
@@ -155,7 +156,7 @@ def plot_xyz_trajectory(runs, ref, save_dir: Path):
 
 
 def make_quad_plots(test_runs, train_runs, trajectory, save_dir):
-    num_steps, nx = test_runs[0]["state"].shape
+    num_steps, nx = test_runs[0]["obs"].shape
     nu = test_runs[0]["action"].shape[1]
     # trim the traj steps to mach the evaluation steps
     trajectory = trajectory[0:num_steps, :]
@@ -178,3 +179,50 @@ def make_quad_plots(test_runs, train_runs, trajectory, save_dir):
 
     runtime_result = get_runtime(test_runs, train_runs)
     plot_runtime(runtime_result, num_points_per_epoch, fig_dir)
+
+
+def plot_quad_eval(trajectories, reference, dt: float, save_path: Path):
+    """Plots the input and states to determine success.
+
+    Args:
+        state_stack (ndarray): The list of observations in the latest run.
+        input_stack (ndarray): The list of inputs of in the latest run.
+    """
+    state_stack = trajectories["obs"]
+    input_stack = trajectories["action"]
+    nx = state_stack.shape[1]
+
+    plot_length = np.min([np.shape(input_stack)[0], np.shape(state_stack)[0]])
+    times = np.linspace(0, dt * plot_length, plot_length)
+
+    state_labels = [
+        "x",
+        "d_x",
+        "y",
+        "d_y",
+        "z",
+        "d_z",
+        "phi",
+        "theta",
+        "psi",
+        "d_phi",
+        "d_theta",
+        "d_psi",
+    ]
+    assert len(state_labels) == nx
+
+    # Plot states
+    fig, axs = plt.subplots(nx, figsize=(8, nx * 1))
+    for k in range(nx):
+        axs[k].plot(times, state_stack.T[k, 0:plot_length], label="actual")
+        axs[k].plot(times, reference[k, 0:plot_length], color="r", label="desired")
+        axs[k].set(ylabel=state_labels[k])
+        axs[k].yaxis.set_major_formatter(FormatStrFormatter("%.1f"))
+        if k != nx - 1:
+            axs[k].set_xticks([])
+    axs[0].set_title("State Trajectories")
+    axs[-1].legend(ncol=3, bbox_transform=fig.transFigure, bbox_to_anchor=(1, 0), loc="lower right")
+    axs[-1].set(xlabel="time (sec)")
+    fig.tight_layout()
+
+    plt.savefig(save_path / "state_trajectories.png")

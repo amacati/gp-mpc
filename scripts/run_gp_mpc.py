@@ -1,23 +1,22 @@
 import time
 from collections import defaultdict
-from functools import partial
+from datetime import datetime
 from pathlib import Path
 
 import crazyflow  # noqa: F401, register environments
 import gymnasium
-import matplotlib.pyplot as plt
 import numpy as np
 import torch
 import yaml
+from crazyflow.sim.physics import ang_vel2rpy_rates
 from crazyflow.sim.symbolic import symbolic_attitude
-from matplotlib.ticker import FormatStrFormatter
+from gymnasium.wrappers.vector.jax_to_numpy import JaxToNumpy
 from munch import munchify
+from scipy.spatial.transform import Rotation as R
 from tqdm import tqdm
 
-from safe_control_gym.mpc.gpmpc import GPMPC
-from safe_control_gym.mpc.plotting import make_quad_plots
-from safe_control_gym.utils.registration import make
-from safe_control_gym.utils.utils import mkdir_date
+from gpmpc.gpmpc import GPMPC
+from gpmpc.plotting import make_quad_plots, plot_quad_eval
 
 
 def load_config():
@@ -31,13 +30,23 @@ def load_config():
     return config
 
 
+def flatten_obs(obs: dict) -> np.ndarray:
+    """Flatten the observation dictionary into a 1D numpy array."""
+    x, y, z = obs["pos"]
+    rpy = R.from_quat(obs["quat"]).as_euler("xyz")
+    vx, vy, vz = obs["vel"]
+    rpy_rates = ang_vel2rpy_rates(obs["ang_vel"], obs["quat"])
+    obs = np.array([x, vx, y, vy, z, vz, *rpy, *rpy_rates])
+    return obs
+
+
 def run_evaluation(env, ctrl: GPMPC, seed: int) -> dict:
     episode_data = defaultdict(list)
     ctrl.reset()
     obs, _ = env.reset(seed=seed)
+    obs = flatten_obs(obs)
 
     episode_data["obs"].append(obs)
-    episode_data["state"].append(env.state)
 
     env.action_space.seed(seed)
     ctrl_data = defaultdict(list)
@@ -47,15 +56,11 @@ def run_evaluation(env, ctrl: GPMPC, seed: int) -> dict:
         time_start = time.perf_counter()
         action = ctrl.select_action(obs)
         inference_time_data.append(time.perf_counter() - time_start)
-        obs, reward, done, _ = env.step(action)
-        step_data = {
-            "obs": obs,
-            "action": action,
-            "done": done,
-            "reward": reward,
-            "length": 1,
-            "state": env.state,
-        }
+        # Vector environment expects a batched action (world size 1) in float32
+        obs, reward, terminated, truncated, _ = env.step(action.astype(np.float32).reshape(1, -1))
+        obs = flatten_obs(obs)
+        done = terminated or truncated
+        step_data = {"obs": obs, "action": action, "done": done, "reward": reward, "length": 1}
         for key, val in step_data.items():
             episode_data[key].append(val)
         if done:
@@ -82,19 +87,18 @@ def sample_data(data, n_samples: int, rng):
 def learn(
     n_epochs: int,
     ctrl: GPMPC,
-    train_env,
-    test_env,
-    test_size: float,
+    env: JaxToNumpy,
+    eval_size: float,
     lr: float,
     gp_iterations: int,
-    train_seed: int,
-    test_seed: int,
+    seed: int,
     samples_per_epoch: int,
 ):
     """Performs multiple epochs learning."""
     train_runs, test_runs = {}, {}
     # Generate n unique random integers for epoch seeds and one for evaluation
-    rng = np.random.default_rng(train_seed)
+    rng = np.random.default_rng(seed)
+    eval_seed = int(rng.integers(np.iinfo(np.int32).max))
     # To make the results reproducible across runs with varying number of epochs, we create seeds
     # for 1e6 epochs and then use the first n_epochs of them. This guarantees that the same seeds
     # are used for the episodes no matter how many epochs are run. We could also reseed the rng
@@ -104,8 +108,8 @@ def learn(
 
     pbar = tqdm(range(n_epochs), desc="GP-MPC", dynamic_ncols=True)
     # Run prior
-    train_runs[0] = run_evaluation(train_env, ctrl.prior_ctrl, seed=int(epoch_seeds[0]))
-    test_runs[0] = run_evaluation(test_env, ctrl.prior_ctrl, seed=test_seed)
+    train_runs[0] = run_evaluation(env, ctrl.prior_ctrl, seed=int(epoch_seeds[0]))
+    test_runs[0] = run_evaluation(env, ctrl.prior_ctrl, seed=eval_seed)
     x_train, y_train = np.zeros((0, 7)), np.zeros((0, 3))  # 7 inputs, 3 outputs
 
     for epoch in range(1, n_epochs + 1):
@@ -115,13 +119,13 @@ def learn(
         x_train = np.vstack((x_train, inputs))  # Add to the existing training dataset
         y_train = np.vstack((y_train, targets))
         t3 = time.perf_counter()
-        ctrl.train_gp(x=x_train, y=y_train, lr=lr, iterations=gp_iterations, test_size=test_size)
+        ctrl.train_gp(x=x_train, y=y_train, lr=lr, iterations=gp_iterations, test_size=eval_size)
         t4 = time.perf_counter()
         # Test new policy.
-        test_runs[epoch] = run_evaluation(test_env, ctrl, test_seed)
+        test_runs[epoch] = run_evaluation(env, ctrl, eval_seed)
         t5 = time.perf_counter()
         # Gather training data
-        train_runs[epoch] = run_evaluation(train_env, ctrl, int(epoch_seeds[epoch]))
+        train_runs[epoch] = run_evaluation(env, ctrl, int(epoch_seeds[epoch]))
         t6 = time.perf_counter()
         # Print timing table
         print("\nExecution Times (seconds):")
@@ -139,87 +143,60 @@ def run():
     """The main function running experiments for model-based methods."""
     config = load_config()
     torch.manual_seed(config.seed)
-    rng = np.random.default_rng(config.seed)
-    env_func = partial(make, config.task, seed=config.seed, **config.task_config)
-    # Create a random initial state for all experiments
-    prior_model = symbolic_attitude(dt=0.02)
+
+    # TODO: Add the information from config.gpmpc.prior_info to the symbolic model
+    prior_model = symbolic_attitude(dt=0.02, params=config.gpmpc.prior_params)
 
     # Run the experiment.
     # Get initial state and create environments
-    train_seed = int(rng.integers(np.iinfo(np.int32).max))
-    train_env = env_func(randomized_init=True, seed=train_seed)
-    test_seed = int(rng.integers(np.iinfo(np.int32).max))
-    test_env = env_func(randomized_init=True, seed=test_seed)
+    env = JaxToNumpy(gymnasium.make_vec("DroneFigureEightXY-v0", num_envs=1))
+    traj = env.unwrapped.trajectory.T
 
     # Create controller.
-    env = env_func(inertial_prop=config.gpmpc.prior_info["prior_prop"])
-    # env._setup_symbolic ignores prior_info about identified model parameters, so we need to
-    # set up the symbolic model manually.
-    env._setup_symbolic(prior_prop=env.INERTIAL_PROP)
-    symbolic_model = env.symbolic
-    env.close()
-    ctrl = GPMPC(symbolic_model, traj=train_env.X_GOAL.T, seed=config.seed, **config.gpmpc)
+    ctrl = GPMPC(prior_model, traj=traj, seed=config.seed, **config.gpmpc)
 
     train_runs, test_runs = learn(
         n_epochs=config.run.num_epochs,
         ctrl=ctrl,
-        train_env=train_env,
-        test_env=test_env,
-        test_size=config.train.test_size,
+        env=env,
+        eval_size=config.train.eval_size,
         lr=config.train.lr,
         gp_iterations=config.train.iterations,
-        train_seed=train_seed,
-        test_seed=test_seed,
+        seed=config.seed,
         samples_per_epoch=config.train.samples_per_epoch,
     )
-    train_env.close()
-    test_env.close()
 
     # plotting training and evaluation results
     make_quad_plots(
         test_runs=test_runs, train_runs=train_runs, trajectory=ctrl.traj.T, save_dir=config.save_dir
     )
 
-    # Run evaluation on a seed different from the test seed
-    eval_env = env_func(gui=False, randomized_init=False, seed=test_seed + 1)
-    trajs_data = run_evaluation(eval_env, ctrl, seed=test_seed)
-    eval_env.close()
+    # Run tests on a seed different from the test seed
+    trajs_data = run_evaluation(env, ctrl, seed=config.seed + 1)
+    env.close()
 
-    plot_quad_eval(trajs_data, eval_env, config.save_dir)
+    dt = ctrl.model.dt
+    plot_quad_eval(trajs_data, traj, dt, config.save_dir)
 
 
-def plot_quad_eval(trajectories, env, save_path: Path):
-    """Plots the input and states to determine success.
+def mkdir_date(path: Path) -> Path:
+    """Make a unique directory within the given directory with the current time as name.
 
     Args:
-        state_stack (ndarray): The list of observations in the latest run.
-        input_stack (ndarray): The list of inputs of in the latest run.
+        path: Parent folder path.
     """
-    state_stack = trajectories["obs"]
-    input_stack = trajectories["action"]
-    model = env.symbolic
-    nx, dt = model.nx, model.dt
-
-    plot_length = np.min([np.shape(input_stack)[0], np.shape(state_stack)[0]])
-    times = np.linspace(0, dt * plot_length, plot_length)
-
-    reference = env.X_GOAL
-
-    # Plot states
-    fig, axs = plt.subplots(nx, figsize=(8, nx * 1))
-    for k in range(nx):
-        axs[k].plot(times, np.array(state_stack).transpose()[k, 0:plot_length], label="actual")
-        axs[k].plot(times, reference.transpose()[k, 0:plot_length], color="r", label="desired")
-        axs[k].set(ylabel=env.STATE_LABELS[k] + f"\n[{env.STATE_UNITS[k]}]")
-        axs[k].yaxis.set_major_formatter(FormatStrFormatter("%.1f"))
-        if k != nx - 1:
-            axs[k].set_xticks([])
-    axs[0].set_title("State Trajectories")
-    axs[-1].legend(ncol=3, bbox_transform=fig.transFigure, bbox_to_anchor=(1, 0), loc="lower right")
-    axs[-1].set(xlabel="time (sec)")
-    fig.tight_layout()
-
-    plt.savefig(save_path / "state_trajectories.png")
+    assert path.is_dir(), f"Path {path} is not a directory"
+    save_dir = path / datetime.now().strftime("%Y_%m_%d_%H_%M")
+    if not save_dir.is_dir():
+        save_dir.mkdir(parents=True, exist_ok=True)
+    else:
+        t = 1
+        while save_dir.is_dir():
+            curr_date_unique = datetime.now().strftime("%Y_%m_%d_%H_%M") + f"_({t})"
+            save_dir = path / (curr_date_unique)
+            t += 1
+        save_dir.mkdir(parents=True)
+    return save_dir
 
 
 if __name__ == "__main__":
